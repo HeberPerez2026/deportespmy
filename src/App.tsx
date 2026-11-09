@@ -9,8 +9,13 @@ import { AdminLoginModal } from './components/AdminLoginModal';
 import { Footer } from './components/Footer';
 
 const MainContent: React.FC = () => {
-  const { activeTab, setActiveTab, isAdminAuthenticated } = useApp();
+  const { activeTab, setActiveTab, isAdminAuthenticated, reviews } = useApp();
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+
+  const avgRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1) : '5.0';
+  const headingText = reviews.length > 0 
+    ? `★ ${avgRating} estrellas en ${reviews.length} ${reviews.length === 1 ? 'partido calificado' : 'partidos jugados'}`
+    : '¡Sé el primero en calificar tu partido y dejar tu opinión!';
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-emerald-500 selection:text-slate-950">
@@ -37,7 +42,7 @@ const MainContent: React.FC = () => {
                     Comunidad Deportiva de Puerto Madryn
                   </span>
                   <h3 className="text-xl sm:text-2xl font-black font-heading">
-                    +4.9 estrellas en más de 140 partidos jugados
+                    {headingText}
                   </h3>
                   <p className="text-xs text-slate-300 max-w-lg">
                     Conocé las opiniones de jugadores reales sobre el estado del césped, la iluminación y la atención del buffet.

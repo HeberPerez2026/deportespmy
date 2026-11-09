@@ -26,6 +26,7 @@ export const AdminProfileSettings: React.FC = () => {
   const [email, setEmail] = useState(businessProfile.email || '');
   const [welcomeNotes, setWelcomeNotes] = useState(businessProfile.welcomeNotes || '');
   const [mpLink, setMpLink] = useState(businessProfile.mpLink || '');
+  const [whatsappTemplate, setWhatsappTemplate] = useState(businessProfile.whatsappTemplate || '');
 
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -41,6 +42,7 @@ export const AdminProfileSettings: React.FC = () => {
     setEmail(businessProfile.email || '');
     setWelcomeNotes(businessProfile.welcomeNotes || '');
     setMpLink(businessProfile.mpLink || '');
+    setWhatsappTemplate(businessProfile.whatsappTemplate || '');
   }, [businessProfile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -55,7 +57,8 @@ export const AdminProfileSettings: React.FC = () => {
       address: address.trim(),
       email: email.trim(),
       welcomeNotes: welcomeNotes.trim(),
-      mpLink: mpLink.trim()
+      mpLink: mpLink.trim(),
+      whatsappTemplate: whatsappTemplate.trim()
     });
 
     setSavedSuccess(true);
@@ -245,6 +248,23 @@ export const AdminProfileSettings: React.FC = () => {
               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
             />
             <span className="text-[10px] text-slate-400 mt-0.5 block">Este texto se agregará automáticamente al final de cada confirmación de WhatsApp</span>
+          </div>
+
+          <div>
+            <label className="font-bold text-slate-700 block mb-1 flex items-center justify-between">
+              <span>Plantilla Personalizada del Mensaje de WhatsApp</span>
+              <span className="text-[10px] text-slate-400 font-normal">Variables: {'{nombre}, {complejo}, {cancha}, {fecha}, {inicio}, {fin}, {codigo}, {total}, {abonado}, {saldo}, {alias}, {direccion}'}</span>
+            </label>
+            <textarea
+              rows={4}
+              value={whatsappTemplate}
+              onChange={(e) => setWhatsappTemplate(e.target.value)}
+              placeholder="Ej: *¡Hola {nombre}!* Tu reserva en *{complejo}* para la cancha *{cancha}* el {fecha} de {inicio} a {fin} hs está confirmada. Código: #{codigo}. Total: {total}. Abonado: {abonado}. Saldo restante: {saldo}. Alias: {alias}. Dirección: {direccion}."
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 font-mono"
+            />
+            <span className="text-[10px] text-slate-400 mt-0.5 block">
+              Si dejás este campo vacío, el sistema utilizará la plantilla profesional predeterminada.
+            </span>
           </div>
         </div>
 

@@ -26,7 +26,8 @@ export const DEFAULT_BUSINESS_PROFILE: BusinessProfile = {
   address: '',
   email: '',
   welcomeNotes: '',
-  mpLink: ''
+  mpLink: '',
+  whatsappTemplate: ''
 };
 
 export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
@@ -39,7 +40,8 @@ export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
   address: '',
   email: '',
   welcomeNotes: '',
-  mpLink: ''
+  mpLink: '',
+  whatsappTemplate: ''
 };
 
 // Default Developer Contact for footer, editable by SuperAdmin

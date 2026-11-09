@@ -105,6 +105,7 @@ export interface BusinessProfile {
   email: string;
   welcomeNotes?: string;
   mpLink?: string;
+  whatsappTemplate?: string;
 }
 
 export interface DeveloperContact {

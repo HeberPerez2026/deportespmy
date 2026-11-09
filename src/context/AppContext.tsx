@@ -566,7 +566,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
   };
 
-  // Generate WhatsApp Message template with real Admin Business Profile details
+  // Generate WhatsApp Message template with real Admin Business Profile details & custom template support
   const generateWhatsAppMessage = useCallback((booking: Booking): string => {
     const isSeña = booking.paymentStatus === 'seña_pagada';
     const sportEmoji = {
@@ -578,6 +578,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }[booking.sport] || '🏆';
 
     const establishmentName = booking.establishment || businessProfile.complexName || 'DeportesPMY';
+
+    if (businessProfile.whatsappTemplate && businessProfile.whatsappTemplate.trim().length > 0) {
+      let tpl = businessProfile.whatsappTemplate;
+      tpl = tpl.replace(/\{nombre\}/g, booking.clientName);
+      tpl = tpl.replace(/\{complejo\}/g, establishmentName);
+      tpl = tpl.replace(/\{cancha\}/g, booking.courtName);
+      tpl = tpl.replace(/\{fecha\}/g, booking.date);
+      tpl = tpl.replace(/\{inicio\}/g, booking.startTime);
+      tpl = tpl.replace(/\{fin\}/g, booking.endTime);
+      tpl = tpl.replace(/\{codigo\}/g, booking.bookingCode);
+      tpl = tpl.replace(/\{total\}/g, `$${booking.totalAmount.toLocaleString('es-AR')}`);
+      tpl = tpl.replace(/\{abonado\}/g, `$${booking.amountPaid.toLocaleString('es-AR')}`);
+      tpl = tpl.replace(/\{saldo\}/g, `$${booking.balanceDue.toLocaleString('es-AR')}`);
+      tpl = tpl.replace(/\{metodo\}/g, booking.paymentMethod.toUpperCase());
+      tpl = tpl.replace(/\{alias\}/g, businessProfile.alias || 'N/A');
+      tpl = tpl.replace(/\{direccion\}/g, businessProfile.address || 'N/A');
+      tpl = tpl.replace(/\{whatsapp\}/g, businessProfile.whatsappNumber || 'N/A');
+      tpl = tpl.replace(/\{deporte\}/g, booking.sport);
+      tpl = tpl.replace(/\{emoji\}/g, sportEmoji);
+      tpl = tpl.replace(/\{notas\}/g, businessProfile.welcomeNotes || '');
+      return tpl;
+    }
 
     return `*¡Hola ${booking.clientName}!* 👋\n\n` +
       `Tu turno en *${establishmentName}* está *CONFIRMADO* con éxito. Aquí tenés los detalles:\n\n` +

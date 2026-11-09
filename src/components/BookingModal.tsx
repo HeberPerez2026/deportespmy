@@ -81,13 +81,32 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const amountToPayNow = paymentOption === 'deposit' ? depositAmount : totalPrice;
   const balanceDue = totalPrice - amountToPayNow;
 
-  // Open Mercado Pago web or app with alias copied to clipboard
-  const openMercadoPagoPayment = () => {
+  // Open Mercado Pago web or app by creating a backend preference
+  const openMercadoPagoPayment = async () => {
     const aliasToCopy = businessProfile.alias || 'DEPORTES.PMY.MP';
     try {
       navigator.clipboard.writeText(aliasToCopy);
       setCopiedAlias(true);
       setTimeout(() => setCopiedAlias(false), 2500);
+    } catch {}
+
+    try {
+      const res = await fetch('/api/mercadopago/preference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: `Reserva ${court.name} - ${selectedDate} (${selectedSlotTime})`,
+          unit_price: amountToPayNow,
+          quantity: 1,
+          clientName: name,
+          clientEmail: email
+        })
+      });
+      const data = await res.json();
+      if (data.init_point) {
+        window.open(data.init_point, '_blank');
+        return;
+      }
     } catch {}
 
     const targetUrl = businessProfile.mpLink && businessProfile.mpLink.startsWith('http')
@@ -101,7 +120,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const handleConfirmAndPay = () => {
     setIsProcessing(true);
 
-    // If player chose Mercado Pago, automatically open the app / website
+    // If player chose Mercado Pago, automatically open the preference checkout
     if (paymentMethod === 'mercadopago') {
       openMercadoPagoPayment();
     }
@@ -120,7 +139,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
           totalAmount: totalPrice,
           isDepositOnly: paymentOption === 'deposit',
           paymentMethod,
-          paymentReference: paymentMethod === 'transferencia' ? (transferRef || 'TRF-PROV-9921') : undefined,
+          paymentReference: paymentMethod === 'transferencia' 
+            ? (transferRef || 'TRF-PROV-9921') 
+            : paymentMethod === 'tarjeta'
+            ? `TARJETA-${cardNumber.replace(/\s/g, '').slice(-4) || '3821'}`
+            : paymentMethod === 'mercadopago'
+            ? `MP-CHECKOUT-${Math.floor(100000 + Math.random() * 900000)}`
+            : undefined,
         });
 
         setConfirmedBooking(newBooking);
