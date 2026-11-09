@@ -55,9 +55,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const [email, setEmail] = useState(userEmail || 'jugador@gmail.com');
   const [notes, setNotes] = useState('');
 
-  // Payment states
+  // Payment states: ONLY Mercado Pago or CBU
   const [paymentOption, setPaymentOption] = useState<'deposit' | 'full'>('deposit');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mercadopago');
+  const [transferRef, setTransferRef] = useState('');
 
   // Processing & Created Booking
   const [isProcessing, setIsProcessing] = useState(false);
@@ -76,84 +77,100 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const amountToPayNow = paymentOption === 'deposit' ? depositAmount : totalPrice;
   const balanceDue = totalPrice - amountToPayNow;
 
-  // Handle Booking submission & Mercado Pago Checkout Pro redirect
-  const handleConfirmAndPay = async () => {
+  // Handle direct Mercado Pago App opening or CBU transfer reservation
+  const handleConfirmAndPay = () => {
     setIsProcessing(true);
+    const targetAlias = (businessProfile.alias || 'DEPORTES.PMY.MP').trim();
 
-    try {
-      if (paymentMethod === 'mercadopago') {
-        // 1. Create a held booking with status 'pending_payment'
-        const pendingBooking = createBooking({
-          courtId: court.id,
-          date: selectedDate,
-          startTime: selectedSlotTime,
-          durationMinutes,
-          clientName: name,
-          clientPhone: phone,
-          clientEmail: email,
-          notes,
-          totalAmount: totalPrice,
-          isDepositOnly: paymentOption === 'deposit',
-          paymentMethod: 'mercadopago',
-          status: 'pending_payment'
-        });
+    if (paymentMethod === 'mercadopago') {
+      // 1. Copy Alias to clipboard automatically so it's ready in the app
+      try {
+        navigator.clipboard.writeText(targetAlias);
+        setCopiedAlias(true);
+        setTimeout(() => setCopiedAlias(false), 3000);
+      } catch {}
 
-        // 2. Request preference from backend
-        const res = await fetch('/api/mercadopago/preference', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bookingId: pendingBooking.id,
-            bookingCode: pendingBooking.bookingCode,
-            courtName: court.name,
-            date: selectedDate,
-            startTime: selectedSlotTime,
-            title: `Reserva ${court.name} - ${selectedDate} (${selectedSlotTime} hs)`,
-            unit_price: amountToPayNow,
-            quantity: 1,
-            clientName: name,
-            clientEmail: email,
-            clientPhone: phone
-          })
-        });
-
-        if (!res.ok) {
-          throw new Error('No se pudo conectar con el servidor de pagos de Mercado Pago.');
-        }
-
-        const data = await res.json();
-        
-        if (data.init_point) {
-          // Direct redirect to Mercado Pago Checkout Pro
-          window.location.href = data.init_point;
-          return;
+      // 2. Open Mercado Pago app with the amount ready to transfer
+      let targetUrl = '';
+      if (businessProfile.mpLink && businessProfile.mpLink.trim().startsWith('http')) {
+        const clean = businessProfile.mpLink.trim().replace(/\/$/, '');
+        if (clean.includes('link.mercadopago.com.ar')) {
+          targetUrl = `${clean}/${amountToPayNow}`;
         } else {
-          throw new Error('No se recibió la URL de pago de Mercado Pago.');
+          targetUrl = clean;
         }
       } else {
-        // Efectivo mostrador
-        const newBooking = createBooking({
-          courtId: court.id,
-          date: selectedDate,
-          startTime: selectedSlotTime,
-          durationMinutes,
-          clientName: name,
-          clientPhone: phone,
-          clientEmail: email,
-          notes,
-          totalAmount: totalPrice,
-          isDepositOnly: paymentOption === 'deposit',
-          paymentMethod: 'efectivo_mostrador',
-          status: 'confirmed'
-        });
-
-        setConfirmedBooking(newBooking);
-        setStep(4);
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        if (isMobile) {
+          // Deep link to open the Mercado Pago native app
+          targetUrl = 'mercadopago://';
+        } else {
+          targetUrl = `https://link.mercadopago.com.ar/${encodeURIComponent(targetAlias)}/${amountToPayNow}`;
+        }
       }
-    } catch (err: any) {
-      alert('Error al iniciar el pago: ' + (err?.message || 'Ocurrió un error inesperado'));
-    } finally {
-      setIsProcessing(false);
+
+      try {
+        window.open(targetUrl, '_blank');
+      } catch {
+        window.location.href = targetUrl;
+      }
+
+      // 3. Confirm booking in DeportesPMY
+      setTimeout(() => {
+        try {
+          const newBooking = createBooking({
+            courtId: court.id,
+            date: selectedDate,
+            startTime: selectedSlotTime,
+            durationMinutes,
+            clientName: name,
+            clientPhone: phone,
+            clientEmail: email,
+            notes,
+            totalAmount: totalPrice,
+            isDepositOnly: paymentOption === 'deposit',
+            paymentMethod: 'mercadopago',
+            paymentReference: `MP-${targetAlias}`,
+            status: 'confirmed'
+          });
+
+          setConfirmedBooking(newBooking);
+          setStep(4);
+        } catch (err: any) {
+          alert('Error al registrar reserva: ' + (err?.message || 'Error'));
+        } finally {
+          setIsProcessing(false);
+        }
+      }, 700);
+
+    } else {
+      // CBU / Transferencia Bancaria
+      setTimeout(() => {
+        try {
+          const newBooking = createBooking({
+            courtId: court.id,
+            date: selectedDate,
+            startTime: selectedSlotTime,
+            durationMinutes,
+            clientName: name,
+            clientPhone: phone,
+            clientEmail: email,
+            notes,
+            totalAmount: totalPrice,
+            isDepositOnly: paymentOption === 'deposit',
+            paymentMethod: 'transferencia',
+            paymentReference: transferRef.trim() ? `CBU-${transferRef.trim()}` : `CBU-${Date.now().toString().slice(-6)}`,
+            status: 'confirmed'
+          });
+
+          setConfirmedBooking(newBooking);
+          setStep(4);
+        } catch (err: any) {
+          alert('Error al registrar reserva: ' + (err?.message || 'Error'));
+        } finally {
+          setIsProcessing(false);
+        }
+      }, 500);
     }
   };
 
@@ -480,7 +497,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 </div>
               </div>
 
-              {/* Payment Method Selector */}
+              {/* Payment Method Selector: ONLY Mercado Pago or CBU */}
               <div>
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
                   Seleccionar Medio de Pago
@@ -490,9 +507,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('mercadopago')}
-                    className={`p-3 rounded-2xl border text-left transition-all flex flex-col gap-1 cursor-pointer ${
+                    className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col gap-1 cursor-pointer ${
                       paymentMethod === 'mercadopago'
-                        ? 'bg-sky-500/15 border-sky-400 text-sky-200 ring-1 ring-sky-400'
+                        ? 'bg-sky-500/20 border-sky-400 text-sky-200 ring-2 ring-sky-400/50'
                         : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-slate-750'
                     }`}
                   >
@@ -500,30 +517,30 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                       <span className="font-extrabold text-xs text-sky-300 flex items-center gap-1.5">
                         <span>💙</span> Mercado Pago
                       </span>
-                      <span className="text-[10px] bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full font-bold">Online</span>
+                      <span className="text-[10px] bg-sky-500/25 text-sky-300 px-2 py-0.5 rounded-full font-bold">App / Alias</span>
                     </div>
                     <span className="text-[11px] text-slate-300">
-                      Tarjetas, Saldo MP, DEBIN o Efectivo
+                      Transferí directo a nuestro Alias por la app
                     </span>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('efectivo_mostrador')}
-                    className={`p-3 rounded-2xl border text-left transition-all flex flex-col gap-1 cursor-pointer ${
-                      paymentMethod === 'efectivo_mostrador'
-                        ? 'bg-emerald-500/15 border-emerald-400 text-emerald-200 ring-1 ring-emerald-400'
+                    onClick={() => setPaymentMethod('transferencia')}
+                    className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col gap-1 cursor-pointer ${
+                      paymentMethod === 'transferencia'
+                        ? 'bg-amber-500/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/50'
                         : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-slate-750'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-extrabold text-xs text-emerald-300 flex items-center gap-1.5">
-                        <span>💵</span> Efectivo en Cancha
+                      <span className="font-extrabold text-xs text-amber-300 flex items-center gap-1.5">
+                        <span>🏦</span> CBU / Banco
                       </span>
-                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full font-bold">En Club</span>
+                      <span className="text-[10px] bg-amber-500/25 text-amber-300 px-2 py-0.5 rounded-full font-bold">Transferencia</span>
                     </div>
                     <span className="text-[11px] text-slate-300">
-                      Abonar en el mostrador antes de jugar
+                      Transferencia a CBU / CVU bancario
                     </span>
                   </button>
                 </div>
@@ -533,58 +550,134 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
               {paymentMethod === 'mercadopago' && (
                 <div className="p-4 bg-sky-950/30 border border-sky-800/60 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-sky-300">Mercado Pago Checkout Pro</span>
-                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full font-bold">Acreditación Inmediata</span>
+                    <span className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
+                      <span>💙</span> Transferencia a Cuenta Mercado Pago
+                    </span>
+                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full font-bold">
+                      Acreditación Directa
+                    </span>
                   </div>
 
-                  {/* Badges of accepted methods in Checkout Pro */}
-                  <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300">
-                    <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-sky-400 shrink-0" />
-                      <span>Tarjetas Débito y Crédito</span>
-                    </div>
-                    <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-2">
-                      <span className="text-sm">💙</span>
-                      <span>Dinero en cuenta MP</span>
-                    </div>
-                    <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-2">
-                      <span className="text-sm">⚡</span>
-                      <span>Débito Inmediato (DEBIN)</span>
-                    </div>
-                    <div className="p-2 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-2">
-                      <span className="text-sm">🧾</span>
-                      <span>Pago Fácil / RapiPago</span>
-                    </div>
-                  </div>
-
-                  <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-1.5 text-xs text-slate-300">
+                  <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-xs text-slate-300">
                     <div className="flex justify-between items-center">
-                      <span>Monto a pagar ahora en Mercado Pago:</span>
-                      <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Alias de Mercado Pago del Complejo:</span>
+                        <strong className="font-mono text-emerald-400 text-sm font-black tracking-wide">
+                          {businessProfile.alias || 'DEPORTES.PMY.MP'}
+                        </strong>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(businessProfile.alias || 'DEPORTES.PMY.MP');
+                          setCopiedAlias(true);
+                          setTimeout(() => setCopiedAlias(false), 2500);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                      >
+                        {copiedAlias ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                        <span>{copiedAlias ? '¡Copiado!' : 'Copiar Alias'}</span>
+                      </button>
                     </div>
-                    {businessProfile.complexName && (
+
+                    {(businessProfile.accountHolder || businessProfile.ownerName) && (
                       <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex justify-between">
-                        <span>Establecimiento receptor:</span>
-                        <strong className="text-slate-200">{businessProfile.complexName}</strong>
+                        <span>Titular:</span>
+                        <strong className="text-slate-200">{businessProfile.accountHolder || businessProfile.ownerName}</strong>
                       </div>
                     )}
+
+                    <div className="pt-1 border-t border-slate-800 flex justify-between items-center">
+                      <span className="font-bold text-slate-200">Importe a transferir:</span>
+                      <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
+                    </div>
                   </div>
 
-                  <p className="text-xs text-slate-400">
-                    Al presionar <strong>"Continuar al Pago con Mercado Pago"</strong>, serás redirigido a la pasarela oficial protegida de Mercado Pago. Al finalizar el pago, tu reserva se confirmará automáticamente.
+                  <p className="text-xs text-slate-300">
+                    Al hacer clic en el botón de abajo, se <strong>abrirá la app de Mercado Pago</strong> con el monto listo para transferir y se copiará automáticamente el Alias en tu portapapeles.
                   </p>
                 </div>
               )}
 
-              {paymentMethod === 'efectivo_mostrador' && (
-                <div className="p-4 bg-emerald-950/20 border border-emerald-800/40 rounded-2xl space-y-2 text-xs">
-                  <div className="flex items-center justify-between text-emerald-300 font-bold">
-                    <span>Pago en Cancha / Mostrador</span>
-                    <span className="text-[10px] bg-emerald-500/20 px-2 py-0.5 rounded-full">Sin cargo online</span>
+              {paymentMethod === 'transferencia' && (
+                <div className="p-4 bg-amber-950/20 border border-amber-800/50 rounded-2xl space-y-3 text-xs">
+                  <div className="flex items-center justify-between text-amber-300 font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <span>🏦</span> Datos de la Cuenta Bancaria (CBU / CVU)
+                    </span>
+                    <span className="text-[10px] bg-amber-500/20 px-2 py-0.5 rounded-full font-bold">
+                      Transferencia Inmediata
+                    </span>
                   </div>
-                  <p className="text-slate-300">
-                    Tu turno quedará agendado en el sistema con saldo pendiente de <strong className="text-white">${totalPrice.toLocaleString('es-AR')}</strong>. Recordá presentarte 10 minutos antes en la administración del complejo para abonar antes de ingresar a la cancha.
-                  </p>
+
+                  <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-slate-300">
+                    {businessProfile.cbu && (
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block">CBU / CVU (22 dígitos):</span>
+                          <strong className="font-mono text-slate-100 text-xs font-bold tracking-wider">
+                            {businessProfile.cbu}
+                          </strong>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(businessProfile.cbu);
+                            setCopiedCbu(true);
+                            setTimeout(() => setCopiedCbu(false), 2500);
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                        >
+                          {copiedCbu ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                          <span>{copiedCbu ? '¡Copiado!' : 'Copiar CBU'}</span>
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-center pt-1 border-t border-slate-800">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Alias Bancario:</span>
+                        <strong className="font-mono text-emerald-400 text-xs font-bold">
+                          {businessProfile.alias || 'DEPORTES.PMY.MP'}
+                        </strong>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(businessProfile.alias || 'DEPORTES.PMY.MP');
+                          setCopiedAlias(true);
+                          setTimeout(() => setCopiedAlias(false), 2500);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                      >
+                        {copiedAlias ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                        <span>{copiedAlias ? '¡Copiado!' : 'Copiar Alias'}</span>
+                      </button>
+                    </div>
+
+                    {(businessProfile.accountHolder || businessProfile.ownerName) && (
+                      <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex justify-between">
+                        <span>Titular:</span>
+                        <strong className="text-slate-200">{businessProfile.accountHolder || businessProfile.ownerName}</strong>
+                      </div>
+                    )}
+
+                    <div className="pt-1 border-t border-slate-800 flex justify-between items-center">
+                      <span className="font-bold text-slate-200">Monto a transferir:</span>
+                      <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1">Nº de Operación o Comprobante (Opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: TRF-98231 o últimos 4 dígitos"
+                      value={transferRef}
+                      onChange={(e) => setTransferRef(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-mono"
+                    />
+                  </div>
                 </div>
               )}
 
@@ -625,16 +718,25 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   type="button"
                   disabled={isProcessing}
                   onClick={handleConfirmAndPay}
-                  className="px-8 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-black text-sm flex items-center gap-2 transition-all cursor-pointer shadow-xl shadow-emerald-500/25"
+                  className={`px-6 py-3 rounded-xl disabled:opacity-50 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-xl ${
+                    paymentMethod === 'mercadopago'
+                      ? 'bg-sky-400 hover:bg-sky-300 shadow-sky-400/25'
+                      : 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/25'
+                  }`}
                 >
                   {isProcessing ? (
                     <>
                       <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                      <span>{paymentMethod === 'mercadopago' ? 'Conectando con Mercado Pago...' : 'Confirmando Reserva...'}</span>
+                      <span>{paymentMethod === 'mercadopago' ? 'Abriendo Mercado Pago...' : 'Confirmando Reserva...'}</span>
+                    </>
+                  ) : paymentMethod === 'mercadopago' ? (
+                    <>
+                      <span>Abrir Mercado Pago y Transferir ${amountToPayNow.toLocaleString('es-AR')}</span>
+                      <ExternalLink className="w-4 h-4" />
                     </>
                   ) : (
                     <>
-                      <span>{paymentMethod === 'mercadopago' ? 'Continuar al Pago con Mercado Pago' : 'Confirmar Turno en Mostrador'}</span>
+                      <span>Confirmar Reserva y Enviar Comprobante</span>
                       <ShieldCheck className="w-4 h-4" />
                     </>
                   )}
@@ -707,14 +809,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
               <div className="max-w-md mx-auto p-4 bg-sky-950/30 border border-sky-500/30 rounded-2xl text-left space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-sky-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <span>💙</span> {confirmedBooking.paymentMethod === 'mercadopago' ? 'Pago Online Mercado Pago' : 'Pago en Cancha'}
+                    {confirmedBooking.paymentMethod === 'mercadopago' ? '💙 Transferencia Mercado Pago' : '🏦 Transferencia CBU / Banco'}
                   </span>
                   <span className="text-[11px] bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full font-bold">
-                    {confirmedBooking.paymentStatus === 'total_pagado' ? 'Total 100% Pagado' : confirmedBooking.paymentStatus === 'seña_pagada' ? 'Seña 50% Acreditada' : 'Pendiente Mostrador'}
+                    {confirmedBooking.paymentStatus === 'total_pagado' ? 'Total 100% Pagado' : 'Seña 50% Abonada'}
                   </span>
                 </div>
-                <div className="text-xs text-slate-300">
-                  Comprobante de operación: <strong className="font-mono text-white">{confirmedBooking.paymentReference || `#${confirmedBooking.bookingCode}`}</strong>
+                <div className="text-xs text-slate-300 flex justify-between">
+                  <span>{confirmedBooking.paymentMethod === 'mercadopago' ? 'Alias de destino:' : 'CBU / Alias:'}</span>
+                  <strong className="font-mono text-emerald-400 font-bold">
+                    {confirmedBooking.paymentMethod === 'mercadopago' 
+                      ? (businessProfile.alias || 'DEPORTES.PMY.MP')
+                      : (businessProfile.cbu || businessProfile.alias || 'DEPORTES.PMY.MP')}
+                  </strong>
                 </div>
               </div>
 
