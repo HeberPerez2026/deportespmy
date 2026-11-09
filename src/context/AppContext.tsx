@@ -440,11 +440,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Add Court Action (starts with 0 rating until players leave reviews)
   const addCourt = useCallback(async (courtData: Omit<Court, 'id' | 'rating' | 'reviewCount'>): Promise<Court> => {
+    const adminKey = currentAdminUser ? currentAdminUser.username : 'heberperez1984';
     const newCourt: Court = {
       ...courtData,
       id: `cancha-${Date.now()}`,
       rating: 0,
       reviewCount: 0,
+      adminId: adminKey,
       establishment: courtData.establishment || businessProfile.complexName || 'DeportesPMY'
     };
 
@@ -453,7 +455,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(nextCourts));
     await saveCourtToFirestore(newCourt);
     return newCourt;
-  }, [courts, businessProfile.complexName]);
+  }, [courts, businessProfile.complexName, currentAdminUser]);
 
   // Delete Court Action (deletes in Firestore and propagates across all devices)
   const deleteCourt = useCallback(async (courtId: string) => {
@@ -533,18 +535,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [admins]);
 
   // Delete Admin User Action
-  const deleteAdminUser = useCallback(async (adminId: string) => {
-    const nextAdmins = admins.filter(a => a.id !== adminId);
+  const deleteAdminUser = useCallback(async (targetAdminId: string) => {
+    const targetAdmin = admins.find(a => a.id === targetAdminId);
+    const nextAdmins = admins.filter(a => a.id !== targetAdminId);
     setAdmins(nextAdmins);
     localStorage.setItem(STORAGE_KEYS.ADMINS, JSON.stringify(nextAdmins));
-    await deleteAdminUserFromFirestore(adminId);
-  }, [admins]);
+    await deleteAdminUserFromFirestore(targetAdminId);
+
+    if (targetAdmin) {
+      // Remove all courts and bookings created by this admin
+      const adminCourts = courts.filter(c => c.adminId === targetAdmin.username);
+      for (const c of adminCourts) {
+        await deleteCourt(c.id);
+      }
+      try {
+        await saveBusinessProfileToFirestore(EMPTY_BUSINESS_PROFILE, targetAdmin.username);
+      } catch {}
+    }
+  }, [admins, courts, deleteCourt]);
 
   // Toggle Admin User Status
-  const toggleAdminUserStatus = useCallback(async (adminId: string) => {
+  const toggleAdminUserStatus = useCallback(async (targetAdminId: string) => {
     let target: AdminUser | undefined;
     const nextAdmins = admins.map(a => {
-      if (a.id === adminId) {
+      if (a.id === targetAdminId) {
         target = { ...a, isActive: !a.isActive };
         return target;
       }
@@ -554,8 +568,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(STORAGE_KEYS.ADMINS, JSON.stringify(nextAdmins));
     if (target) {
       await saveAdminUserToFirestore(target);
+      // If suspended, wipe out their courts and bookings
+      if (!target.isActive) {
+        const adminCourts = courts.filter(c => c.adminId === target?.username);
+        for (const c of adminCourts) {
+          await deleteCourt(c.id);
+        }
+      }
     }
-  }, [admins]);
+  }, [admins, courts, deleteCourt]);
 
   // Helper to calculate end time string
   const calculateEndTime = (start: string, durationMinutes: number): string => {

@@ -17,6 +17,7 @@ export interface Court {
   status: 'active' | 'maintenance';
   rating: number;
   reviewCount: number;
+  adminId?: string;
 }
 
 export type SlotStatus = 'available' | 'booked' | 'blocked' | 'pending';
@@ -69,6 +70,7 @@ export interface Booking {
   // WhatsApp notification
   whatsappSent: boolean;
   whatsappSentAt?: string;
+  adminId?: string;
 }
 
 export interface Review {

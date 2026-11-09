@@ -70,6 +70,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const [copiedMessage, setCopiedMessage] = useState(false);
   const [copiedAlias, setCopiedAlias] = useState(false);
   const [copiedCbu, setCopiedCbu] = useState(false);
+  const [mpOpened, setMpOpened] = useState(false);
 
   // Available slots for selected date
   const slots = getSlotsForCourtAndDate(court.id, selectedDate);
@@ -83,6 +84,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
 
   // Open Mercado Pago web or app by creating a backend preference
   const openMercadoPagoPayment = async () => {
+    setMpOpened(true);
     const aliasToCopy = businessProfile.alias || 'DEPORTES.PMY.MP';
     try {
       navigator.clipboard.writeText(aliasToCopy);
@@ -116,14 +118,30 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     window.open(targetUrl, '_blank');
   };
 
-  // Handle Booking submission & online payment trigger
+  // Handle Booking submission & strict online payment validation
   const handleConfirmAndPay = () => {
-    setIsProcessing(true);
-
-    // If player chose Mercado Pago, automatically open the preference checkout
-    if (paymentMethod === 'mercadopago') {
-      openMercadoPagoPayment();
+    // Strict validations before processing
+    if (paymentMethod === 'tarjeta') {
+      const cleanCardNum = cardNumber.replace(/\s/g, '');
+      const cleanCvv = cardCvv.replace(/\D/g, '');
+      if (cleanCardNum.length < 12 || !cardExpiry.trim() || cleanCvv.length < 3) {
+        alert('Por favor completá correctamente los datos de tu tarjeta de crédito o débito (número de al menos 12 dígitos, vencimiento y CVV).');
+        return;
+      }
     }
+
+    if (paymentMethod === 'transferencia' && !transferRef.trim()) {
+      alert('Por favor ingresá el número de operación o comprobante de la transferencia bancaria para confirmar la reserva.');
+      return;
+    }
+
+    if (paymentMethod === 'mercadopago' && !mpOpened) {
+      openMercadoPagoPayment();
+      alert(`Se abrió Mercado Pago por un importe de $${amountToPayNow.toLocaleString('es-AR')}. Una vez completado el pago en la pasarela, hacé clic nuevamente en "Confirmar Reserva" para finalizar.`);
+      return;
+    }
+
+    setIsProcessing(true);
 
     setTimeout(() => {
       try {
@@ -140,11 +158,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
           isDepositOnly: paymentOption === 'deposit',
           paymentMethod,
           paymentReference: paymentMethod === 'transferencia' 
-            ? (transferRef || 'TRF-PROV-9921') 
+            ? transferRef.trim() 
             : paymentMethod === 'tarjeta'
-            ? `TARJETA-${cardNumber.replace(/\s/g, '').slice(-4) || '3821'}`
+            ? `TARJETA-${cardNumber.replace(/\s/g, '').slice(-4)}`
             : paymentMethod === 'mercadopago'
-            ? `MP-CHECKOUT-${Math.floor(100000 + Math.random() * 900000)}`
+            ? `MP-CONFIRMED-${Math.floor(100000 + Math.random() * 900000)}`
             : undefined,
         });
 
@@ -155,7 +173,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
       } finally {
         setIsProcessing(false);
       }
-    }, 1200);
+    }, 1000);
   };
 
   const copyWhatsAppText = () => {
