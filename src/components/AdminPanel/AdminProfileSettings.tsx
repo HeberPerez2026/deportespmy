@@ -132,16 +132,16 @@ export const AdminProfileSettings: React.FC = () => {
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex items-center gap-2 font-bold text-slate-900 text-sm border-b border-slate-100 pb-3">
             <CreditCard className="w-4 h-4 text-emerald-600" />
-            <span>Datos Bancarios y Mercado Pago para Cobros de Reservas</span>
+            <span>Cobros de Reservas (Mercado Pago & CBU)</span>
           </div>
 
           <p className="text-xs text-slate-500">
-            Los clientes verán estos datos al seleccionar la opción de pago por Transferencia o Seña previa al partido.
+            Los clientes solo podrán reservar mediante <strong>Mercado Pago</strong> o <strong>CBU / Transferencia Bancaria</strong>. El botón de Mercado Pago abrirá directamente la app con el importe listo para transferir a tu Alias.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Alias de Transferencia (MP / Banco)</label>
+              <label className="font-bold text-slate-700 block mb-1">Alias de Mercado Pago / Banco</label>
               <input
                 type="text"
                 value={alias}
@@ -149,10 +149,13 @@ export const AdminProfileSettings: React.FC = () => {
                 placeholder="Ej: DEPORTES.PMY.MP"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono font-bold text-emerald-700"
               />
+              <span className="text-[10px] text-slate-400 mt-1 block">
+                Los jugadores transferirán a este Alias desde la app de MP.
+              </span>
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 block mb-1">CBU / CVU (22 dígitos)</label>
+              <label className="font-bold text-slate-700 block mb-1">CBU / CVU Bancario (22 dígitos)</label>
               <input
                 type="text"
                 value={cbu}
@@ -160,6 +163,9 @@ export const AdminProfileSettings: React.FC = () => {
                 placeholder="Ej: 0000003100012345678901"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono text-slate-800"
               />
+              <span className="text-[10px] text-slate-400 mt-1 block">
+                Para transferencias tradicionales desde cualquier banco.
+              </span>
             </div>
 
             <div>
@@ -171,22 +177,25 @@ export const AdminProfileSettings: React.FC = () => {
                 placeholder="Ej: Deportes Puerto Madryn SRL"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
               />
+              <span className="text-[10px] text-slate-400 mt-1 block">
+                Nombre que figura en la cuenta para que el jugador verifique.
+              </span>
             </div>
 
             <div className="sm:col-span-3">
               <label className="font-bold text-slate-700 block mb-1 flex items-center gap-1.5">
                 <ExternalLink className="w-3.5 h-3.5 text-sky-600" />
-                <span>Link Directo de Cobro Mercado Pago (Opcional)</span>
+                <span>Link Personal de Mercado Pago (Opcional)</span>
               </label>
               <input
                 type="url"
                 value={mpLink}
                 onChange={(e) => setMpLink(e.target.value)}
-                placeholder="Ej: https://link.mercadopago.com.ar/micomplejo o https://mpago.la/..."
+                placeholder="Ej: https://link.mercadopago.com.ar/micomplejo"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono text-slate-800"
               />
               <span className="text-[10px] text-slate-400 mt-0.5 block">
-                Si lo completás, el botón "Abrir Mercado Pago" del jugador abrirá directamente tu link de pago oficial. Si lo dejás vacío, abrirá Mercado Pago para transferir a tu Alias.
+                Si lo completás con tu link de cobro personal de MP (link.mercadopago.com.ar/tu_nombre), se abrirá directamente con el importe exacto precargado. Si lo dejás vacío, abrirá Mercado Pago directamente para transferir a tu Alias.
               </span>
             </div>
           </div>
