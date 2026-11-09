@@ -61,6 +61,7 @@ interface BookingInput {
   isDepositOnly: boolean;
   paymentMethod: PaymentMethod;
   paymentReference?: string;
+  status?: 'confirmed' | 'pending_payment';
 }
 
 interface AppContextType {
@@ -122,8 +123,7 @@ interface AppContextType {
 
   // Bookings & Reviews Actions
   createBooking: (input: BookingInput) => Booking;
-  confirmMercadoPagoBooking: (bookingId: string) => void;
-  verifyAndConfirmMercadoPagoPayment: (bookingId: string, paymentId?: string) => Promise<{ success: boolean; message: string; booking?: Booking }>;
+  confirmBookingPayment: (bookingCodeOrId: string, paymentReference: string, paidAmount?: number) => Booking | undefined;
   cancelBooking: (bookingId: string) => void;
   collectBalanceAtCourt: (bookingId: string) => void;
   blockTimeSlot: (courtId: string, date: string, startTime: string, durationMinutes: number, reason: string) => void;
@@ -545,26 +545,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await deleteAdminUserFromFirestore(targetAdminId);
 
     if (targetAdmin) {
-      const targetUser = targetAdmin.username?.toLowerCase();
-      const targetComplex = targetAdmin.assignedComplex?.toLowerCase();
-      const targetName = targetAdmin.fullName?.toLowerCase();
-
-      // Find all courts matching targetAdmin username, id, assignedComplex, or fullName
-      const adminCourts = courts.filter(c => {
-        const cAdmin = (c.adminId || '').toLowerCase();
-        const cEst = (c.establishment || '').toLowerCase();
-        return (
-          (targetUser && cAdmin === targetUser) ||
-          cAdmin === targetAdmin.id.toLowerCase() ||
-          (targetComplex && cEst === targetComplex) ||
-          (targetName && cEst === targetName)
-        );
-      });
-
+      // Remove all courts and bookings created by this admin
+      const adminCourts = courts.filter(c => c.adminId === targetAdmin.username);
       for (const c of adminCourts) {
         await deleteCourt(c.id);
       }
-
       try {
         await saveBusinessProfileToFirestore(EMPTY_BUSINESS_PROFILE, targetAdmin.username);
       } catch {}
@@ -585,23 +570,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(STORAGE_KEYS.ADMINS, JSON.stringify(nextAdmins));
     if (target) {
       await saveAdminUserToFirestore(target);
-      // If suspended, wipe out their courts and bookings immediately
+      // If suspended, wipe out their courts and bookings
       if (!target.isActive) {
-        const targetUser = target.username?.toLowerCase();
-        const targetComplex = target.assignedComplex?.toLowerCase();
-        const targetName = target.fullName?.toLowerCase();
-
-        const adminCourts = courts.filter(c => {
-          const cAdmin = (c.adminId || '').toLowerCase();
-          const cEst = (c.establishment || '').toLowerCase();
-          return (
-            (targetUser && cAdmin === targetUser) ||
-            cAdmin === target?.id.toLowerCase() ||
-            (targetComplex && cEst === targetComplex) ||
-            (targetName && cEst === targetName)
-          );
-        });
-
+        const adminCourts = courts.filter(c => c.adminId === target?.username);
         for (const c of adminCourts) {
           await deleteCourt(c.id);
         }
@@ -707,13 +678,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const court = courts.find(c => c.id === input.courtId);
     if (!court) throw new Error('Cancha no encontrada');
 
-    const amountPaid = input.isDepositOnly ? Math.round(input.totalAmount * 0.5) : input.totalAmount;
+    const bookingStatus = input.status || 'confirmed';
+    const amountPaid = bookingStatus === 'pending_payment'
+      ? 0
+      : (input.isDepositOnly ? Math.round(input.totalAmount * 0.5) : input.totalAmount);
     const balanceDue = input.totalAmount - amountPaid;
-    const isMp = input.paymentMethod === 'mercadopago';
-    const bookingStatus: 'confirmed' | 'pending' = isMp ? 'pending' : 'confirmed';
-    const paymentStatus: PaymentStatus = isMp 
-      ? 'pendiente_mostrador' 
-      : input.isDepositOnly ? 'seña_pagada' : 'total_pagado';
+    const paymentStatus: PaymentStatus = bookingStatus === 'pending_payment'
+      ? 'pendiente_mostrador'
+      : (input.isDepositOnly ? 'seña_pagada' : 'total_pagado');
     const bookingCode = `PMY-${Math.floor(1000 + Math.random() * 9000)}`;
     const endTime = calculateEndTime(input.startTime, input.durationMinutes);
 
@@ -737,12 +709,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       balanceDue,
       paymentMethod: input.paymentMethod,
       paymentStatus,
-      paymentReference: input.paymentReference || `TR-${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+      paymentReference: input.paymentReference || (bookingStatus === 'pending_payment' ? undefined : `TR-${Math.floor(1000000000 + Math.random() * 9000000000)}`),
       status: bookingStatus,
       createdAt: new Date().toISOString(),
-      whatsappSent: !isMp,
-      whatsappSentAt: !isMp ? new Date().toISOString() : undefined,
-      adminId: court.adminId
+      whatsappSent: bookingStatus === 'confirmed',
+      whatsappSentAt: bookingStatus === 'confirmed' ? new Date().toISOString() : undefined,
     };
 
     const nextBookings = [newBooking, ...bookings];
@@ -756,8 +727,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUserName(input.clientName);
     setUserEmail(input.clientEmail);
 
-    // Auto record WhatsApp log if confirmed
-    if (!isMp) {
+    if (bookingStatus === 'confirmed') {
+      // Auto record WhatsApp log
       const log: WhatsAppNotificationLog = {
         id: `wa-${Date.now()}`,
         bookingCode,
@@ -769,98 +740,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
       setWhatsappLogs(prev => [log, ...prev]);
 
+      // Confetti celebration
       try {
         confetti({
           particleCount: 80,
           spread: 70,
           origin: { y: 0.6 }
         });
-      } catch {}
+      } catch {
+        // Ignore
+      }
     }
 
     return newBooking;
-  }, [courts, businessProfile.complexName, bookings, setUserPhone, setUserName, setUserEmail]);
+  }, [courts, businessProfile.complexName, bookings]);
 
-  // Confirm Mercado Pago booking upon successful webhook or redirect confirmation
-  const confirmMercadoPagoBooking = useCallback((bookingId: string) => {
-    const updated = bookings.map(b => {
-      if (b.id === bookingId) {
-        const isSeña = b.amountPaid < b.totalAmount;
-        const updatedBooking: Booking = {
-          ...b,
-          status: 'confirmed' as const,
-          paymentStatus: isSeña ? 'seña_pagada' : 'total_pagado',
-          paymentReference: `MP-REDIRECT-VERIFIED-${Math.floor(100000 + Math.random() * 900000)}`
-        };
-        saveBookingToFirestore(updatedBooking);
-        return updatedBooking;
-      }
-      return b;
-    });
-    setBookings(updated);
-    localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(updated));
-  }, [bookings]);
-
-  // Strict Mercado Pago verification query against backend API / Webhook store
-  const verifyAndConfirmMercadoPagoPayment = useCallback(async (bookingId: string, paymentId?: string): Promise<{ success: boolean; message: string; booking?: Booking }> => {
-    try {
-      const q = new URLSearchParams();
-      if (bookingId) q.append('booking_id', bookingId);
-      if (paymentId) q.append('payment_id', paymentId);
-
-      const res = await fetch(`/api/mercadopago/verify-payment?${q.toString()}`);
-      const data = await res.json();
-
-      if (data.approved) {
-        let updatedTarget: Booking | undefined;
-        const updated = bookings.map(b => {
-          if (b.id === bookingId || b.bookingCode === bookingId) {
-            const isSeña = b.amountPaid < b.totalAmount;
-            updatedTarget = {
-              ...b,
-              status: 'confirmed' as const,
-              paymentStatus: isSeña ? 'seña_pagada' : 'total_pagado',
-              paymentReference: data.paymentId ? `MP-VERIFIED-${data.paymentId}` : `MP-API-APPROVED`,
-              whatsappSent: true,
-              whatsappSentAt: new Date().toISOString()
-            };
-            saveBookingToFirestore(updatedTarget);
-            return updatedTarget;
-          }
-          return b;
-        });
-
-        if (updatedTarget) {
-          setBookings(updated);
-          localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(updated));
-
-          try {
-            confetti({
-              particleCount: 100,
-              spread: 80,
-              origin: { y: 0.6 }
-            });
-          } catch {}
-
-          return {
-            success: true,
-            message: data.message || '¡Pago verificado y acreditado por MercadoPago!',
-            booking: updatedTarget
-          };
+  // Confirm booking payment (e.g. from Mercado Pago return or Webhook)
+  const confirmBookingPayment = useCallback((bookingCodeOrId: string, paymentReference: string, paidAmount?: number): Booking | undefined => {
+    let targetBooking = bookings.find(b => b.bookingCode === bookingCodeOrId || b.id === bookingCodeOrId);
+    if (!targetBooking) {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEYS.BOOKINGS);
+        if (raw) {
+          const list: Booking[] = JSON.parse(raw);
+          targetBooking = list.find(b => b.bookingCode === bookingCodeOrId || b.id === bookingCodeOrId);
         }
-      }
-
-      return {
-        success: false,
-        message: data.message || 'MercadoPago informa que el pago no está acreditado aún (Estado: Pendiente).'
-      };
-    } catch (err: any) {
-      console.error('[MP Verify Error]', err);
-      return {
-        success: false,
-        message: 'No se pudo conectar con la API de verificación de MercadoPago.'
-      };
+      } catch {}
     }
+    if (!targetBooking) return undefined;
+
+    const amountPaid = paidAmount !== undefined ? paidAmount : (targetBooking.totalAmount * 0.5);
+    const balanceDue = Math.max(0, targetBooking.totalAmount - amountPaid);
+    const paymentStatus: PaymentStatus = balanceDue === 0 ? 'total_pagado' : 'seña_pagada';
+
+    const confirmed: Booking = {
+      ...targetBooking,
+      status: 'confirmed',
+      paymentMethod: 'mercadopago',
+      paymentStatus,
+      amountPaid,
+      balanceDue,
+      paymentReference,
+      whatsappSent: true,
+      whatsappSentAt: new Date().toISOString()
+    };
+
+    const nextBookings = bookings.map(b => (b.id === targetBooking!.id || b.bookingCode === targetBooking!.bookingCode) ? confirmed : b);
+    if (!bookings.some(b => b.id === targetBooking!.id || b.bookingCode === targetBooking!.bookingCode)) {
+      nextBookings.unshift(confirmed);
+    }
+    setBookings(nextBookings);
+    saveBookingToFirestore(confirmed);
+
+    // Confetti celebration
+    try {
+      confetti({ particleCount: 90, spread: 80, origin: { y: 0.6 } });
+    } catch {}
+
+    // Auto record WhatsApp log
+    const log: WhatsAppNotificationLog = {
+      id: `wa-${Date.now()}`,
+      bookingCode: confirmed.bookingCode,
+      recipientName: confirmed.clientName,
+      recipientPhone: confirmed.clientPhone,
+      messagePreview: `¡Hola ${confirmed.clientName}! Tu pago con Mercado Pago para ${confirmed.courtName} fue ACREDITADO. Turno CONFIRMADO para el ${confirmed.date} a las ${confirmed.startTime} hs. Ref: ${paymentReference}.`,
+      sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
+      status: 'delivered',
+    };
+    setWhatsappLogs(prev => [log, ...prev]);
+
+    return confirmed;
   }, [bookings]);
 
   // Admin Manual Booking
@@ -994,7 +943,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'
     ];
 
-    const activeBookings = bookings.filter(b => b.courtId === courtId && b.date === date && b.status === 'confirmed');
+    const activeBookings = bookings.filter(b => {
+      if (b.courtId !== courtId || b.date !== date) return false;
+      if (b.status === 'confirmed') return true;
+      if (b.status === 'pending_payment') {
+        const createdAt = new Date(b.createdAt).getTime();
+        return (Date.now() - createdAt) < 15 * 60 * 1000;
+      }
+      return false;
+    });
 
     return hours.map((hour) => {
       const hourNum = parseInt(hour.split(':')[0], 10);
@@ -1143,8 +1100,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteAdminUser,
     toggleAdminUserStatus,
     createBooking,
-    confirmMercadoPagoBooking,
-    verifyAndConfirmMercadoPagoPayment,
+    confirmBookingPayment,
     cancelBooking,
     collectBalanceAtCourt,
     blockTimeSlot,
@@ -1192,8 +1148,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteAdminUser,
     toggleAdminUserStatus,
     createBooking,
-    confirmMercadoPagoBooking,
-    verifyAndConfirmMercadoPagoPayment,
+    confirmBookingPayment,
     cancelBooking,
     collectBalanceAtCourt,
     blockTimeSlot,
