@@ -1,4 +1,4 @@
-import { Court, Booking, Review, MonthlyStats, WhatsAppNotificationLog, BusinessProfile, AdminUser } from '../types';
+import { Court, Booking, Review, MonthlyStats, WhatsAppNotificationLog, BusinessProfile, AdminUser, DeveloperContact } from '../types';
 
 // Helper to get formatted date string: YYYY-MM-DD
 export function getIsoDate(daysFromToday = 0): string {
@@ -16,7 +16,6 @@ export const INITIAL_REVIEWS: Review[] = [];
 
 export const INITIAL_WHATSAPP_LOGS: WhatsAppNotificationLog[] = [];
 
-// Default Business Profile for payments, WhatsApp, location and contact
 export const DEFAULT_BUSINESS_PROFILE: BusinessProfile = {
   ownerName: 'Administración DeportesPMY',
   complexName: 'Complejo Deportivo Puerto Madryn',
@@ -27,6 +26,15 @@ export const DEFAULT_BUSINESS_PROFILE: BusinessProfile = {
   address: 'Boulevard Brown 1420 (Costanera frente al Golfo Nuevo), Puerto Madryn, Chubut',
   email: 'reservas@deportespmy.com.ar',
   welcomeNotes: 'Presentarse 10 minutos antes del inicio del turno. Contamos con estacionamiento, vestuarios y buffet.'
+};
+
+// Default Developer Contact for footer, editable by SuperAdmin
+export const DEFAULT_DEVELOPER_CONTACT: DeveloperContact = {
+  developerName: 'Estudio de Desarrollo Web',
+  roleTitle: 'Desarrollo de Software & Soporte Técnico',
+  whatsappNumber: '+54 9 280 412-3456',
+  email: 'soporte@deportespmy.com.ar',
+  websiteUrl: 'https://deportespmy.com.ar'
 };
 
 // Initial system accounts: superadmin and admin

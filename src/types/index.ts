@@ -106,6 +106,14 @@ export interface BusinessProfile {
   welcomeNotes?: string;
 }
 
+export interface DeveloperContact {
+  developerName: string;
+  roleTitle: string;
+  whatsappNumber: string;
+  email: string;
+  websiteUrl: string;
+}
+
 export interface AdminUser {
   id: string;
   username: string;

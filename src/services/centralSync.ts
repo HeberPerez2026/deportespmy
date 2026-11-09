@@ -7,7 +7,7 @@ import {
   onSnapshot 
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Booking, Review, Court, BusinessProfile, AdminUser } from '../types';
+import { Booking, Review, Court, BusinessProfile, AdminUser, DeveloperContact } from '../types';
 
 export enum OperationType {
   CREATE = 'create',
@@ -227,6 +227,39 @@ export const saveBusinessProfileToFirestore = async (profile: BusinessProfile): 
     return true;
   } catch (err) {
     console.warn('[Firestore] Save business profile error:', err);
+    return false;
+  }
+};
+
+// Real-time listener for Developer Contact
+export const subscribeToDeveloperContact = (
+  onUpdate: (contact: DeveloperContact) => void
+): (() => void) => {
+  try {
+    return onSnapshot(
+      doc(db, 'settings', 'developerContact'),
+      (snap) => {
+        if (snap.exists()) {
+          onUpdate(snap.data() as DeveloperContact);
+        }
+      },
+      (error) => {
+        console.warn('[Firestore] DeveloperContact subscription error:', error);
+      }
+    );
+  } catch (err) {
+    console.warn('[Firestore] Error attaching developer contact listener:', err);
+    return () => {};
+  }
+};
+
+// Save Developer Contact
+export const saveDeveloperContactToFirestore = async (contact: DeveloperContact): Promise<boolean> => {
+  try {
+    await setDoc(doc(db, 'settings', 'developerContact'), contact);
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Save developer contact error:', err);
     return false;
   }
 };

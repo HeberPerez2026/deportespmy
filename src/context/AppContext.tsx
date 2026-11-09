@@ -12,7 +12,8 @@ import {
   PaymentMethod,
   PaymentStatus,
   BusinessProfile,
-  AdminUser
+  AdminUser,
+  DeveloperContact
 } from '../types';
 import { 
   INITIAL_COURTS, 
@@ -20,6 +21,7 @@ import {
   INITIAL_REVIEWS, 
   INITIAL_WHATSAPP_LOGS, 
   DEFAULT_BUSINESS_PROFILE,
+  DEFAULT_DEVELOPER_CONTACT,
   INITIAL_ADMINS,
   MONTHLY_STATS_DATA, 
   getIsoDate 
@@ -36,6 +38,8 @@ import {
   saveReviewReplyToFirestore, 
   subscribeToBusinessProfile,
   saveBusinessProfileToFirestore,
+  subscribeToDeveloperContact,
+  saveDeveloperContactToFirestore,
   subscribeToAdmins,
   saveAdminUserToFirestore,
   deleteAdminUserFromFirestore,
@@ -64,6 +68,7 @@ interface AppContextType {
   reviews: Review[];
   whatsappLogs: WhatsAppNotificationLog[];
   businessProfile: BusinessProfile;
+  developerContact: DeveloperContact;
   admins: AdminUser[];
   
   // Navigation & Filters
@@ -105,8 +110,12 @@ interface AppContextType {
   // Business Profile Management
   updateBusinessProfile: (newProfile: Partial<BusinessProfile>) => Promise<void>;
 
+  // Developer Contact Management (SuperAdmin only)
+  updateDeveloperContact: (newContact: Partial<DeveloperContact>) => Promise<void>;
+
   // SuperAdmin User Management
   addAdminUser: (admin: Omit<AdminUser, 'id' | 'createdAt'>) => Promise<void>;
+  updateAdminUser: (admin: AdminUser) => Promise<void>;
   deleteAdminUser: (adminId: string) => Promise<void>;
   toggleAdminUserStatus: (adminId: string) => Promise<void>;
 
@@ -141,6 +150,7 @@ const STORAGE_KEYS = {
   REVIEWS: 'deportespmy_reviews_v5',
   WHATSAPP: 'deportespmy_whatsapp_v5',
   PROFILE: 'deportespmy_profile_v5',
+  DEVELOPER_CONTACT: 'deportespmy_dev_contact_v5',
   ADMINS: 'deportespmy_admins_v5',
   USER_PHONE: 'deportespmy_user_phone',
   USER_NAME: 'deportespmy_user_name',
@@ -198,6 +208,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return saved ? JSON.parse(saved) : DEFAULT_BUSINESS_PROFILE;
     } catch {
       return DEFAULT_BUSINESS_PROFILE;
+    }
+  });
+
+  // Developer Contact State (SuperAdmin editable, for footer)
+  const [developerContact, setDeveloperContact] = useState<DeveloperContact>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.DEVELOPER_CONTACT);
+      return saved ? JSON.parse(saved) : DEFAULT_DEVELOPER_CONTACT;
+    } catch {
+      return DEFAULT_DEVELOPER_CONTACT;
     }
   });
 
@@ -351,7 +371,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setLastSyncTime(new Date());
     });
 
-    // 5. Subscribe to Admins
+    // 5. Subscribe to Developer Contact (for footer)
+    const unsubDevContact = subscribeToDeveloperContact((remoteDev) => {
+      setDeveloperContact(remoteDev);
+      localStorage.setItem(STORAGE_KEYS.DEVELOPER_CONTACT, JSON.stringify(remoteDev));
+      setLastSyncTime(new Date());
+    });
+
+    // 6. Subscribe to Admins
     const unsubAdmins = subscribeToAdmins((remoteAdmins) => {
       if (remoteAdmins.length > 0) {
         setAdmins(remoteAdmins);
@@ -368,6 +395,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubBookings();
       unsubReviews();
       unsubProfile();
+      unsubDevContact();
       unsubAdmins();
     };
   }, []);
@@ -445,6 +473,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await saveBusinessProfileToFirestore(nextProfile);
   }, [businessProfile]);
 
+  // Update Developer Contact (SuperAdmin editable, for footer)
+  const updateDeveloperContact = useCallback(async (partialContact: Partial<DeveloperContact>) => {
+    const nextContact: DeveloperContact = {
+      ...developerContact,
+      ...partialContact
+    };
+    setDeveloperContact(nextContact);
+    localStorage.setItem(STORAGE_KEYS.DEVELOPER_CONTACT, JSON.stringify(nextContact));
+    await saveDeveloperContactToFirestore(nextContact);
+  }, [developerContact]);
+
   // Add Admin User Action (SuperAdmin only)
   const addAdminUser = useCallback(async (adminData: Omit<AdminUser, 'id' | 'createdAt'>) => {
     const newAdmin: AdminUser = {
@@ -456,6 +495,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAdmins(nextAdmins);
     localStorage.setItem(STORAGE_KEYS.ADMINS, JSON.stringify(nextAdmins));
     await saveAdminUserToFirestore(newAdmin);
+  }, [admins]);
+
+  // Update/Modify Admin User Action (SuperAdmin only)
+  const updateAdminUser = useCallback(async (updatedAdmin: AdminUser) => {
+    const nextAdmins = admins.map(a => a.id === updatedAdmin.id ? updatedAdmin : a);
+    setAdmins(nextAdmins);
+    localStorage.setItem(STORAGE_KEYS.ADMINS, JSON.stringify(nextAdmins));
+    await saveAdminUserToFirestore(updatedAdmin);
   }, [admins]);
 
   // Delete Admin User Action
@@ -874,6 +921,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     reviews,
     whatsappLogs,
     businessProfile,
+    developerContact,
     admins,
     selectedDate,
     setSelectedDate,
@@ -902,7 +950,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteCourt,
     updateCourt,
     updateBusinessProfile,
+    updateDeveloperContact,
     addAdminUser,
+    updateAdminUser,
     deleteAdminUser,
     toggleAdminUserStatus,
     createBooking,
@@ -927,6 +977,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     reviews,
     whatsappLogs,
     businessProfile,
+    developerContact,
     admins,
     selectedDate,
     selectedSport,
@@ -946,7 +997,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteCourt,
     updateCourt,
     updateBusinessProfile,
+    updateDeveloperContact,
     addAdminUser,
+    updateAdminUser,
     deleteAdminUser,
     toggleAdminUserStatus,
     createBooking,

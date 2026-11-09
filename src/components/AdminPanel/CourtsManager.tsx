@@ -148,23 +148,16 @@ export const CourtsManager: React.FC = () => {
 
       {/* Courts Cards Grid */}
       {courts.length === 0 ? (
-        <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 text-center max-w-lg mx-auto space-y-4">
-          <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto shadow-inner">
+        <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 text-center max-w-lg mx-auto space-y-3">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
             <Layers className="w-7 h-7" />
           </div>
           <h3 className="text-lg font-bold text-slate-900 font-heading">
-            Aún no has registrado ninguna cancha
+            No hay canchas registradas en este momento
           </h3>
-          <p className="text-xs text-slate-600">
-            Hacé clic en el botón para dar de alta tu primer espacio deportivo con su deporte, tarifas y horarios.
+          <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+            Hacé clic en el botón superior <strong>"Agregar Nueva Cancha"</strong> para cargar tu primera cancha, definir el deporte, las tarifas por hora y los servicios disponibles.
           </p>
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer shadow-md"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Crear mi Primera Cancha</span>
-          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

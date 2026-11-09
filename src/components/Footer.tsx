@@ -1,13 +1,12 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
 import { 
-  MapPin, 
   Phone, 
   Mail, 
-  Clock, 
-  ShieldCheck, 
-  MessageCircle, 
-  Lock
+  Globe, 
+  Lock, 
+  Code2, 
+  ShieldCheck 
 } from 'lucide-react';
 
 interface FooterProps {
@@ -15,141 +14,107 @@ interface FooterProps {
 }
 
 export const Footer: React.FC<FooterProps> = ({ onOpenAdminLogin }) => {
-  const { setActiveTab, isAdminAuthenticated, businessProfile } = useApp();
+  const { setActiveTab, isAdminAuthenticated, developerContact } = useApp();
 
-  const cleanPhone = (businessProfile.whatsappNumber || '+5492804567890').replace(/\D/g, '');
+  const cleanDevPhone = (developerContact.whatsappNumber || '+5492804123456').replace(/\D/g, '');
 
   return (
-    <footer className="bg-slate-950 text-slate-400 border-t border-slate-900 pt-12 pb-8">
+    <footer className="bg-slate-950 text-slate-400 border-t border-slate-900 py-6 text-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 pb-10 border-b border-slate-900">
+        {/* Compact Developer Contact Row */}
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           
-          {/* Brand & City */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                <span className="text-lg font-black text-white tracking-tighter">PMY</span>
-              </div>
-              <span className="font-heading font-extrabold text-xl text-white">
-                Deportes<span className="text-emerald-400">PMY</span>
-              </span>
+          {/* Developer identity and role */}
+          <div className="flex items-center gap-3 text-center md:text-left">
+            <div className="w-8 h-8 rounded-xl bg-indigo-950 border border-indigo-800/60 flex items-center justify-center text-indigo-400 shrink-0">
+              <Code2 className="w-4 h-4" />
             </div>
-            <p className="text-xs text-slate-400 leading-relaxed">
-              {businessProfile.complexName || 'El complejo deportivo más completo de Puerto Madryn'}. Reserva de turnos online y confirmación directa por WhatsApp.
-            </p>
-            <div className="flex items-center gap-2 text-xs font-mono text-emerald-400">
-              <span>deportespmy.com.ar</span>
+            <div>
+              <p className="text-white font-bold text-xs sm:text-sm">
+                Desarrollado por: <span className="text-indigo-400">{developerContact.developerName}</span>
+              </p>
+              <p className="text-[11px] text-slate-500">
+                {developerContact.roleTitle} • Puerto Madryn, Argentina
+              </p>
             </div>
           </div>
 
-          {/* Quick Links */}
-          <div className="space-y-2.5 text-xs">
-            <h4 className="font-bold text-white uppercase tracking-wider text-xs font-heading">
-              Navegación Rápida
-            </h4>
-            <ul className="space-y-2">
-              <li>
-                <button onClick={() => setActiveTab('turnos')} className="hover:text-emerald-400 transition-colors cursor-pointer">
-                  Reservar Turnos Online
-                </button>
-              </li>
-              <li>
-                <button onClick={() => setActiveTab('canchas')} className="hover:text-emerald-400 transition-colors cursor-pointer">
-                  Nuestras Canchas & Tarifas
-                </button>
-              </li>
-              <li>
-                <button onClick={() => setActiveTab('valoraciones')} className="hover:text-emerald-400 transition-colors cursor-pointer">
-                  Opiniones de Jugadores
-                </button>
-              </li>
-              <li>
-                <button 
-                  onClick={() => {
-                    if (isAdminAuthenticated) {
-                      setActiveTab('admin');
-                    } else {
-                      onOpenAdminLogin();
-                    }
-                  }} 
-                  className="hover:text-blue-400 transition-colors text-slate-400 hover:underline cursor-pointer flex items-center gap-1"
-                >
-                  <Lock className="w-3 h-3 text-blue-400" />
-                  <span>Acceso Administrador</span>
-                </button>
-              </li>
-            </ul>
-          </div>
-
-          {/* Location & Schedule */}
-          <div className="space-y-2.5 text-xs">
-            <h4 className="font-bold text-white uppercase tracking-wider text-xs font-heading">
-              Ubicación & Horarios
-            </h4>
-            <div className="space-y-2 text-slate-400">
-              <div className="flex items-start gap-2">
-                <MapPin className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span>{businessProfile.address || 'Boulevard Brown 1420, Puerto Madryn, Chubut'}</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <Clock className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span>Lunes a Domingos de 08:00 a 01:00 hs</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Contact & WhatsApp */}
-          <div className="space-y-2.5 text-xs">
-            <h4 className="font-bold text-white uppercase tracking-wider text-xs font-heading">
-              Contacto & WhatsApp
-            </h4>
-            <div className="space-y-2 text-slate-400">
+          {/* Developer direct contact links */}
+          <div className="flex flex-wrap items-center justify-center gap-4 text-xs">
+            {developerContact.whatsappNumber && (
               <a 
-                href={`https://wa.me/${cleanPhone}?text=Hola%20${encodeURIComponent(businessProfile.complexName || 'DeportesPMY')}!%20Quiero%20consultar%20por%20turnos`}
+                href={`https://wa.me/${cleanDevPhone}?text=Hola%20${encodeURIComponent(developerContact.developerName)},%20te%20contacto%20desde%20DeportesPMY`}
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center gap-2 text-emerald-400 hover:text-emerald-300 font-semibold"
+                className="flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 transition-colors"
+                title="Contactar al desarrollador por WhatsApp"
               >
-                <MessageCircle className="w-4 h-4" />
-                <span>{businessProfile.whatsappNumber || '+54 9 280 456-7890'}</span>
+                <Phone className="w-3.5 h-3.5" />
+                <span>{developerContact.whatsappNumber}</span>
               </a>
-              <div className="flex items-center gap-2">
-                <Mail className="w-4 h-4 text-slate-500 shrink-0" />
-                <span>{businessProfile.email || 'reservas@deportespmy.com.ar'}</span>
-              </div>
-            </div>
+            )}
 
-            <div className="pt-2">
-              <button
-                onClick={() => {
-                  if (isAdminAuthenticated) {
-                    setActiveTab('admin');
-                  } else {
-                    onOpenAdminLogin();
-                  }
-                }}
-                className="w-full py-2 px-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-blue-600/50 text-slate-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+            {developerContact.email && (
+              <a 
+                href={`mailto:${developerContact.email}`}
+                className="flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors"
+                title="Enviar correo al desarrollador"
               >
-                <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
-                <span>{isAdminAuthenticated ? 'Ir al Panel Admin' : 'Ingreso Administrador'}</span>
-              </button>
-            </div>
+                <Mail className="w-3.5 h-3.5 text-slate-400" />
+                <span>{developerContact.email}</span>
+              </a>
+            )}
+
+            {developerContact.websiteUrl && (
+              <a 
+                href={developerContact.websiteUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 text-blue-400 hover:text-blue-300 font-mono transition-colors"
+                title="Visitar sitio del desarrollador"
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>{developerContact.websiteUrl.replace(/^https?:\/\//, '')}</span>
+              </a>
+            )}
+          </div>
+
+          {/* Admin access button */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                if (isAdminAuthenticated) {
+                  setActiveTab('admin');
+                } else {
+                  onOpenAdminLogin();
+                }
+              }}
+              className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-slate-200 border border-slate-800 text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              {isAdminAuthenticated ? (
+                <>
+                  <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Panel Administrador</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-3 h-3 text-slate-500" />
+                  <span>Acceso Admin</span>
+                </>
+              )}
+            </button>
           </div>
 
         </div>
 
-        {/* Bottom copyright row */}
-        <div className="pt-6 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-3">
+        {/* Minimal Copyright Row */}
+        <div className="mt-4 pt-4 border-t border-slate-900/80 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-600 gap-2">
           <div>
-            © 2026 DeportesPMY • Todos los derechos reservados. Puerto Madryn, Argentina.
+            © 2026 DeportesPMY • Todos los derechos reservados.
           </div>
-          <div className="flex items-center gap-4">
-            <span>Mercado Pago Argentina Integrado</span>
-            <span>•</span>
-            <span>Notificaciones Automáticas WhatsApp</span>
-            <span>•</span>
-            <span className="font-mono text-emerald-500">deportespmy.com.ar</span>
+          <div className="font-mono text-emerald-500/80">
+            deportespmy.com.ar
           </div>
         </div>
 

@@ -93,6 +93,18 @@
         "welcomeNotes": { "type": "string", "maxLength": 500 }
       }
     },
+    "DeveloperContact": {
+      "title": "DeveloperContact",
+      "description": "Developer contact details shown in the platform footer",
+      "type": "object",
+      "properties": {
+        "developerName": { "type": "string", "maxLength": 128 },
+        "roleTitle": { "type": "string", "maxLength": 128 },
+        "whatsappNumber": { "type": "string", "maxLength": 32 },
+        "email": { "type": "string", "maxLength": 128 },
+        "websiteUrl": { "type": "string", "maxLength": 256 }
+      }
+    },
     "AdminUser": {
       "title": "AdminUser",
       "description": "Administrator or SuperAdmin user account",
@@ -127,6 +139,10 @@
     "/settings/businessProfile": {
       "schema": "BusinessProfile",
       "description": "Business payment coordinates, contact and WhatsApp numbers"
+    },
+    "/settings/developerContact": {
+      "schema": "DeveloperContact",
+      "description": "Developer contact and support coordinates"
     },
     "/admins/{adminId}": {
       "schema": "AdminUser",
