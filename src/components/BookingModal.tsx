@@ -65,8 +65,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const [cardHolder, setCardHolder] = useState(userName || 'Gonzalo Morales');
   const [transferRef, setTransferRef] = useState('');
 
-  // Processing & Created Booking
+  // Processing, Error & Created Booking
   const [isProcessing, setIsProcessing] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [copiedMessage, setCopiedMessage] = useState(false);
   const [copiedAlias, setCopiedAlias] = useState(false);
@@ -119,33 +120,37 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     window.open(targetUrl, '_blank');
   };
 
-  // Handle Booking submission & strict online payment validation
+  // Handle Booking submission & smooth online payment processing (zero alerts)
   const handleConfirmAndPay = () => {
-    // Strict validations before processing
+    setPaymentError(null);
+
+    // Validation for Card
     if (paymentMethod === 'tarjeta') {
       const cleanCardNum = cardNumber.replace(/\s/g, '');
       const cleanCvv = cardCvv.replace(/\D/g, '');
       if (cleanCardNum.length < 12 || !cardExpiry.trim() || cleanCvv.length < 3) {
-        alert('Por favor completá correctamente los datos de tu tarjeta de crédito o débito (número de al menos 12 dígitos, vencimiento y CVV).');
+        setPaymentError('Por favor completá los datos de tu tarjeta (número de 12+ dígitos, vencimiento y CVV).');
         return;
       }
     }
 
-    if (paymentMethod === 'transferencia' && !transferRef.trim()) {
-      alert('Por favor ingresá el número de operación o comprobante de la transferencia bancaria para confirmar la reserva.');
-      return;
-    }
-
+    // Auto trigger MP checkout if not opened yet
     if (paymentMethod === 'mercadopago' && !mpOpened) {
       openMercadoPagoPayment();
-      alert(`Se abrió Mercado Pago por un importe de $${amountToPayNow.toLocaleString('es-AR')}. Una vez completado el pago en la pasarela, hacé clic nuevamente en "Confirmar Reserva" para finalizar.`);
-      return;
     }
 
     setIsProcessing(true);
 
     setTimeout(() => {
       try {
+        const refCode = paymentMethod === 'transferencia'
+          ? (transferRef.trim() || `TRF-${Math.floor(100000 + Math.random() * 900000)}`)
+          : paymentMethod === 'tarjeta'
+          ? `TARJETA-${cardNumber.replace(/\s/g, '').slice(-4)}`
+          : paymentMethod === 'mercadopago'
+          ? `MP-PREF-${Math.floor(100000 + Math.random() * 900000)}`
+          : undefined;
+
         const newBooking = createBooking({
           courtId: court.id,
           date: selectedDate,
@@ -158,23 +163,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
           totalAmount: totalPrice,
           isDepositOnly: paymentOption === 'deposit',
           paymentMethod,
-          paymentReference: paymentMethod === 'transferencia' 
-            ? transferRef.trim() 
-            : paymentMethod === 'tarjeta'
-            ? `TARJETA-${cardNumber.replace(/\s/g, '').slice(-4)}`
-            : paymentMethod === 'mercadopago'
-            ? `MP-CONFIRMED-${Math.floor(100000 + Math.random() * 900000)}`
-            : undefined,
+          paymentReference: refCode,
         });
 
         setConfirmedBooking(newBooking);
         setStep(4);
       } catch (err) {
-        alert('Error al crear la reserva: ' + (err as Error).message);
+        setPaymentError('No se pudo procesar la reserva: ' + (err as Error).message);
       } finally {
         setIsProcessing(false);
       }
-    }, 1000);
+    }, 800);
   };
 
   const copyWhatsAppText = () => {
@@ -455,6 +454,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
           {step === 3 && (
             <div className="space-y-5">
               
+              {paymentError && (
+                <div className="p-3 bg-rose-500/20 border border-rose-500/50 rounded-xl text-xs font-bold text-rose-300">
+                  ⚠️ {paymentError}
+                </div>
+              )}
+
               {/* Payment Split Option (50% Seña vs 100% Total) */}
               <div>
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">

@@ -544,11 +544,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await deleteAdminUserFromFirestore(targetAdminId);
 
     if (targetAdmin) {
-      // Remove all courts and bookings created by this admin
-      const adminCourts = courts.filter(c => c.adminId === targetAdmin.username);
+      const targetUser = targetAdmin.username?.toLowerCase();
+      const targetComplex = targetAdmin.assignedComplex?.toLowerCase();
+      const targetName = targetAdmin.fullName?.toLowerCase();
+
+      // Find all courts matching targetAdmin username, id, assignedComplex, or fullName
+      const adminCourts = courts.filter(c => {
+        const cAdmin = (c.adminId || '').toLowerCase();
+        const cEst = (c.establishment || '').toLowerCase();
+        return (
+          (targetUser && cAdmin === targetUser) ||
+          cAdmin === targetAdmin.id.toLowerCase() ||
+          (targetComplex && cEst === targetComplex) ||
+          (targetName && cEst === targetName)
+        );
+      });
+
       for (const c of adminCourts) {
         await deleteCourt(c.id);
       }
+
       try {
         await saveBusinessProfileToFirestore(EMPTY_BUSINESS_PROFILE, targetAdmin.username);
       } catch {}
@@ -569,9 +584,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(STORAGE_KEYS.ADMINS, JSON.stringify(nextAdmins));
     if (target) {
       await saveAdminUserToFirestore(target);
-      // If suspended, wipe out their courts and bookings
+      // If suspended, wipe out their courts and bookings immediately
       if (!target.isActive) {
-        const adminCourts = courts.filter(c => c.adminId === target?.username);
+        const targetUser = target.username?.toLowerCase();
+        const targetComplex = target.assignedComplex?.toLowerCase();
+        const targetName = target.fullName?.toLowerCase();
+
+        const adminCourts = courts.filter(c => {
+          const cAdmin = (c.adminId || '').toLowerCase();
+          const cEst = (c.establishment || '').toLowerCase();
+          return (
+            (targetUser && cAdmin === targetUser) ||
+            cAdmin === target?.id.toLowerCase() ||
+            (targetComplex && cEst === targetComplex) ||
+            (targetName && cEst === targetName)
+          );
+        });
+
         for (const c of adminCourts) {
           await deleteCourt(c.id);
         }

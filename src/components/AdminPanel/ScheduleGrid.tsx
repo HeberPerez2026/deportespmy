@@ -129,16 +129,16 @@ export const ScheduleGrid: React.FC = () => {
 
       {/* Interactive Time Slot Matrix Table */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-x-auto">
-        <table className="w-full border-collapse text-xs text-left min-w-[750px]">
+        <table className="w-auto min-w-full border-collapse text-xs text-left">
           <thead>
             <tr className="bg-slate-900 text-white border-b border-slate-800">
-              <th className="py-3.5 px-4 font-bold sticky left-0 bg-slate-900 z-10 w-24">
+              <th className="py-3.5 px-4 font-bold sticky left-0 bg-slate-900 z-10 w-24 text-center">
                 Horario
               </th>
               {courts.map((court) => (
-                <th key={court.id} className="py-3.5 px-3 font-bold border-l border-slate-800 min-w-[130px]">
-                  <div>{court.name.split('-')[0].trim()}</div>
-                  <div className="text-[10px] text-slate-400 font-normal">
+                <th key={court.id} className="py-3.5 px-4 font-bold border-l border-slate-800 w-48 min-w-[160px] max-w-[200px] text-center">
+                  <div className="truncate">{court.name.split('-')[0].trim()}</div>
+                  <div className="text-[10px] text-slate-400 font-normal truncate">
                     {court.sport.toUpperCase()} • {court.isIndoor ? 'Techada' : 'Aire Libre'}
                   </div>
                 </th>
@@ -150,7 +150,7 @@ export const ScheduleGrid: React.FC = () => {
               <tr key={hour} className="hover:bg-slate-50/70 transition-colors">
                 
                 {/* Hour Header Column */}
-                <td className="py-3 px-4 font-mono font-bold text-slate-700 bg-slate-50/90 sticky left-0 z-10 border-r border-slate-200">
+                <td className="py-2.5 px-4 font-mono font-bold text-slate-700 bg-slate-50/90 sticky left-0 z-10 border-r border-slate-200 text-center w-24">
                   {hour} hs
                 </td>
 
@@ -158,31 +158,31 @@ export const ScheduleGrid: React.FC = () => {
                 {courts.map((court) => {
                   const slots = getSlotsForCourtAndDate(court.id, selectedDate);
                   const slot = slots.find(s => s.startTime === hour);
-                  if (!slot) return <td key={court.id} className="p-2 border-l border-slate-100">-</td>;
+                  if (!slot) return <td key={court.id} className="p-1.5 border-l border-slate-100 w-48 min-w-[160px] max-w-[200px] text-center">-</td>;
 
                   const booking = slot.bookingId ? bookings.find(b => b.id === slot.bookingId) : null;
                   const isBlocked = slot.status === 'blocked';
                   const isBooked = slot.status === 'booked';
 
                   return (
-                    <td key={court.id} className="p-1.5 border-l border-slate-100">
+                    <td key={court.id} className="p-1.5 border-l border-slate-100 w-48 min-w-[160px] max-w-[200px]">
                       {isBlocked ? (
                         <button
                           onClick={() => handleSlotClick(court, slot)}
-                          className="w-full text-left p-2 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100 transition-colors cursor-pointer group"
+                          className="w-full h-11 px-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100 transition-colors cursor-pointer flex flex-col justify-center"
                         >
-                          <div className="flex items-center gap-1 font-bold text-[11px]">
+                          <div className="flex items-center gap-1 font-bold text-[11px] justify-center">
                             <Lock className="w-3 h-3 text-amber-700" />
                             <span>BLOQUEADO</span>
                           </div>
-                          <div className="text-[10px] text-amber-700 truncate mt-0.5">
+                          <div className="text-[10px] text-amber-700 truncate text-center">
                             {slot.blockedReason || 'Mantenimiento'}
                           </div>
                         </button>
                       ) : isBooked && booking ? (
                         <button
                           onClick={() => handleSlotClick(court, slot)}
-                          className={`w-full text-left p-2 rounded-xl transition-all cursor-pointer shadow-xs ${
+                          className={`w-full h-11 px-2.5 rounded-xl transition-all cursor-pointer shadow-xs flex flex-col justify-center ${
                             booking.paymentStatus === 'seña_pagada'
                               ? 'bg-blue-50 border border-blue-300 text-blue-900 hover:bg-blue-100'
                               : 'bg-emerald-600 text-white hover:bg-emerald-700'
@@ -190,19 +190,19 @@ export const ScheduleGrid: React.FC = () => {
                         >
                           <div className="flex items-center justify-between font-bold text-[11px]">
                             <span className="truncate">{booking.clientName}</span>
-                            <span className="text-[9px] opacity-80">#{booking.bookingCode}</span>
+                            <span className="text-[9px] opacity-80 shrink-0">#{booking.bookingCode}</span>
                           </div>
-                          <div className="text-[10px] flex items-center justify-between mt-1 opacity-90">
+                          <div className="text-[10px] flex items-center justify-between mt-0.5 opacity-90">
                             <span>{booking.durationMinutes}m</span>
                             <span>
-                              {booking.paymentStatus === 'seña_pagada' ? 'Resta cobrar' : 'Total pago'}
+                              {booking.paymentStatus === 'seña_pagada' ? 'Resta cobrar' : 'Pago OK'}
                             </span>
                           </div>
                         </button>
                       ) : (
                         <button
                           onClick={() => handleSlotClick(court, slot)}
-                          className="w-full py-2 px-1 text-center rounded-xl bg-emerald-50/60 hover:bg-emerald-500 hover:text-slate-950 border border-dashed border-emerald-300/80 text-emerald-800 transition-all font-semibold cursor-pointer group"
+                          className="w-full h-11 px-2 rounded-xl bg-emerald-50/60 hover:bg-emerald-500 hover:text-slate-950 border border-dashed border-emerald-300/80 text-emerald-800 transition-all font-semibold cursor-pointer flex flex-col justify-center items-center group"
                         >
                           <span className="text-[11px] block font-mono font-bold">${slot.price.toLocaleString('es-AR')}</span>
                           <span className="text-[9px] opacity-75 group-hover:opacity-100">+ Reservar</span>
