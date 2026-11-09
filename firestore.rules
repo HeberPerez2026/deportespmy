@@ -22,7 +22,7 @@ service cloud.firestore {
         && data.startTime is string && data.startTime.size() <= 10
         && data.clientName is string && data.clientName.size() <= 128
         && data.totalAmount is number
-        && data.status is string && (data.status == 'confirmed' || data.status == 'cancelled');
+        && data.status is string && (data.status == 'confirmed' || data.status == 'cancelled' || data.status == 'pending_payment');
     }
 
     function isValidReview(data) {
