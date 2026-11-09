@@ -41,6 +41,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     userName,
     userEmail,
     businessProfile,
+    confirmMercadoPagoBooking,
     setActiveTab
   } = useApp();
 
@@ -785,21 +786,55 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
           {step === 4 && confirmedBooking && (
             <div className="space-y-6 text-center py-2">
               
-              <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
-                <CheckCircle className="w-10 h-10" />
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto shadow-lg ${
+                confirmedBooking.status === 'confirmed'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-emerald-500/20'
+                  : 'bg-amber-500/20 text-amber-400 border border-amber-500/40 shadow-amber-500/20'
+              }`}>
+                {confirmedBooking.status === 'confirmed' ? <CheckCircle className="w-10 h-10" /> : <Clock className="w-10 h-10 animate-pulse" />}
               </div>
 
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                  ¡Reserva Exitosa y Pago Acreditado!
+                <span className={`text-xs font-bold uppercase tracking-wider ${confirmedBooking.status === 'confirmed' ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {confirmedBooking.status === 'confirmed' ? '¡Reserva Exitosa y Pago Acreditado!' : '⏳ Reserva Pendiente de Pago en Mercado Pago'}
                 </span>
                 <h3 className="text-2xl font-black text-white font-heading mt-1">
-                  Turno Confirmado #{confirmedBooking.bookingCode}
+                  Turno #{confirmedBooking.bookingCode} ({confirmedBooking.status === 'confirmed' ? 'Confirmado' : 'Pendiente de Webhook'})
                 </h3>
                 <p className="text-xs text-slate-300 mt-1 max-w-md mx-auto">
-                  Tu turno en {confirmedBooking.courtName} quedó reservado para el {confirmedBooking.date} de {confirmedBooking.startTime} a {confirmedBooking.endTime} hs.
+                  Tu turno en {confirmedBooking.courtName} para el {confirmedBooking.date} de {confirmedBooking.startTime} a {confirmedBooking.endTime} hs.
                 </p>
               </div>
+
+              {/* If pending MP webhook confirmation */}
+              {confirmedBooking.status === 'pending' && (
+                <div className="max-w-md mx-auto p-4 bg-amber-950/40 border border-amber-500/40 rounded-2xl text-left space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-amber-300 uppercase tracking-wider">⏳ Pago Pendiente de Confirmación MP</span>
+                    <span className="text-[11px] bg-amber-500/20 text-amber-300 px-2.5 py-0.5 rounded-full font-bold">
+                      Pendiente
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300">
+                    Tu turno se encuentra registrado en modo pendiente. Para confirmar y aprobar el pago en el sistema mediante el webhook / redirección de Mercado Pago, hacé clic en el botón de abajo:
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      confirmMercadoPagoBooking(confirmedBooking.id);
+                      setConfirmedBooking({ 
+                        ...confirmedBooking, 
+                        status: 'confirmed', 
+                        paymentStatus: confirmedBooking.amountPaid < confirmedBooking.totalAmount ? 'seña_pagada' : 'total_pagado' 
+                      });
+                    }}
+                    className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    <span>✓ Verificar Pago y Confirmar Turno (Webhook OK)</span>
+                  </button>
+                </div>
+              )}
 
               {/* Clean Reservation Details Summary Card */}
               <div className="max-w-md mx-auto bg-slate-950 p-4 rounded-2xl border border-slate-800 text-left space-y-2.5 text-xs text-slate-300">

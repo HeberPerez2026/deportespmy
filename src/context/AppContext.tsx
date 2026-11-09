@@ -122,6 +122,7 @@ interface AppContextType {
 
   // Bookings & Reviews Actions
   createBooking: (input: BookingInput) => Booking;
+  confirmMercadoPagoBooking: (bookingId: string) => void;
   cancelBooking: (bookingId: string) => void;
   collectBalanceAtCourt: (bookingId: string) => void;
   blockTimeSlot: (courtId: string, date: string, startTime: string, durationMinutes: number, reason: string) => void;
@@ -678,7 +679,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const amountPaid = input.isDepositOnly ? Math.round(input.totalAmount * 0.5) : input.totalAmount;
     const balanceDue = input.totalAmount - amountPaid;
-    const paymentStatus: PaymentStatus = input.isDepositOnly ? 'seña_pagada' : 'total_pagado';
+    const isMp = input.paymentMethod === 'mercadopago';
+    const bookingStatus: 'confirmed' | 'pending' = isMp ? 'pending' : 'confirmed';
+    const paymentStatus: PaymentStatus = isMp 
+      ? 'pendiente_mostrador' 
+      : input.isDepositOnly ? 'seña_pagada' : 'total_pagado';
     const bookingCode = `PMY-${Math.floor(1000 + Math.random() * 9000)}`;
     const endTime = calculateEndTime(input.startTime, input.durationMinutes);
 
@@ -703,10 +708,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       paymentMethod: input.paymentMethod,
       paymentStatus,
       paymentReference: input.paymentReference || `TR-${Math.floor(1000000000 + Math.random() * 9000000000)}`,
-      status: 'confirmed',
+      status: bookingStatus,
       createdAt: new Date().toISOString(),
-      whatsappSent: true,
-      whatsappSentAt: new Date().toISOString(),
+      whatsappSent: !isMp,
+      whatsappSentAt: !isMp ? new Date().toISOString() : undefined,
+      adminId: court.adminId
     };
 
     const nextBookings = [newBooking, ...bookings];
@@ -720,31 +726,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUserName(input.clientName);
     setUserEmail(input.clientEmail);
 
-    // Auto record WhatsApp log
-    const log: WhatsAppNotificationLog = {
-      id: `wa-${Date.now()}`,
-      bookingCode,
-      recipientName: input.clientName,
-      recipientPhone: input.clientPhone,
-      messagePreview: `¡Hola ${input.clientName}! Tu turno en ${court.name} está CONFIRMADO para el ${input.date} a las ${input.startTime} hs. Total: $${input.totalAmount.toLocaleString('es-AR')}.`,
-      sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
-      status: 'delivered',
-    };
-    setWhatsappLogs(prev => [log, ...prev]);
+    // Auto record WhatsApp log if confirmed
+    if (!isMp) {
+      const log: WhatsAppNotificationLog = {
+        id: `wa-${Date.now()}`,
+        bookingCode,
+        recipientName: input.clientName,
+        recipientPhone: input.clientPhone,
+        messagePreview: `¡Hola ${input.clientName}! Tu turno en ${court.name} está CONFIRMADO para el ${input.date} a las ${input.startTime} hs. Total: $${input.totalAmount.toLocaleString('es-AR')}.`,
+        sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
+        status: 'delivered',
+      };
+      setWhatsappLogs(prev => [log, ...prev]);
 
-    // Confetti celebration
-    try {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
-    } catch {
-      // Ignore
+      try {
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      } catch {}
     }
 
     return newBooking;
-  }, [courts, businessProfile.complexName, bookings]);
+  }, [courts, businessProfile.complexName, bookings, setUserPhone, setUserName, setUserEmail]);
+
+  // Confirm Mercado Pago booking upon successful webhook or redirect confirmation
+  const confirmMercadoPagoBooking = useCallback((bookingId: string) => {
+    const updated = bookings.map(b => {
+      if (b.id === bookingId) {
+        const isSeña = b.amountPaid < b.totalAmount;
+        const updatedBooking: Booking = {
+          ...b,
+          status: 'confirmed',
+          paymentStatus: isSeña ? 'seña_pagada' : 'total_pagado',
+          paymentReference: `MP-REDIRECT-VERIFIED-${Math.floor(100000 + Math.random() * 900000)}`
+        };
+        saveBookingToFirestore(updatedBooking);
+        return updatedBooking;
+      }
+      return b;
+    });
+    setBookings(updated);
+    localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(updated));
+  }, [bookings]);
 
   // Admin Manual Booking
   const createManualAdminBooking = useCallback((input: BookingInput): Booking => {
@@ -1026,6 +1051,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteAdminUser,
     toggleAdminUserStatus,
     createBooking,
+    confirmMercadoPagoBooking,
     cancelBooking,
     collectBalanceAtCourt,
     blockTimeSlot,
@@ -1073,6 +1099,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteAdminUser,
     toggleAdminUserStatus,
     createBooking,
+    confirmMercadoPagoBooking,
     cancelBooking,
     collectBalanceAtCourt,
     blockTimeSlot,

@@ -64,7 +64,7 @@ export interface Booking {
   paymentReference?: string;
   
   // Status
-  status: 'confirmed' | 'cancelled' | 'completed';
+  status: 'confirmed' | 'cancelled' | 'completed' | 'pending';
   createdAt: string;
   
   // WhatsApp notification
