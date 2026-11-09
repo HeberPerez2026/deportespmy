@@ -7,49 +7,53 @@ import { ReviewsSection } from './components/ReviewsSection';
 import { AdminDashboard } from './components/AdminPanel/AdminDashboard';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { Footer } from './components/Footer';
-import { CheckCircle, AlertTriangle, X } from 'lucide-react';
+import { CheckCircle, AlertCircle, MessageCircle, X, ShieldCheck } from 'lucide-react';
 
 const MainContent: React.FC = () => {
-  const { activeTab, setActiveTab, isAdminAuthenticated, reviews, verifyAndConfirmMercadoPagoPayment } = useApp();
+  const { activeTab, setActiveTab, isAdminAuthenticated, reviews, confirmBookingPayment, businessProfile } = useApp();
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
-  const [mpBanner, setMpBanner] = useState<{ type: 'success' | 'warning'; title: string; text: string } | null>(null);
 
-  // Automatic MercadoPago return verification handler from URL parameters
+  // Mercado Pago Return state
+  const [paymentSuccessModal, setPaymentSuccessModal] = useState<{
+    bookingCode: string;
+    courtName: string;
+    date: string;
+    time: string;
+    paymentId: string;
+  } | null>(null);
+
+  const [paymentFailureModal, setPaymentFailureModal] = useState<string | null>(null);
+
   useEffect(() => {
+    // Check if user is returning from Mercado Pago Checkout Pro
     const params = new URLSearchParams(window.location.search);
-    const status = params.get('status') || params.get('collection_status');
-    const bookingId = params.get('booking_id') || params.get('external_reference');
-    const paymentId = params.get('payment_id') || params.get('collection_id');
+    const payment = params.get('payment');
+    const status = params.get('status');
+    const collectionStatus = params.get('collection_status');
+    const bookingCode = params.get('booking_code') || params.get('external_reference') || '';
+    const paymentId = params.get('payment_id') || params.get('collection_id') || 'MP-ONLINE';
+    const courtName = params.get('court_name') || 'Cancha Reservada';
+    const bookingDate = params.get('booking_date') || '';
+    const bookingTime = params.get('booking_time') || '';
 
-    if (bookingId || paymentId) {
-      if (status === 'success' || status === 'approved' || paymentId) {
-        verifyAndConfirmMercadoPagoPayment(bookingId || '', paymentId || '').then((res) => {
-          if (res.success) {
-            setMpBanner({
-              type: 'success',
-              title: '¡Pago Verificado por MercadoPago!',
-              text: res.message || 'Tu reserva ha sido APROBADA y CONFIRMADA en el sistema.'
-            });
-          } else {
-            setMpBanner({
-              type: 'warning',
-              title: 'Pago Pendiente de Verificación MP',
-              text: res.message || 'MercadoPago reporta que el pago aún figura pendiente. El turno no se confirmará hasta su acreditación.'
-            });
-          }
-        });
-      } else if (status === 'failure') {
-        setMpBanner({
-          type: 'warning',
-          title: 'Pago Rechazado o Cancelado',
-          text: 'La transacción en MercadoPago no pudo ser completada. El turno permanece sin abonar.'
-        });
+    if (payment === 'success' || status === 'success' || collectionStatus === 'approved') {
+      if (bookingCode) {
+        confirmBookingPayment(bookingCode, `MP-${paymentId}`);
       }
-
-      // Clean query parameters from URL address bar
+      setPaymentSuccessModal({
+        bookingCode: bookingCode || 'PMY-CONFIRMADO',
+        courtName,
+        date: bookingDate,
+        time: bookingTime,
+        paymentId
+      });
+      // Clean query params so refreshing the page doesn't re-trigger
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (payment === 'failure' || status === 'failure' || collectionStatus === 'rejected') {
+      setPaymentFailureModal(bookingCode || 'Tu reserva');
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [verifyAndConfirmMercadoPagoPayment]);
+  }, [confirmBookingPayment]);
 
   const avgRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1) : '5.0';
   const headingText = reviews.length > 0 
@@ -59,24 +63,6 @@ const MainContent: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-emerald-500 selection:text-slate-950">
       
-      {/* MercadoPago Return Verification Banner */}
-      {mpBanner && (
-        <div className={`px-4 py-3 text-xs font-bold shadow-md flex items-center justify-between transition-all ${
-          mpBanner.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white'
-        }`}>
-          <div className="flex items-center gap-2 max-w-4xl mx-auto">
-            {mpBanner.type === 'success' ? <CheckCircle className="w-5 h-5 shrink-0" /> : <AlertTriangle className="w-5 h-5 shrink-0" />}
-            <div>
-              <span className="font-extrabold uppercase tracking-wide mr-2">{mpBanner.title}:</span>
-              <span className="font-normal opacity-90">{mpBanner.text}</span>
-            </div>
-          </div>
-          <button onClick={() => setMpBanner(null)} className="p-1 hover:bg-black/20 rounded-lg text-white">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
       {/* Header with Player Navigation & Top-Right Admin Login */}
       <Header
         onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
@@ -162,6 +148,94 @@ const MainContent: React.FC = () => {
         onClose={() => setIsAdminLoginOpen(false)}
         onLoginSuccess={() => setActiveTab('admin')}
       />
+
+      {/* Mercado Pago Payment Success Modal */}
+      {paymentSuccessModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-5 animate-in fade-in zoom-in duration-200 text-white">
+            <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+              <CheckCircle className="w-10 h-10" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 block">
+                ¡Pago Acreditado con Éxito!
+              </span>
+              <h3 className="text-2xl font-black font-heading text-white">
+                Turno Confirmado #{paymentSuccessModal.bookingCode}
+              </h3>
+              <p className="text-xs text-slate-300">
+                Tu pago a través de Mercado Pago fue procesado correctamente.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-left space-y-2 text-xs text-slate-300">
+              <div className="flex justify-between">
+                <span>Cancha:</span>
+                <strong className="text-white">{paymentSuccessModal.courtName}</strong>
+              </div>
+              {paymentSuccessModal.date && (
+                <div className="flex justify-between">
+                  <span>Fecha y Hora:</span>
+                  <strong className="text-white">{paymentSuccessModal.date} {paymentSuccessModal.time ? `(${paymentSuccessModal.time} hs)` : ''}</strong>
+                </div>
+              )}
+              <div className="flex justify-between pt-1 border-t border-slate-800">
+                <span>Comprobante MP:</span>
+                <span className="font-mono text-emerald-400 font-bold">{paymentSuccessModal.paymentId}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-2">
+              <a
+                href={`https://wa.me/${(businessProfile.whatsappNumber || '+5492804567890').replace(/\D/g, '')}?text=${encodeURIComponent(`¡Hola! Acabo de abonar mi turno #${paymentSuccessModal.bookingCode} en ${paymentSuccessModal.courtName} por Mercado Pago. Ref: ${paymentSuccessModal.paymentId}`)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+              >
+                <MessageCircle className="w-4 h-4" />
+                <span>Avisar al Club por WhatsApp</span>
+              </a>
+
+              <button
+                type="button"
+                onClick={() => setPaymentSuccessModal(null)}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Cerrar y Ver Canchas
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mercado Pago Payment Failure Modal */}
+      {paymentFailureModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-4 text-white">
+            <div className="w-14 h-14 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-xl font-bold font-heading text-white">
+                El pago no fue completado
+              </h3>
+              <p className="text-xs text-slate-300">
+                La operación en Mercado Pago no se completó o fue rechazada. El turno se encuentra disponible para volver a intentarlo cuando desees.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPaymentFailureModal(null)}
+              className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-colors cursor-pointer"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );
