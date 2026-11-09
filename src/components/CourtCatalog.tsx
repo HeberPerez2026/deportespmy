@@ -201,11 +201,17 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({ onOpenAdminLogin }) 
                     </div>
 
                     {/* Rating Pill */}
-                    <div className="absolute top-4 right-4 flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/85 text-amber-400 text-xs font-bold border border-slate-700 backdrop-blur-md">
-                      <Star className="w-3.5 h-3.5 fill-amber-400" />
-                      <span>{court.rating?.toFixed(1) || '5.0'}</span>
-                      <span className="text-slate-400 text-[10px]">({court.reviewCount || 0})</span>
-                    </div>
+                    {court.reviewCount && court.reviewCount > 0 ? (
+                      <div className="absolute top-4 right-4 flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/85 text-amber-400 text-xs font-bold border border-slate-700 backdrop-blur-md">
+                        <Star className="w-3.5 h-3.5 fill-amber-400" />
+                        <span>{court.rating?.toFixed(1)}</span>
+                        <span className="text-slate-400 text-[10px]">({court.reviewCount})</span>
+                      </div>
+                    ) : (
+                      <div className="absolute top-4 right-4 flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/85 text-emerald-400 text-[11px] font-bold border border-slate-700 backdrop-blur-md">
+                        <span>Nueva Cancha</span>
+                      </div>
+                    )}
 
                     {/* Bottom Image Info */}
                     <div className="absolute bottom-4 left-4 right-4 text-white">

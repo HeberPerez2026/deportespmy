@@ -145,17 +145,17 @@ interface AppContextType {
 }
 
 const STORAGE_KEYS = {
-  COURTS: 'deportespmy_courts_v5',
-  BOOKINGS: 'deportespmy_bookings_v5',
-  REVIEWS: 'deportespmy_reviews_v5',
-  WHATSAPP: 'deportespmy_whatsapp_v5',
-  PROFILE: 'deportespmy_profile_v5',
-  DEVELOPER_CONTACT: 'deportespmy_dev_contact_v5',
-  ADMINS: 'deportespmy_admins_v5',
+  COURTS: 'deportespmy_courts_v6',
+  BOOKINGS: 'deportespmy_bookings_v6',
+  REVIEWS: 'deportespmy_reviews_v6',
+  WHATSAPP: 'deportespmy_whatsapp_v6',
+  PROFILE: 'deportespmy_profile_v6',
+  DEVELOPER_CONTACT: 'deportespmy_dev_contact_v6',
+  ADMINS: 'deportespmy_admins_v6',
   USER_PHONE: 'deportespmy_user_phone',
   USER_NAME: 'deportespmy_user_name',
   USER_EMAIL: 'deportespmy_user_email',
-  CURRENT_ADMIN: 'deportespmy_current_admin',
+  CURRENT_ADMIN: 'deportespmy_current_admin_v6',
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -254,30 +254,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cleanPass = passwordInput.trim();
     const cleanUser = usernameInput ? usernameInput.trim().toLowerCase() : '';
 
-    // Check against admins list
-    const foundAdmin = admins.find(a => {
-      if (!a.isActive) return false;
-      const passMatch = a.password === cleanPass;
-      if (cleanUser) {
-        return passMatch && a.username.toLowerCase() === cleanUser;
-      }
-      return passMatch;
-    });
-
-    if (foundAdmin) {
-      setCurrentAdminUser(foundAdmin);
-      localStorage.setItem(STORAGE_KEYS.CURRENT_ADMIN, JSON.stringify(foundAdmin));
-      return { success: true, isSuperAdmin: foundAdmin.role === 'superadmin' };
+    if (!cleanUser || !cleanPass) {
+      return { success: false, message: 'Ingresá usuario y contraseña' };
     }
 
-    // Master fallback credentials
-    if (cleanPass === 'superadmin2026' || cleanPass === 'superadmin') {
+    // SuperAdmin official master credentials requested by user
+    if (cleanUser === 'heberperez1984' && cleanPass === 'matinconoahperez2026') {
       const masterSuper: AdminUser = {
-        id: 'master-super',
-        username: 'superadmin',
-        fullName: 'Super Administrador Maestro',
-        email: 'superadmin@deportespmy.com.ar',
-        phone: '+5492804567890',
+        id: 'superadmin-heber',
+        username: 'heberperez1984',
+        fullName: 'Heber Perez (SuperAdmin)',
+        email: 'heberperez1984@gmail.com',
+        phone: '+5492804315171',
         password: cleanPass,
         role: 'superadmin',
         createdAt: new Date().toISOString(),
@@ -288,24 +276,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: true, isSuperAdmin: true };
     }
 
-    if (['pmy2026', 'admin123', 'admin', 'madryn2026'].includes(cleanPass.toLowerCase())) {
-      const fallbackAdmin: AdminUser = {
-        id: 'admin-fallback',
-        username: 'admin',
-        fullName: 'Administrador General',
-        email: 'admin@deportespmy.com.ar',
-        phone: '+5492804567890',
-        password: cleanPass,
-        role: 'admin',
-        createdAt: new Date().toISOString(),
-        isActive: true
-      };
-      setCurrentAdminUser(fallbackAdmin);
-      localStorage.setItem(STORAGE_KEYS.CURRENT_ADMIN, JSON.stringify(fallbackAdmin));
-      return { success: true, isSuperAdmin: false };
+    // Check against admins list in database
+    const foundAdmin = admins.find(a => {
+      if (!a.isActive) return false;
+      return a.username.toLowerCase() === cleanUser && a.password === cleanPass;
+    });
+
+    if (foundAdmin) {
+      setCurrentAdminUser(foundAdmin);
+      localStorage.setItem(STORAGE_KEYS.CURRENT_ADMIN, JSON.stringify(foundAdmin));
+      return { success: true, isSuperAdmin: foundAdmin.role === 'superadmin' };
     }
 
-    return { success: false, message: 'Contraseña o usuario incorrecto' };
+    return { success: false, message: 'Usuario o contraseña incorrectos' };
   };
 
   const logoutAdmin = () => {
@@ -429,12 +412,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Add Court Action
+  // Add Court Action (starts with 0 rating until players leave reviews)
   const addCourt = useCallback(async (courtData: Omit<Court, 'id' | 'rating' | 'reviewCount'>): Promise<Court> => {
     const newCourt: Court = {
       ...courtData,
       id: `cancha-${Date.now()}`,
-      rating: 5.0,
+      rating: 0,
       reviewCount: 0,
       establishment: courtData.establishment || businessProfile.complexName || 'DeportesPMY'
     };
@@ -446,13 +429,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newCourt;
   }, [courts, businessProfile.complexName]);
 
-  // Delete Court Action
+  // Delete Court Action (deletes in Firestore and propagates across all devices)
   const deleteCourt = useCallback(async (courtId: string) => {
-    const nextCourts = courts.filter(c => c.id !== courtId);
-    setCourts(nextCourts);
-    localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(nextCourts));
+    // 1. Remove from Firestore immediately
     await deleteCourtFromFirestore(courtId);
-  }, [courts]);
+
+    // 2. Also remove any bookings tied to this court
+    const courtBookings = bookings.filter(b => b.courtId === courtId);
+    for (const b of courtBookings) {
+      await deleteBookingFromFirestore(b.id);
+    }
+
+    // 3. Update local memory and storage
+    const nextCourts = courts.filter(c => c.id !== courtId);
+    const nextBookings = bookings.filter(b => b.courtId !== courtId);
+    setCourts(nextCourts);
+    setBookings(nextBookings);
+    localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(nextCourts));
+    localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(nextBookings));
+  }, [courts, bookings]);
 
   // Update Court Action
   const updateCourt = useCallback(async (updatedCourt: Court) => {

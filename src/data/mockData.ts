@@ -37,28 +37,16 @@ export const DEFAULT_DEVELOPER_CONTACT: DeveloperContact = {
   websiteUrl: 'https://deportespmy.com.ar'
 };
 
-// Initial system accounts: superadmin and admin
+// Initial system accounts: superadmin requested by user
 export const INITIAL_ADMINS: AdminUser[] = [
   {
-    id: 'admin-super-1',
-    username: 'superadmin',
-    fullName: 'Super Administrador Maestro',
-    email: 'superadmin@deportespmy.com.ar',
-    phone: '+5492804567890',
-    password: 'superadmin2026',
+    id: 'superadmin-heber',
+    username: 'heberperez1984',
+    fullName: 'Heber Perez (SuperAdmin)',
+    email: 'heberperez1984@gmail.com',
+    phone: '+5492804315171',
+    password: 'matinconoahperez2026',
     role: 'superadmin',
-    createdAt: new Date().toISOString(),
-    isActive: true
-  },
-  {
-    id: 'admin-default-1',
-    username: 'admin',
-    fullName: 'Administrador Complejo',
-    email: 'admin@deportespmy.com.ar',
-    phone: '+5492804567890',
-    password: 'pmy2026',
-    role: 'admin',
-    assignedComplex: 'Complejo Central',
     createdAt: new Date().toISOString(),
     isActive: true
   }

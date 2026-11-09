@@ -110,41 +110,49 @@ export const TransactionsView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredBookings.map((b) => (
-                <tr key={b.id} className="hover:bg-slate-50">
-                  <td className="py-3 px-4 font-mono font-bold text-slate-700">#{b.bookingCode}</td>
-                  <td className="py-3 px-4 font-bold text-slate-900">{b.clientName}</td>
-                  <td className="py-3 px-4 text-slate-600">{b.courtName.split('-')[0]}</td>
-                  <td className="py-3 px-4 text-slate-600 font-mono">{b.date} {b.startTime}</td>
-                  <td className="py-3 px-4">
-                    <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded uppercase font-semibold text-[10px]">
-                      {b.paymentMethod}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-right font-bold text-emerald-600">
-                    ${b.amountPaid.toLocaleString('es-AR')}
-                  </td>
-                  <td className="py-3 px-4 text-right font-bold">
-                    {b.balanceDue > 0 ? (
-                      <span className="text-amber-600">${b.balanceDue.toLocaleString('es-AR')}</span>
-                    ) : (
-                      <span className="text-slate-400 font-normal">Saldado</span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4 text-center">
-                    {b.balanceDue > 0 ? (
-                      <button
-                        onClick={() => collectBalanceAtCourt(b.id)}
-                        className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] cursor-pointer shadow-xs"
-                      >
-                        Cobrar Saldo
-                      </button>
-                    ) : (
-                      <span className="text-emerald-600 text-[11px] font-bold">✓ Cancelado</span>
-                    )}
+              {filteredBookings.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-10 text-center text-slate-400 text-xs">
+                    No hay movimientos ni cobros registrados en la caja actualmente.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredBookings.map((b) => (
+                  <tr key={b.id} className="hover:bg-slate-50">
+                    <td className="py-3 px-4 font-mono font-bold text-slate-700">#{b.bookingCode}</td>
+                    <td className="py-3 px-4 font-bold text-slate-900">{b.clientName}</td>
+                    <td className="py-3 px-4 text-slate-600">{b.courtName.split('-')[0]}</td>
+                    <td className="py-3 px-4 text-slate-600 font-mono">{b.date} {b.startTime}</td>
+                    <td className="py-3 px-4">
+                      <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded uppercase font-semibold text-[10px]">
+                        {b.paymentMethod}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right font-bold text-emerald-600">
+                      ${b.amountPaid.toLocaleString('es-AR')}
+                    </td>
+                    <td className="py-3 px-4 text-right font-bold">
+                      {b.balanceDue > 0 ? (
+                        <span className="text-amber-600">${b.balanceDue.toLocaleString('es-AR')}</span>
+                      ) : (
+                        <span className="text-slate-400 font-normal">Saldado</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      {b.balanceDue > 0 ? (
+                        <button
+                          onClick={() => collectBalanceAtCourt(b.id)}
+                          className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] cursor-pointer shadow-xs"
+                        >
+                          Cobrar Saldo
+                        </button>
+                      ) : (
+                        <span className="text-emerald-600 text-[11px] font-bold">✓ Cancelado</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

@@ -45,25 +45,26 @@ export const ReviewsSection: React.FC = () => {
   });
 
   // Calculate averages
-  const overallAvg = reviews.length > 0 
+  const hasReviews = reviews.length > 0;
+  const overallAvg = hasReviews 
     ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1)
-    : '5.0';
+    : '-';
 
-  const surfaceAvg = reviews.length > 0
+  const surfaceAvg = hasReviews
     ? (reviews.reduce((sum, r) => sum + r.scores.surface, 0) / reviews.length).toFixed(1)
-    : '4.9';
+    : '0.0';
 
-  const lightingAvg = reviews.length > 0
+  const lightingAvg = hasReviews
     ? (reviews.reduce((sum, r) => sum + r.scores.lighting, 0) / reviews.length).toFixed(1)
-    : '4.8';
+    : '0.0';
 
-  const facilitiesAvg = reviews.length > 0
+  const facilitiesAvg = hasReviews
     ? (reviews.reduce((sum, r) => sum + r.scores.facilities, 0) / reviews.length).toFixed(1)
-    : '4.7';
+    : '0.0';
 
-  const serviceAvg = reviews.length > 0
+  const serviceAvg = hasReviews
     ? (reviews.reduce((sum, r) => sum + r.scores.service, 0) / reviews.length).toFixed(1)
-    : '4.9';
+    : '0.0';
 
   const handleAdminReplySubmit = (reviewId: string) => {
     if (!replyText.trim()) return;
@@ -116,16 +117,18 @@ export const ReviewsSection: React.FC = () => {
               <div className="text-left">
                 <div className="flex text-amber-400">
                   {[1, 2, 3, 4, 5].map((i) => (
-                    <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400" />
+                    <Star key={i} className={`w-4 h-4 ${hasReviews ? 'fill-amber-400 text-amber-400' : 'text-slate-700'}`} />
                   ))}
                 </div>
                 <span className="text-xs text-slate-400 mt-1 block">
-                  Basado en {reviews.length} opiniones verificadas
+                  {hasReviews ? `Basado en ${reviews.length} opiniones verificadas` : 'Aún no hay valoraciones registradas'}
                 </span>
               </div>
             </div>
             <p className="text-xs text-slate-300 mt-3">
-              Todas las reseñas corresponden a deportistas reales que reservaron y jugaron en nuestras canchas de Puerto Madryn.
+              {hasReviews 
+                ? 'Todas las reseñas corresponden a deportistas reales que reservaron y jugaron en nuestras canchas de Puerto Madryn.'
+                : 'Las opiniones y puntuaciones aparecerán aquí a medida que los jugadores califiquen las instalaciones luego de sus turnos.'}
             </p>
 
             <button
@@ -325,6 +328,18 @@ export const ReviewsSection: React.FC = () => {
 
           </div>
         ))}
+
+        {filteredReviews.length === 0 && (
+          <div className="bg-white rounded-3xl p-8 sm:p-12 border border-slate-200 text-center max-w-md mx-auto space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
+              <MessageSquare className="w-6 h-6" />
+            </div>
+            <h4 className="font-bold text-slate-800 text-sm font-heading">Aún no hay opiniones registradas</h4>
+            <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+              Las opiniones y valoraciones aparecerán aquí a medida que los jugadores dejen sus comentarios.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* WRITE REVIEW MODAL */}
