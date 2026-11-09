@@ -738,19 +738,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   type="button"
                   onClick={() => {
                     onClose();
-                    setActiveTab('mis_turnos');
+                    setActiveTab('turnos');
                   }}
-                  className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-white font-semibold text-xs cursor-pointer"
+                  className="px-8 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs cursor-pointer shadow-md shadow-emerald-500/20"
                 >
-                  Ver en Mis Turnos
-                </button>
-
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-6 py-2.5 rounded-xl bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-300 font-semibold text-xs cursor-pointer"
-                >
-                  Cerrar
+                  Listo, Volver a los Turnos
                 </button>
               </div>
 

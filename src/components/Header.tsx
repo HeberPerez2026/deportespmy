@@ -4,7 +4,6 @@ import {
   Calendar, 
   ShieldCheck, 
   Star, 
-  User, 
   Menu, 
   X, 
   RefreshCw, 
@@ -26,17 +25,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
     cloudConnected,
     isAdminAuthenticated,
     logoutAdmin,
-    bookings,
-    userPhone,
     refreshFromCloud
   } = useApp();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-
-  // Active bookings count for player
-  const myActiveBookingsCount = bookings.filter(
-    b => b.clientPhone === userPhone && b.status === 'confirmed'
-  ).length;
 
   const handleNavClick = (tabId: string) => {
     setActiveTab(tabId);
@@ -131,23 +123,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
             </button>
 
             <button
-              onClick={() => handleNavClick('mis_turnos')}
-              className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer relative ${
-                activeTab === 'mis_turnos' 
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <User className="w-4 h-4" />
-              Mis Turnos
-              {myActiveBookingsCount > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-slate-950">
-                  {myActiveBookingsCount}
-                </span>
-              )}
-            </button>
-
-            <button
               onClick={() => handleNavClick('valoraciones')}
               className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'valoraciones' 
@@ -229,23 +204,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
           >
             <Layers className="w-4 h-4 text-emerald-400" />
             Nuestras Canchas
-          </button>
-
-          <button
-            onClick={() => handleNavClick('mis_turnos')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center justify-between ${
-              activeTab === 'mis_turnos' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              <User className="w-4 h-4 text-emerald-400" />
-              <span>Mis Turnos & Pase QR</span>
-            </div>
-            {myActiveBookingsCount > 0 && (
-              <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500 text-slate-950">
-                {myActiveBookingsCount}
-              </span>
-            )}
           </button>
 
           <button

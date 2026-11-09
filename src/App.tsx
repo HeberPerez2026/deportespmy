@@ -3,7 +3,6 @@ import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/Header';
 import { HeroBanner } from './components/HeroBanner';
 import { CourtCatalog } from './components/CourtCatalog';
-import { UserPortal } from './components/UserPortal';
 import { ReviewsSection } from './components/ReviewsSection';
 import { AdminDashboard } from './components/AdminPanel/AdminDashboard';
 import { AdminLoginModal } from './components/AdminLoginModal';
@@ -60,11 +59,6 @@ const MainContent: React.FC = () => {
           <div className="py-6">
             <CourtCatalog />
           </div>
-        )}
-
-        {/* PLAYER VIEW 3: MIS TURNOS & PASE QR */}
-        {activeTab === 'mis_turnos' && (
-          <UserPortal />
         )}
 
         {/* PLAYER VIEW 4: OPINIONES Y VALORACIONES */}

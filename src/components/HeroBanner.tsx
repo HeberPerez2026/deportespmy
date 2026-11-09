@@ -4,13 +4,10 @@ import { SportType } from '../types';
 import { getIsoDate } from '../data/mockData';
 import { 
   Calendar as CalendarIcon, 
-  MessageSquare, 
   CreditCard, 
-  CheckCircle2, 
-  Sparkles, 
-  ChevronRight,
-  Shield,
-  Clock
+  Clock, 
+  MapPin,
+  Sparkles
 } from 'lucide-react';
 
 interface SportOption {
@@ -34,13 +31,11 @@ export const HeroBanner: React.FC = () => {
     setSelectedSport, 
     selectedDate, 
     setSelectedDate,
-    courts,
-    setActiveTab
+    courts
   } = useApp();
 
   const todayStr = getIsoDate(0);
   const tomorrowStr = getIsoDate(1);
-  const dayAfterStr = getIsoDate(2);
 
   const getDayName = (dateStr: string) => {
     const d = new Date(dateStr + 'T00:00:00');
@@ -54,45 +49,31 @@ export const HeroBanner: React.FC = () => {
       <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 left-1/4 w-80 h-80 bg-teal-600/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 relative z-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 relative z-10">
         
-        {/* Main Hero Header */}
-        <div className="max-w-3xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold mb-4 backdrop-blur-sm">
+        {/* Top Mini Header Strip */}
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold backdrop-blur-sm">
             <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Sistema Oficial de Turnos • Puerto Madryn (Chubut)</span>
+            <span>Turnos Disponibles en Puerto Madryn (Chubut)</span>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-heading font-black tracking-tight text-white leading-tight">
-            Reservá tu Cancha <br className="hidden sm:inline" />
-            en <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-300">DeportesPMY</span>
-          </h1>
-
-          <p className="mt-3 text-base sm:text-lg text-slate-300 max-w-2xl leading-relaxed">
-            Elegí tu deporte, seleccioná tu turno en tiempo real, aboná tu seña o total en línea y recibí al instante la confirmación con tu código de acceso por WhatsApp.
-          </p>
-
-          {/* Quick value badges */}
-          <div className="mt-6 flex flex-wrap gap-4 text-xs font-medium text-slate-300">
-            <span className="flex items-center gap-1.5 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/60">
-              <MessageSquare className="w-4 h-4 text-emerald-400" />
-              WhatsApp Automático
-            </span>
-            <span className="flex items-center gap-1.5 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/60">
-              <CreditCard className="w-4 h-4 text-blue-400" />
+          <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-300">
+            <span className="flex items-center gap-1.5 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-800">
+              <CreditCard className="w-3.5 h-3.5 text-blue-400" />
               Mercado Pago & Transferencia
             </span>
-            <span className="flex items-center gap-1.5 bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700/60">
-              <Clock className="w-4 h-4 text-amber-400" />
-              Turnos Diurnos & Nocturnos
+            <span className="flex items-center gap-1.5 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-800">
+              <Clock className="w-3.5 h-3.5 text-amber-400" />
+              Horarios Diurnos & Nocturnos
             </span>
           </div>
         </div>
 
         {/* Filter and Date Selector Box */}
-        <div className="mt-8 bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xl backdrop-blur-md">
+        <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-md">
           
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
             
             {/* Date Quick Selector */}
             <div className="md:col-span-5">
@@ -101,7 +82,7 @@ export const HeroBanner: React.FC = () => {
                 Fecha del Turno
               </label>
 
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setSelectedDate(todayStr)}
@@ -159,7 +140,7 @@ export const HeroBanner: React.FC = () => {
                       key={sport.id}
                       type="button"
                       onClick={() => setSelectedSport(sport.id)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                      className={`px-3 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 border ${
                         isSelected
                           ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-sm font-bold'
                           : 'bg-slate-800 text-slate-300 border-slate-700/80 hover:bg-slate-750 hover:text-white'

@@ -58,11 +58,6 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdminLogin }) => {
                 </button>
               </li>
               <li>
-                <button onClick={() => setActiveTab('mis_turnos')} className="hover:text-emerald-400 transition-colors cursor-pointer">
-                  Mis Reservas & Pase QR
-                </button>
-              </li>
-              <li>
                 <button onClick={() => setActiveTab('valoraciones')} className="hover:text-emerald-400 transition-colors cursor-pointer">
                   Opiniones de Jugadores
                 </button>
