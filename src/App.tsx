@@ -27,7 +27,7 @@ const MainContent: React.FC = () => {
         {activeTab === 'turnos' && (
           <>
             <HeroBanner />
-            <CourtCatalog />
+            <CourtCatalog onOpenAdminLogin={() => setIsAdminLoginOpen(true)} />
             
             {/* Quick Community Reviews preview teaser */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -57,7 +57,7 @@ const MainContent: React.FC = () => {
         {/* PLAYER VIEW 2: NUESTRAS CANCHAS & TARIFAS */}
         {activeTab === 'canchas' && (
           <div className="py-6">
-            <CourtCatalog />
+            <CourtCatalog onOpenAdminLogin={() => setIsAdminLoginOpen(true)} />
           </div>
         )}
 

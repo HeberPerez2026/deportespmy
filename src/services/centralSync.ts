@@ -7,7 +7,7 @@ import {
   onSnapshot 
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Booking, Review } from '../types';
+import { Booking, Review, Court, BusinessProfile, AdminUser } from '../types';
 
 export enum OperationType {
   CREATE = 'create',
@@ -56,14 +56,58 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Real-time listener for Bookings collection
+// Real-time listener for Courts
+export const subscribeToCourts = (
+  onUpdate: (courts: Court[]) => void
+): (() => void) => {
+  const path = 'courts';
+  try {
+    return onSnapshot(
+      collection(db, path),
+      (snapshot) => {
+        const list: Court[] = [];
+        snapshot.forEach((d) => list.push({ ...(d.data() as Court), id: d.id }));
+        onUpdate(list);
+      },
+      (error) => {
+        console.warn('[Firestore] Courts subscription error:', error);
+      }
+    );
+  } catch (err) {
+    console.warn('[Firestore] Error attaching courts listener:', err);
+    return () => {};
+  }
+};
+
+// Save Court to Firestore
+export const saveCourtToFirestore = async (court: Court): Promise<boolean> => {
+  try {
+    await setDoc(doc(db, 'courts', court.id), court);
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Save court error:', err);
+    return false;
+  }
+};
+
+// Delete Court from Firestore
+export const deleteCourtFromFirestore = async (courtId: string): Promise<boolean> => {
+  try {
+    await deleteDoc(doc(db, 'courts', courtId));
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Delete court error:', err);
+    return false;
+  }
+};
+
+// Real-time listener for Bookings
 export const subscribeToBookings = (
-  onUpdate: (bookings: Booking[]) => void,
-  onError?: (err: Error) => void
+  onUpdate: (bookings: Booking[]) => void
 ): (() => void) => {
   const path = 'bookings';
   try {
-    const unsub = onSnapshot(
+    return onSnapshot(
       collection(db, path),
       (snapshot) => {
         const bookingsList: Booking[] = [];
@@ -73,30 +117,44 @@ export const subscribeToBookings = (
         onUpdate(bookingsList);
       },
       (error) => {
-        console.warn('[Firestore] Bookings subscription warning:', error);
-        if (onError) onError(error);
-        try {
-          handleFirestoreError(error, OperationType.GET, path);
-        } catch {
-          // Keep resilient
-        }
+        console.warn('[Firestore] Bookings subscription error:', error);
       }
     );
-    return unsub;
   } catch (err) {
     console.warn('[Firestore] Error attaching bookings listener:', err);
     return () => {};
   }
 };
 
-// Real-time listener for Reviews collection
+// Save Booking
+export const saveBookingToFirestore = async (booking: Booking): Promise<boolean> => {
+  try {
+    await setDoc(doc(db, 'bookings', booking.id), booking);
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Save booking error:', err);
+    return false;
+  }
+};
+
+// Delete Booking
+export const deleteBookingFromFirestore = async (bookingId: string): Promise<boolean> => {
+  try {
+    await deleteDoc(doc(db, 'bookings', bookingId));
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Delete booking error:', err);
+    return false;
+  }
+};
+
+// Real-time listener for Reviews
 export const subscribeToReviews = (
-  onUpdate: (reviews: Review[]) => void,
-  onError?: (err: Error) => void
+  onUpdate: (reviews: Review[]) => void
 ): (() => void) => {
   const path = 'reviews';
   try {
-    const unsub = onSnapshot(
+    return onSnapshot(
       collection(db, path),
       (snapshot) => {
         const reviewsList: Review[] = [];
@@ -106,117 +164,127 @@ export const subscribeToReviews = (
         onUpdate(reviewsList);
       },
       (error) => {
-        console.warn('[Firestore] Reviews subscription warning:', error);
-        if (onError) onError(error);
-        try {
-          handleFirestoreError(error, OperationType.GET, path);
-        } catch {
-          // Keep resilient
-        }
+        console.warn('[Firestore] Reviews subscription error:', error);
       }
     );
-    return unsub;
   } catch (err) {
     console.warn('[Firestore] Error attaching reviews listener:', err);
     return () => {};
   }
 };
 
-// Save single booking to Firestore
-export const saveBookingToFirestore = async (booking: Booking): Promise<boolean> => {
-  const path = `bookings/${booking.id}`;
-  try {
-    await setDoc(doc(db, 'bookings', booking.id), booking);
-    return true;
-  } catch (err) {
-    console.warn('[Firestore] Save booking error:', err);
-    try {
-      handleFirestoreError(err, OperationType.WRITE, path);
-    } catch {
-      // Handled
-    }
-    return false;
-  }
-};
-
-// Delete single booking from Firestore
-export const deleteBookingFromFirestore = async (bookingId: string): Promise<boolean> => {
-  const path = `bookings/${bookingId}`;
-  try {
-    await deleteDoc(doc(db, 'bookings', bookingId));
-    return true;
-  } catch (err) {
-    console.warn('[Firestore] Delete booking error:', err);
-    try {
-      handleFirestoreError(err, OperationType.DELETE, path);
-    } catch {
-      // Handled
-    }
-    return false;
-  }
-};
-
-// Save single review to Firestore
+// Save Review
 export const saveReviewToFirestore = async (review: Review): Promise<boolean> => {
-  const path = `reviews/${review.id}`;
   try {
     await setDoc(doc(db, 'reviews', review.id), review);
     return true;
   } catch (err) {
     console.warn('[Firestore] Save review error:', err);
-    try {
-      handleFirestoreError(err, OperationType.WRITE, path);
-    } catch {
-      // Handled
-    }
     return false;
   }
 };
 
-// Reply to review in Firestore
+// Save Review Reply
 export const saveReviewReplyToFirestore = async (
   reviewId: string, 
   adminReply: { text: string; date: string }
 ): Promise<boolean> => {
-  const path = `reviews/${reviewId}`;
   try {
     await setDoc(doc(db, 'reviews', reviewId), { adminReply }, { merge: true });
     return true;
   } catch (err) {
     console.warn('[Firestore] Save review reply error:', err);
-    try {
-      handleFirestoreError(err, OperationType.WRITE, path);
-    } catch {
-      // Handled
-    }
     return false;
   }
 };
 
-// Fetch initial bookings snapshot
-export const fetchAllBookingsOnce = async (): Promise<Booking[]> => {
-  const path = 'bookings';
+// Real-time listener for Business Profile
+export const subscribeToBusinessProfile = (
+  onUpdate: (profile: BusinessProfile) => void
+): (() => void) => {
   try {
-    const snap = await getDocs(collection(db, path));
-    const list: Booking[] = [];
-    snap.forEach((d) => list.push({ ...(d.data() as Booking), id: d.id }));
-    return list;
+    return onSnapshot(
+      doc(db, 'settings', 'businessProfile'),
+      (snap) => {
+        if (snap.exists()) {
+          onUpdate(snap.data() as BusinessProfile);
+        }
+      },
+      (error) => {
+        console.warn('[Firestore] BusinessProfile subscription error:', error);
+      }
+    );
   } catch (err) {
-    console.warn('[Firestore] Fetch all bookings error:', err);
-    return [];
+    console.warn('[Firestore] Error attaching business profile listener:', err);
+    return () => {};
   }
 };
 
-// Fetch initial reviews snapshot
-export const fetchAllReviewsOnce = async (): Promise<Review[]> => {
-  const path = 'reviews';
+// Save Business Profile
+export const saveBusinessProfileToFirestore = async (profile: BusinessProfile): Promise<boolean> => {
   try {
-    const snap = await getDocs(collection(db, path));
-    const list: Review[] = [];
-    snap.forEach((d) => list.push({ ...(d.data() as Review), id: d.id }));
+    await setDoc(doc(db, 'settings', 'businessProfile'), profile);
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Save business profile error:', err);
+    return false;
+  }
+};
+
+// Real-time listener for Admins
+export const subscribeToAdmins = (
+  onUpdate: (admins: AdminUser[]) => void
+): (() => void) => {
+  const path = 'admins';
+  try {
+    return onSnapshot(
+      collection(db, path),
+      (snapshot) => {
+        const list: AdminUser[] = [];
+        snapshot.forEach((d) => list.push({ ...(d.data() as AdminUser), id: d.id }));
+        onUpdate(list);
+      },
+      (error) => {
+        console.warn('[Firestore] Admins subscription error:', error);
+      }
+    );
+  } catch (err) {
+    console.warn('[Firestore] Error attaching admins listener:', err);
+    return () => {};
+  }
+};
+
+// Save Admin User
+export const saveAdminUserToFirestore = async (admin: AdminUser): Promise<boolean> => {
+  try {
+    await setDoc(doc(db, 'admins', admin.id), admin);
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Save admin error:', err);
+    return false;
+  }
+};
+
+// Delete Admin User
+export const deleteAdminUserFromFirestore = async (adminId: string): Promise<boolean> => {
+  try {
+    await deleteDoc(doc(db, 'admins', adminId));
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Delete admin error:', err);
+    return false;
+  }
+};
+
+// Manual fetch all data for backup / refresh
+export const fetchAllCollectionDocs = async <T>(collName: string): Promise<T[]> => {
+  try {
+    const snap = await getDocs(collection(db, collName));
+    const list: T[] = [];
+    snap.forEach((d) => list.push({ ...(d.data() as T), id: d.id }));
     return list;
   } catch (err) {
-    console.warn('[Firestore] Fetch all reviews error:', err);
+    console.warn(`[Firestore] Fetch ${collName} error:`, err);
     return [];
   }
 };

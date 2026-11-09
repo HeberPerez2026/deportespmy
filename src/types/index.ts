@@ -3,6 +3,7 @@ export type SportType = 'futbol5' | 'futbol7' | 'padel' | 'tenis' | 'basquet';
 export interface Court {
   id: string;
   name: string;
+  establishment?: string; // Nombre del complejo / club / establecimiento deportivo
   sport: SportType;
   surface: string; // e.g., 'Sintético Forbex 50mm', 'Cristal Panorámico WPT', 'Polvo de ladrillo'
   isIndoor: boolean;
@@ -40,6 +41,7 @@ export interface Booking {
   bookingCode: string; // e.g. PMY-7482
   courtId: string;
   courtName: string;
+  establishment?: string;
   sport: SportType;
   date: string; // YYYY-MM-DD
   startTime: string;
@@ -75,7 +77,7 @@ export interface Review {
   courtName: string;
   sport: SportType;
   userName: string;
-  userPhone: string; // Obfuscated or verified
+  userPhone: string;
   rating: number; // 1 to 5
   scores: {
     surface: number; // 1-5
@@ -90,6 +92,31 @@ export interface Review {
     text: string;
     date: string;
   };
+}
+
+export interface BusinessProfile {
+  ownerName: string;
+  complexName: string;
+  cbu: string;
+  alias: string;
+  accountHolder: string;
+  whatsappNumber: string;
+  address: string;
+  email: string;
+  welcomeNotes?: string;
+}
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  password: string;
+  role: 'superadmin' | 'admin';
+  assignedComplex?: string;
+  createdAt: string;
+  isActive: boolean;
 }
 
 export interface MonthlyStats {

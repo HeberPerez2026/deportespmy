@@ -6,8 +6,9 @@ import {
   Calendar as CalendarIcon, 
   CreditCard, 
   Clock, 
-  MapPin,
-  Sparkles
+  Sparkles,
+  Search,
+  X
 } from 'lucide-react';
 
 interface SportOption {
@@ -31,6 +32,9 @@ export const HeroBanner: React.FC = () => {
     setSelectedSport, 
     selectedDate, 
     setSelectedDate,
+    searchQuery,
+    setSearchQuery,
+    businessProfile,
     courts
   } = useApp();
 
@@ -49,31 +53,55 @@ export const HeroBanner: React.FC = () => {
       <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 left-1/4 w-80 h-80 bg-teal-600/10 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 relative z-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-7 relative z-10">
         
         {/* Top Mini Header Strip */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold backdrop-blur-sm">
             <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Turnos Disponibles en Puerto Madryn (Chubut)</span>
+            <span>{businessProfile.complexName || 'Instalaciones Deportivas en Puerto Madryn'}</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-slate-300">
+          <div className="flex flex-wrap items-center gap-2.5 text-xs font-medium text-slate-300">
             <span className="flex items-center gap-1.5 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-800">
               <CreditCard className="w-3.5 h-3.5 text-blue-400" />
-              Mercado Pago & Transferencia
+              Alias / CBU & Mercado Pago
             </span>
             <span className="flex items-center gap-1.5 bg-slate-900/80 px-2.5 py-1 rounded-lg border border-slate-800">
               <Clock className="w-3.5 h-3.5 text-amber-400" />
-              Horarios Diurnos & Nocturnos
+              Turnos Diurnos & Nocturnos
             </span>
           </div>
         </div>
 
-        {/* Filter and Date Selector Box */}
-        <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-md">
+        {/* Filter, Search and Date Selector Box */}
+        <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-2xl backdrop-blur-md space-y-4">
           
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
+          {/* Search Box by Court / Establishment Name */}
+          <div className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <Search className="w-4 h-4 text-emerald-400" />
+            </div>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar por nombre de cancha, establecimiento deportivo o complejo..."
+              className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-slate-950/80 border border-slate-700/80 rounded-2xl text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all shadow-inner"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-white cursor-pointer"
+                title="Limpiar búsqueda"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center pt-1 border-t border-slate-800/80">
             
             {/* Date Quick Selector */}
             <div className="md:col-span-5">

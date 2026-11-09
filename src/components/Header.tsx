@@ -8,9 +8,12 @@ import {
   X, 
   RefreshCw, 
   MapPin, 
-  Layers,
-  Lock,
-  LogOut
+  Layers, 
+  Lock, 
+  LogOut, 
+  Crown,
+  Eye,
+  Settings
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -24,6 +27,9 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
     isSyncing, 
     cloudConnected,
     isAdminAuthenticated,
+    isSuperAdmin,
+    currentAdminUser,
+    businessProfile,
     logoutAdmin,
     refreshFromCloud
   } = useApp();
@@ -39,11 +45,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
     <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white shadow-xl">
       
       {/* Top micro-bar with location, domain & live cloud sync */}
-      <div className="bg-slate-950 px-4 py-1.5 text-xs text-slate-400 border-b border-slate-800/80 flex flex-wrap justify-between items-center">
+      <div className="bg-slate-950 px-4 py-1.5 text-xs text-slate-400 border-b border-slate-800/80 flex flex-wrap justify-between items-center gap-2">
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1 text-emerald-400 font-medium">
             <MapPin className="w-3.5 h-3.5" />
-            Puerto Madryn, Chubut • Blvd. Brown 1420
+            {businessProfile.address || 'Puerto Madryn, Chubut • Blvd. Brown 1420'}
           </span>
           <span className="hidden sm:inline-block text-slate-600">|</span>
           <span className="hidden sm:inline-block text-slate-400 font-mono">
@@ -53,6 +59,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
 
         {/* Live Cloud DB Sync Badge */}
         <div className="flex items-center gap-2 ml-auto">
+          {isAdminAuthenticated && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+              {isSuperAdmin ? <Crown className="w-3 h-3 text-amber-400" /> : <ShieldCheck className="w-3 h-3 text-blue-400" />}
+              <span>{isSuperAdmin ? 'SuperAdmin' : 'Admin'}: {currentAdminUser?.username}</span>
+            </span>
+          )}
+
           <button 
             onClick={() => refreshFromCloud()}
             className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800/90 hover:bg-slate-750 text-[11px] cursor-pointer transition-colors"
@@ -74,7 +87,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
           {/* Logo & Brand */}
           <div className="flex items-center gap-3">
             <button 
-              onClick={() => handleNavClick('turnos')}
+              onClick={() => handleNavClick(isAdminAuthenticated ? 'admin' : 'turnos')}
               className="flex items-center gap-2.5 text-left group focus:outline-none cursor-pointer"
             >
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:scale-105 transition-transform">
@@ -85,79 +98,102 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
                   <span className="font-heading font-extrabold text-xl tracking-tight text-white group-hover:text-emerald-400 transition-colors">
                     Deportes<span className="text-emerald-400">PMY</span>
                   </span>
-                  <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border border-emerald-500/30">
-                    Turnos
-                  </span>
+                  {isAdminAuthenticated ? (
+                    <span className="bg-blue-500/20 text-blue-300 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border border-blue-500/30">
+                      Panel Gestión
+                    </span>
+                  ) : (
+                    <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border border-emerald-500/30">
+                      Turnos
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] text-slate-400 tracking-wide font-medium">
-                  Reserva Online de Canchas
+                  {businessProfile.complexName || 'Reserva Online de Canchas'}
                 </p>
               </div>
             </button>
           </div>
 
-          {/* Player Desktop Navigation Links */}
-          <nav className="hidden lg:flex items-center gap-1">
-            <button
-              onClick={() => handleNavClick('turnos')}
-              className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'turnos' 
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Calendar className="w-4 h-4" />
-              Reservar Turno
-            </button>
-
-            <button
-              onClick={() => handleNavClick('canchas')}
-              className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'canchas' 
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Layers className="w-4 h-4" />
-              Nuestras Canchas
-            </button>
-
-            <button
-              onClick={() => handleNavClick('valoraciones')}
-              className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                activeTab === 'valoraciones' 
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-              Opiniones
-            </button>
-          </nav>
-
-          {/* Top Right Action: Admin Login Button */}
-          <div className="flex items-center gap-3">
-            
+          {/* Desktop Navigation Links */}
+          <nav className="hidden lg:flex items-center gap-1.5">
             {isAdminAuthenticated ? (
+              /* ADMIN MODE: Hide player booking links as requested */
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => handleNavClick('admin')}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  className={`px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                     activeTab === 'admin'
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                      : 'bg-slate-800 text-blue-300 hover:bg-slate-750 border border-blue-500/30'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
                   }`}
                 >
                   <ShieldCheck className="w-4 h-4 text-blue-400" />
-                  <span>Panel Administrador</span>
+                  <span>Panel de Control</span>
                 </button>
 
                 <button
+                  onClick={() => handleNavClick('turnos')}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 flex items-center gap-1.5 transition-colors cursor-pointer"
+                  title="Previsualizar la web tal como la ven los jugadores"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Ver Web como Jugador</span>
+                </button>
+              </div>
+            ) : (
+              /* PLAYER MODE: Standard navigation */
+              <>
+                <button
+                  onClick={() => handleNavClick('turnos')}
+                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeTab === 'turnos' 
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Calendar className="w-4 h-4" />
+                  Reservar Turno
+                </button>
+
+                <button
+                  onClick={() => handleNavClick('canchas')}
+                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeTab === 'canchas' 
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Layers className="w-4 h-4" />
+                  Nuestras Canchas
+                </button>
+
+                <button
+                  onClick={() => handleNavClick('valoraciones')}
+                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
+                    activeTab === 'valoraciones' 
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                  Opiniones
+                </button>
+              </>
+            )}
+          </nav>
+
+          {/* Top Right Action: Admin / Logout / Login */}
+          <div className="flex items-center gap-3">
+            {isAdminAuthenticated ? (
+              <div className="flex items-center gap-2">
+                <button
                   onClick={logoutAdmin}
-                  className="p-2 rounded-xl bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-300 border border-slate-700 transition-colors cursor-pointer"
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
                   title="Cerrar Sesión Administrador"
                 >
-                  <LogOut className="w-4 h-4" />
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Salir</span>
                 </button>
               </div>
             ) : (
@@ -186,38 +222,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
       {/* Mobile dropdown menu */}
       {mobileMenuOpen && (
         <div className="lg:hidden bg-slate-900 border-b border-slate-800 px-4 pt-2 pb-4 space-y-2">
-          <button
-            onClick={() => handleNavClick('turnos')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2.5 ${
-              activeTab === 'turnos' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            <Calendar className="w-4 h-4 text-emerald-400" />
-            Reservar Turnos
-          </button>
-
-          <button
-            onClick={() => handleNavClick('canchas')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2.5 ${
-              activeTab === 'canchas' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            <Layers className="w-4 h-4 text-emerald-400" />
-            Nuestras Canchas
-          </button>
-
-          <button
-            onClick={() => handleNavClick('valoraciones')}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2.5 ${
-              activeTab === 'valoraciones' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-            Opiniones de Jugadores
-          </button>
-
-          <div className="pt-2 border-t border-slate-800">
-            {isAdminAuthenticated ? (
+          {isAdminAuthenticated ? (
+            <div className="space-y-2">
               <button
                 onClick={() => handleNavClick('admin')}
                 className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-bold bg-blue-600 text-white flex items-center gap-2.5"
@@ -225,19 +231,72 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
                 <ShieldCheck className="w-4 h-4" />
                 Panel de Administración
               </button>
-            ) : (
+
+              <button
+                onClick={() => handleNavClick('turnos')}
+                className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-slate-300 hover:bg-slate-800 flex items-center gap-2"
+              >
+                <Eye className="w-4 h-4 text-emerald-400" />
+                Ver Vista del Jugador
+              </button>
+
               <button
                 onClick={() => {
+                  logoutAdmin();
                   setMobileMenuOpen(false);
-                  onOpenAdminLogin();
                 }}
-                className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-blue-300 bg-slate-800 flex items-center gap-2"
+                className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-rose-300 hover:bg-slate-800 flex items-center gap-2"
               >
-                <Lock className="w-3.5 h-3.5" />
-                Acceso Administrador
+                <LogOut className="w-4 h-4" />
+                Cerrar Sesión Administrador
               </button>
-            )}
-          </div>
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={() => handleNavClick('turnos')}
+                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2.5 ${
+                  activeTab === 'turnos' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                <Calendar className="w-4 h-4 text-emerald-400" />
+                Reservar Turnos
+              </button>
+
+              <button
+                onClick={() => handleNavClick('canchas')}
+                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2.5 ${
+                  activeTab === 'canchas' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                <Layers className="w-4 h-4 text-emerald-400" />
+                Nuestras Canchas
+              </button>
+
+              <button
+                onClick={() => handleNavClick('valoraciones')}
+                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2.5 ${
+                  activeTab === 'valoraciones' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                Opiniones de Jugadores
+              </button>
+
+              <div className="pt-2 border-t border-slate-800">
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAdminLogin();
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-blue-300 bg-slate-800 flex items-center gap-2"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  Acceso Administrador
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
     </header>

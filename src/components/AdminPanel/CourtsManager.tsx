@@ -1,121 +1,458 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Court } from '../../types';
+import { Court, SportType } from '../../types';
 import { 
   Layers, 
   Edit3, 
+  Trash2,
   Check, 
   X, 
   Sun, 
   Moon, 
-  Star, 
-  DollarSign, 
-  AlertCircle,
-  Plus
+  Plus,
+  Building2,
+  Image as ImageIcon,
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
 
-export const CourtsManager: React.FC = () => {
-  const { courts, updateCourt } = useApp();
-  const [editingCourt, setEditingCourt] = useState<Court | null>(null);
+const SPORT_OPTIONS: { id: SportType; label: string; defaultSurface: string; defaultImg: string }[] = [
+  { 
+    id: 'futbol5', 
+    label: 'Fútbol 5', 
+    defaultSurface: 'Césped Sintético Forbex 50mm',
+    defaultImg: 'https://images.unsplash.com/photo-1529900245534-47fbf8204e61?auto=format&fit=crop&w=1200&q=80'
+  },
+  { 
+    id: 'futbol7', 
+    label: 'Fútbol 7', 
+    defaultSurface: 'Césped Sintético Monofilamento FIFA',
+    defaultImg: 'https://images.unsplash.com/photo-1556056504-5c7696c4c28d?auto=format&fit=crop&w=1200&q=80'
+  },
+  { 
+    id: 'padel', 
+    label: 'Pádel Panorámico', 
+    defaultSurface: 'Césped Texturado Azul WPT + Vidrio 12mm',
+    defaultImg: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=1200&q=80'
+  },
+  { 
+    id: 'tenis', 
+    label: 'Tenis Polvo de Ladrillo', 
+    defaultSurface: 'Polvo de Ladrillo Batido Tradicional',
+    defaultImg: 'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=1200&q=80'
+  },
+  { 
+    id: 'basquet', 
+    label: 'Básquetbol / Parquet', 
+    defaultSurface: 'Piso Flotante de Madera Guatambú',
+    defaultImg: 'https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=1200&q=80'
+  },
+];
 
-  const handleSave = (e: React.FormEvent) => {
+export const CourtsManager: React.FC = () => {
+  const { courts, addCourt, deleteCourt, updateCourt, businessProfile } = useApp();
+  
+  const [editingCourt, setEditingCourt] = useState<Court | null>(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // New court form state
+  const [name, setName] = useState('');
+  const [sport, setSport] = useState<SportType>('futbol5');
+  const [establishment, setEstablishment] = useState(businessProfile.complexName || 'Complejo Deportivo Puerto Madryn');
+  const [surface, setSurface] = useState(SPORT_OPTIONS[0].defaultSurface);
+  const [isIndoor, setIsIndoor] = useState(true);
+  const [hasLighting, setHasLighting] = useState(true);
+  const [hourlyRateDay, setHourlyRateDay] = useState(18000);
+  const [hourlyRateNight, setHourlyRateNight] = useState(24000);
+  const [depositRequired, setDepositRequired] = useState(50);
+  const [imageUrl, setImageUrl] = useState(SPORT_OPTIONS[0].defaultImg);
+  const [description, setDescription] = useState('Cancha acondicionada para alta competencia con excelente iluminación LED y cerramientos de seguridad.');
+  const [amenitiesInput, setAmenitiesInput] = useState('Pelotas oficiales, Chalecos limpios, Vestuarios con agua caliente, Marcador digital');
+
+  const handleSportChange = (newSport: SportType) => {
+    setSport(newSport);
+    const opt = SPORT_OPTIONS.find(s => s.id === newSport);
+    if (opt) {
+      setSurface(opt.defaultSurface);
+      setImageUrl(opt.defaultImg);
+    }
+  };
+
+  const handleCreateCourt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    const amenities = amenitiesInput.split(',').map(s => s.trim()).filter(Boolean);
+
+    await addCourt({
+      name: name.trim(),
+      establishment: establishment.trim(),
+      sport,
+      surface: surface.trim(),
+      isIndoor,
+      hasLighting,
+      hourlyRateDay: Number(hourlyRateDay),
+      hourlyRateNight: Number(hourlyRateNight),
+      depositRequired: Number(depositRequired),
+      imageUrl: imageUrl.trim(),
+      amenities,
+      description: description.trim(),
+      status: 'active'
+    });
+
+    setIsAddModalOpen(false);
+    setName('');
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCourt) return;
-    updateCourt(editingCourt);
+    await updateCourt(editingCourt);
     setEditingCourt(null);
+  };
+
+  const handleDeleteCourt = async (courtId: string) => {
+    await deleteCourt(courtId);
+    setDeleteConfirmId(null);
   };
 
   return (
     <div className="space-y-6">
       
+      {/* Header bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
         <div>
           <span className="text-xs font-bold uppercase tracking-wider text-blue-600 block mb-0.5">
-            Configuración de Instalaciones
+            Configuración de Canchas
           </span>
           <h2 className="text-xl font-extrabold text-slate-900 font-heading">
-            Gestión de Canchas & Tarifas Horarias
+            Gestión de Instalaciones & Tarifas Horarias
           </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Agregá, editá o eliminá canchas fácilmente. Los cambios se sincronizan en vivo en la web de jugadores.
+          </p>
         </div>
+
+        <button
+          onClick={() => {
+            setEstablishment(businessProfile.complexName || 'Complejo Puerto Madryn');
+            setIsAddModalOpen(true);
+          }}
+          className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-600/20 transition-all self-start sm:self-auto"
+        >
+          <Plus className="w-4 h-4" />
+          <span>Agregar Nueva Cancha</span>
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {courts.map((court) => (
-          <div 
-            key={court.id}
-            className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between"
+      {/* Courts Cards Grid */}
+      {courts.length === 0 ? (
+        <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 text-center max-w-lg mx-auto space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto shadow-inner">
+            <Layers className="w-7 h-7" />
+          </div>
+          <h3 className="text-lg font-bold text-slate-900 font-heading">
+            Aún no has registrado ninguna cancha
+          </h3>
+          <p className="text-xs text-slate-600">
+            Hacé clic en el botón para dar de alta tu primer espacio deportivo con su deporte, tarifas y horarios.
+          </p>
+          <button
+            onClick={() => setIsAddModalOpen(true)}
+            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs inline-flex items-center gap-1.5 cursor-pointer shadow-md"
           >
-            <div>
-              <div className="relative h-44">
-                <img
-                  src={court.imageUrl}
-                  alt={court.name}
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-                <span className="absolute top-3 left-3 bg-slate-900/90 text-white text-[11px] font-bold px-2.5 py-1 rounded-full">
-                  {court.sport.toUpperCase()}
-                </span>
-                <span className={`absolute top-3 right-3 text-[11px] font-bold px-2.5 py-1 rounded-full ${court.status === 'active' ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white'}`}>
-                  {court.status === 'active' ? 'En Servicio' : 'En Mantenimiento'}
-                </span>
-                <div className="absolute bottom-3 left-3 right-3 text-white">
-                  <h3 className="font-bold text-sm font-heading">{court.name}</h3>
-                  <p className="text-[11px] text-slate-300">{court.surface}</p>
+            <Plus className="w-4 h-4" />
+            <span>Crear mi Primera Cancha</span>
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {courts.map((court) => (
+            <div 
+              key={court.id}
+              className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow"
+            >
+              <div>
+                <div className="relative h-44 bg-slate-900">
+                  <img
+                    src={court.imageUrl || 'https://images.unsplash.com/photo-1529900245534-47fbf8204e61?auto=format&fit=crop&w=1200&q=80'}
+                    alt={court.name}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+                  
+                  <span className="absolute top-3 left-3 bg-slate-900/90 text-white text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-slate-700">
+                    {court.sport}
+                  </span>
+
+                  <span className={`absolute top-3 right-3 text-[10px] font-bold px-2.5 py-1 rounded-full ${court.status === 'active' ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white'}`}>
+                    {court.status === 'active' ? 'En Servicio' : 'Mantenimiento'}
+                  </span>
+
+                  <div className="absolute bottom-3 left-3 right-3 text-white">
+                    {court.establishment && (
+                      <span className="text-[10px] font-bold uppercase text-emerald-400 block">
+                        {court.establishment}
+                      </span>
+                    )}
+                    <h3 className="font-bold text-sm font-heading">{court.name}</h3>
+                    <p className="text-[11px] text-slate-300">{court.surface}</p>
+                  </div>
+                </div>
+
+                <div className="p-4 space-y-3 text-xs">
+                  <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                    <div>
+                      <span className="text-slate-500 block text-[10px] flex items-center gap-1">
+                        <Sun className="w-3 h-3 text-amber-500" /> Tarifa Diurna:
+                      </span>
+                      <strong className="text-slate-900 text-sm font-bold">
+                        ${court.hourlyRateDay.toLocaleString('es-AR')}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 block text-[10px] flex items-center gap-1">
+                        <Moon className="w-3 h-3 text-blue-500" /> Nocturna c/Luz:
+                      </span>
+                      <strong className="text-slate-900 text-sm font-bold">
+                        ${court.hourlyRateNight.toLocaleString('es-AR')}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-slate-600 line-clamp-2">
+                    {court.description}
+                  </p>
+
+                  {court.amenities && court.amenities.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {court.amenities.slice(0, 4).map((a, i) => (
+                        <span key={i} className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-600">
+                          {a}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="p-4 space-y-3 text-xs">
-                <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                  <div>
-                    <span className="text-slate-500 block text-[10px] flex items-center gap-1">
-                      <Sun className="w-3 h-3 text-amber-500" /> Tarifa Diurna:
-                    </span>
-                    <strong className="text-slate-900 text-sm font-bold">
-                      ${court.hourlyRateDay.toLocaleString('es-AR')}
-                    </strong>
-                  </div>
-                  <div>
-                    <span className="text-slate-500 block text-[10px] flex items-center gap-1">
-                      <Moon className="w-3 h-3 text-blue-500" /> Tarifa Nocturna:
-                    </span>
-                    <strong className="text-slate-900 text-sm font-bold">
-                      ${court.hourlyRateNight.toLocaleString('es-AR')}
-                    </strong>
-                  </div>
-                </div>
+              {/* Action Buttons: Edit and Delete */}
+              <div className="p-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                <button
+                  onClick={() => setDeleteConfirmId(court.id)}
+                  className="px-3 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                  title="Eliminar esta cancha"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Eliminar</span>
+                </button>
 
-                <div className="text-[11px] text-slate-600 line-clamp-2">
-                  {court.description}
-                </div>
-
-                <div className="flex flex-wrap gap-1">
-                  {court.amenities.map((a, i) => (
-                    <span key={i} className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-600">
-                      {a}
-                    </span>
-                  ))}
-                </div>
+                <button
+                  onClick={() => setEditingCourt(court)}
+                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-colors"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>Editar</span>
+                </button>
               </div>
             </div>
+          ))}
+        </div>
+      )}
 
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+      {/* CONFIRM DELETE MODAL */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900">¿Eliminar esta cancha?</h3>
+            <p className="text-xs text-slate-600">
+              Esta acción eliminará la cancha del catálogo de jugadores y de la base de datos central.
+            </p>
+            <div className="flex justify-center gap-2 pt-2">
               <button
-                onClick={() => setEditingCourt(court)}
-                className="px-4 py-2 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setDeleteConfirmId(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs"
               >
-                <Edit3 className="w-3.5 h-3.5" />
-                <span>Editar Tarifas & Estado</span>
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleDeleteCourt(deleteConfirmId)}
+                className="px-5 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-500"
+              >
+                Sí, Eliminar
               </button>
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {/* ADD COURT MODAL */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl space-y-4 text-slate-900 my-8">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold font-heading text-slate-900">
+                  Agregar Nueva Cancha Deportiva
+                </h3>
+                <p className="text-xs text-slate-500">Configurá las características del nuevo espacio</p>
+              </div>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCourt} className="space-y-3.5 text-xs">
+              
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Tipo de Deporte</label>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+                  {SPORT_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => handleSportChange(opt.id)}
+                      className={`p-2 rounded-xl text-center border font-semibold text-[11px] transition-all cursor-pointer ${
+                        sport === opt.id
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Nombre de la Cancha</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: Cancha 1 - Fútbol 5 'La Palmera'"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Nombre del Establecimiento / Complejo</label>
+                <input
+                  type="text"
+                  placeholder="Ej: Complejo Costanera Norte"
+                  value={establishment}
+                  onChange={(e) => setEstablishment(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Tarifa Día ($ / hora)</label>
+                  <input
+                    type="number"
+                    required
+                    value={hourlyRateDay}
+                    onChange={(e) => setHourlyRateDay(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Tarifa Noche c/Luz ($ / hora)</label>
+                  <input
+                    type="number"
+                    required
+                    value={hourlyRateNight}
+                    onChange={(e) => setHourlyRateNight(Number(e.target.value))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Superficie / Piso</label>
+                <input
+                  type="text"
+                  required
+                  value={surface}
+                  onChange={(e) => setSurface(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isIndoor}
+                    onChange={(e) => setIsIndoor(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="font-bold text-slate-700">Cancha Techada</span>
+                </label>
+
+                <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={hasLighting}
+                    onChange={(e) => setHasLighting(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                  />
+                  <span className="font-bold text-slate-700">Tiene Iluminación LED</span>
+                </label>
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">URL de Foto de Cancha</label>
+                <input
+                  type="url"
+                  required
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Comodidades (Separadas por comas)</label>
+                <input
+                  type="text"
+                  value={amenitiesInput}
+                  onChange={(e) => setAmenitiesInput(e.target.value)}
+                  placeholder="Ej: Pelotas, Chalecos, Vestuarios con agua caliente"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAddModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 font-bold text-xs"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md"
+                >
+                  Publicar Cancha
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* EDIT MODAL */}
       {editingCourt && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-slate-900">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-slate-900 my-8">
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
               <h3 className="text-base font-bold font-heading">
                 Editar Cancha: {editingCourt.name}
@@ -125,13 +462,23 @@ export const CourtsManager: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="space-y-3 text-xs">
+            <form onSubmit={handleSaveEdit} className="space-y-3 text-xs">
               <div>
                 <label className="font-bold text-slate-700 block mb-1">Nombre</label>
                 <input
                   type="text"
                   value={editingCourt.name}
                   onChange={(e) => setEditingCourt({ ...editingCourt, name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Establecimiento / Complejo</label>
+                <input
+                  type="text"
+                  value={editingCourt.establishment || ''}
+                  onChange={(e) => setEditingCourt({ ...editingCourt, establishment: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
                 />
               </div>
@@ -147,7 +494,7 @@ export const CourtsManager: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Tarifa Noche c/Luz (ARS)</label>
+                  <label className="font-bold text-slate-700 block mb-1">Tarifa Noche (ARS)</label>
                   <input
                     type="number"
                     value={editingCourt.hourlyRateNight}

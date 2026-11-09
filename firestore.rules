@@ -58,9 +58,23 @@ service cloud.firestore {
     match /courts/{courtId} {
       allow read: if true;
       allow write: if isValidId(courtId);
+      allow delete: if isValidId(courtId);
     }
 
-    // Test connection doc
+    // Business profile settings
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isValidId(settingId);
+    }
+
+    // Admin users collection
+    match /admins/{adminId} {
+      allow read: if true;
+      allow write: if isValidId(adminId);
+      allow delete: if isValidId(adminId);
+    }
+
+    // Connection check
     match /test/{docId} {
       allow read, write: if true;
     }

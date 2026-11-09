@@ -15,7 +15,9 @@ interface FooterProps {
 }
 
 export const Footer: React.FC<FooterProps> = ({ onOpenAdminLogin }) => {
-  const { setActiveTab, isAdminAuthenticated } = useApp();
+  const { setActiveTab, isAdminAuthenticated, businessProfile } = useApp();
+
+  const cleanPhone = (businessProfile.whatsappNumber || '+5492804567890').replace(/\D/g, '');
 
   return (
     <footer className="bg-slate-950 text-slate-400 border-t border-slate-900 pt-12 pb-8">
@@ -34,7 +36,7 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdminLogin }) => {
               </span>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed">
-              El complejo deportivo más completo de Puerto Madryn frente al mar. Fútbol 5, Fútbol 7, Pádel Panorámico WPT, Tenis de polvo de ladrillo y multiespacio cerrado.
+              {businessProfile.complexName || 'El complejo deportivo más completo de Puerto Madryn'}. Reserva de turnos online y confirmación directa por WhatsApp.
             </p>
             <div className="flex items-center gap-2 text-xs font-mono text-emerald-400">
               <span>deportespmy.com.ar</span>
@@ -88,11 +90,11 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdminLogin }) => {
             <div className="space-y-2 text-slate-400">
               <div className="flex items-start gap-2">
                 <MapPin className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span>Boulevard Brown 1420 (Costanera frente al Golfo Nuevo), Puerto Madryn, Chubut</span>
+                <span>{businessProfile.address || 'Boulevard Brown 1420, Puerto Madryn, Chubut'}</span>
               </div>
               <div className="flex items-start gap-2">
                 <Clock className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                <span>Lunes a Domingos de 08:00 a 01:00 hs (Feriados inclusive)</span>
+                <span>Lunes a Domingos de 08:00 a 01:00 hs</span>
               </div>
             </div>
           </div>
@@ -104,17 +106,17 @@ export const Footer: React.FC<FooterProps> = ({ onOpenAdminLogin }) => {
             </h4>
             <div className="space-y-2 text-slate-400">
               <a 
-                href="https://wa.me/5492804567890?text=Hola%20DeportesPMY!%20Quiero%20hacer%20una%20consulta%20sobre%20turnos"
+                href={`https://wa.me/${cleanPhone}?text=Hola%20${encodeURIComponent(businessProfile.complexName || 'DeportesPMY')}!%20Quiero%20consultar%20por%20turnos`}
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center gap-2 text-emerald-400 hover:text-emerald-300 font-semibold"
               >
                 <MessageCircle className="w-4 h-4" />
-                <span>+54 9 280 456-7890 (Recepción)</span>
+                <span>{businessProfile.whatsappNumber || '+54 9 280 456-7890'}</span>
               </a>
               <div className="flex items-center gap-2">
                 <Mail className="w-4 h-4 text-slate-500 shrink-0" />
-                <span>reservas@deportespmy.com.ar</span>
+                <span>{businessProfile.email || 'reservas@deportespmy.com.ar'}</span>
               </div>
             </div>
 

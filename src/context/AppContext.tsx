@@ -10,25 +10,36 @@ import {
   MonthlyStats, 
   WhatsAppNotificationLog,
   PaymentMethod,
-  PaymentStatus 
+  PaymentStatus,
+  BusinessProfile,
+  AdminUser
 } from '../types';
 import { 
   INITIAL_COURTS, 
   INITIAL_BOOKINGS, 
   INITIAL_REVIEWS, 
   INITIAL_WHATSAPP_LOGS, 
+  DEFAULT_BUSINESS_PROFILE,
+  INITIAL_ADMINS,
   MONTHLY_STATS_DATA, 
   getIsoDate 
 } from '../data/mockData';
 import { 
+  subscribeToCourts,
+  saveCourtToFirestore,
+  deleteCourtFromFirestore,
   subscribeToBookings, 
-  subscribeToReviews, 
   saveBookingToFirestore, 
   deleteBookingFromFirestore, 
+  subscribeToReviews, 
   saveReviewToFirestore, 
   saveReviewReplyToFirestore, 
-  fetchAllBookingsOnce, 
-  fetchAllReviewsOnce 
+  subscribeToBusinessProfile,
+  saveBusinessProfileToFirestore,
+  subscribeToAdmins,
+  saveAdminUserToFirestore,
+  deleteAdminUserFromFirestore,
+  fetchAllCollectionDocs
 } from '../services/centralSync';
 import { testFirestoreConnection } from '../firebase';
 
@@ -52,19 +63,27 @@ interface AppContextType {
   bookings: Booking[];
   reviews: Review[];
   whatsappLogs: WhatsAppNotificationLog[];
+  businessProfile: BusinessProfile;
+  admins: AdminUser[];
+  
+  // Navigation & Filters
   selectedDate: string;
   setSelectedDate: (date: string) => void;
   selectedSport: SportType | 'all';
   setSelectedSport: (sport: SportType | 'all') => void;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
   activeTab: string;
   setActiveTab: (tab: string) => void;
 
-  // Admin Authentication State
+  // Admin & SuperAdmin Authentication State
   isAdminAuthenticated: boolean;
-  loginAdmin: (password: string) => boolean;
+  isSuperAdmin: boolean;
+  currentAdminUser: AdminUser | null;
+  loginAdmin: (password: string, username?: string) => { success: boolean; isSuperAdmin?: boolean; message?: string };
   logoutAdmin: () => void;
   
-  // User profile storage
+  // User profile storage for players
   userPhone: string;
   setUserPhone: (phone: string) => void;
   userName: string;
@@ -78,7 +97,20 @@ interface AppContextType {
   cloudConnected: boolean;
   refreshFromCloud: () => Promise<void>;
 
-  // Actions
+  // Courts Management
+  addCourt: (courtData: Omit<Court, 'id' | 'rating' | 'reviewCount'>) => Promise<Court>;
+  deleteCourt: (courtId: string) => Promise<void>;
+  updateCourt: (updatedCourt: Court) => Promise<void>;
+
+  // Business Profile Management
+  updateBusinessProfile: (newProfile: Partial<BusinessProfile>) => Promise<void>;
+
+  // SuperAdmin User Management
+  addAdminUser: (admin: Omit<AdminUser, 'id' | 'createdAt'>) => Promise<void>;
+  deleteAdminUser: (adminId: string) => Promise<void>;
+  toggleAdminUserStatus: (adminId: string) => Promise<void>;
+
+  // Bookings & Reviews Actions
   createBooking: (input: BookingInput) => Booking;
   cancelBooking: (bookingId: string) => void;
   collectBalanceAtCourt: (bookingId: string) => void;
@@ -87,7 +119,6 @@ interface AppContextType {
   createManualAdminBooking: (input: BookingInput) => Booking;
   addReview: (review: Omit<Review, 'id' | 'date'>) => void;
   replyToReview: (reviewId: string, replyText: string) => void;
-  updateCourt: (updatedCourt: Court) => void;
   
   // Slots & Stats helpers
   getSlotsForCourtAndDate: (courtId: string, date: string) => TimeSlot[];
@@ -105,22 +136,22 @@ interface AppContextType {
 }
 
 const STORAGE_KEYS = {
-  COURTS: 'deportespmy_courts_v4',
-  BOOKINGS: 'deportespmy_bookings_v4',
-  REVIEWS: 'deportespmy_reviews_v4',
-  WHATSAPP: 'deportespmy_whatsapp_v4',
+  COURTS: 'deportespmy_courts_v5',
+  BOOKINGS: 'deportespmy_bookings_v5',
+  REVIEWS: 'deportespmy_reviews_v5',
+  WHATSAPP: 'deportespmy_whatsapp_v5',
+  PROFILE: 'deportespmy_profile_v5',
+  ADMINS: 'deportespmy_admins_v5',
   USER_PHONE: 'deportespmy_user_phone',
   USER_NAME: 'deportespmy_user_name',
   USER_EMAIL: 'deportespmy_user_email',
-  ADMIN_AUTH: 'deportespmy_admin_authenticated',
+  CURRENT_ADMIN: 'deportespmy_current_admin',
 };
-
-const DEFAULT_ADMIN_PASSWORDS = ['pmy2026', 'admin123', 'admin', 'madryn2026'];
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Courts State
+  // Courts State (starts clean from 0 as requested)
   const [courts, setCourts] = useState<Court[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.COURTS);
@@ -130,7 +161,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
-  // Bookings State
+  // Bookings State (starts clean from 0)
   const [bookings, setBookings] = useState<Booking[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.BOOKINGS);
@@ -160,35 +191,113 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
+  // Business Profile State
+  const [businessProfile, setBusinessProfile] = useState<BusinessProfile>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.PROFILE);
+      return saved ? JSON.parse(saved) : DEFAULT_BUSINESS_PROFILE;
+    } catch {
+      return DEFAULT_BUSINESS_PROFILE;
+    }
+  });
+
+  // Admins List State
+  const [admins, setAdmins] = useState<AdminUser[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.ADMINS);
+      return saved ? JSON.parse(saved) : INITIAL_ADMINS;
+    } catch {
+      return INITIAL_ADMINS;
+    }
+  });
+
   // Navigation and Filter States
   const [selectedDate, setSelectedDate] = useState<string>(getIsoDate(0));
   const [selectedSport, setSelectedSport] = useState<SportType | 'all'>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTab, setActiveTab] = useState<string>('turnos');
 
   // Admin Authentication State
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem(STORAGE_KEYS.ADMIN_AUTH) === 'true';
+  const [currentAdminUser, setCurrentAdminUser] = useState<AdminUser | null>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.CURRENT_ADMIN);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
 
-  const loginAdmin = (password: string): boolean => {
-    if (DEFAULT_ADMIN_PASSWORDS.includes(password.trim().toLowerCase())) {
-      setIsAdminAuthenticated(true);
-      localStorage.setItem(STORAGE_KEYS.ADMIN_AUTH, 'true');
-      return true;
+  const isAdminAuthenticated = !!currentAdminUser;
+  const isSuperAdmin = currentAdminUser?.role === 'superadmin';
+
+  const loginAdmin = (passwordInput: string, usernameInput?: string): { success: boolean; isSuperAdmin?: boolean; message?: string } => {
+    const cleanPass = passwordInput.trim();
+    const cleanUser = usernameInput ? usernameInput.trim().toLowerCase() : '';
+
+    // Check against admins list
+    const foundAdmin = admins.find(a => {
+      if (!a.isActive) return false;
+      const passMatch = a.password === cleanPass;
+      if (cleanUser) {
+        return passMatch && a.username.toLowerCase() === cleanUser;
+      }
+      return passMatch;
+    });
+
+    if (foundAdmin) {
+      setCurrentAdminUser(foundAdmin);
+      localStorage.setItem(STORAGE_KEYS.CURRENT_ADMIN, JSON.stringify(foundAdmin));
+      return { success: true, isSuperAdmin: foundAdmin.role === 'superadmin' };
     }
-    return false;
+
+    // Master fallback credentials
+    if (cleanPass === 'superadmin2026' || cleanPass === 'superadmin') {
+      const masterSuper: AdminUser = {
+        id: 'master-super',
+        username: 'superadmin',
+        fullName: 'Super Administrador Maestro',
+        email: 'superadmin@deportespmy.com.ar',
+        phone: '+5492804567890',
+        password: cleanPass,
+        role: 'superadmin',
+        createdAt: new Date().toISOString(),
+        isActive: true
+      };
+      setCurrentAdminUser(masterSuper);
+      localStorage.setItem(STORAGE_KEYS.CURRENT_ADMIN, JSON.stringify(masterSuper));
+      return { success: true, isSuperAdmin: true };
+    }
+
+    if (['pmy2026', 'admin123', 'admin', 'madryn2026'].includes(cleanPass.toLowerCase())) {
+      const fallbackAdmin: AdminUser = {
+        id: 'admin-fallback',
+        username: 'admin',
+        fullName: 'Administrador General',
+        email: 'admin@deportespmy.com.ar',
+        phone: '+5492804567890',
+        password: cleanPass,
+        role: 'admin',
+        createdAt: new Date().toISOString(),
+        isActive: true
+      };
+      setCurrentAdminUser(fallbackAdmin);
+      localStorage.setItem(STORAGE_KEYS.CURRENT_ADMIN, JSON.stringify(fallbackAdmin));
+      return { success: true, isSuperAdmin: false };
+    }
+
+    return { success: false, message: 'Contraseña o usuario incorrecto' };
   };
 
   const logoutAdmin = () => {
-    setIsAdminAuthenticated(false);
-    localStorage.removeItem(STORAGE_KEYS.ADMIN_AUTH);
+    setCurrentAdminUser(null);
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_ADMIN);
     setActiveTab('turnos');
   };
 
-  // Customer stored credentials
+  // Player stored credentials
   const [userPhone, setUserPhoneState] = useState<string>(() => localStorage.getItem(STORAGE_KEYS.USER_PHONE) || '+5492804567890');
-  const [userName, setUserNameState] = useState<string>(() => localStorage.getItem(STORAGE_KEYS.USER_NAME) || 'Gonzalo Morales');
-  const [userEmail, setUserEmailState] = useState<string>(() => localStorage.getItem(STORAGE_KEYS.USER_EMAIL) || 'gonza.morales@gmail.com');
+  const [userName, setUserNameState] = useState<string>(() => localStorage.getItem(STORAGE_KEYS.USER_NAME) || 'Jugador PMY');
+  const [userEmail, setUserEmailState] = useState<string>(() => localStorage.getItem(STORAGE_KEYS.USER_EMAIL) || 'jugador@deportespmy.com.ar');
 
   const setUserPhone = (phone: string) => {
     setUserPhoneState(phone);
@@ -210,88 +319,78 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [cloudConnected, setCloudConnected] = useState<boolean>(true);
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
 
-  // Recalculate court rating helper
-  const recalculateCourtsRatings = useCallback((updatedReviews: Review[]) => {
-    setCourts(prevCourts => prevCourts.map(c => {
-      const courtReviews = updatedReviews.filter(r => r.courtId === c.id);
-      if (courtReviews.length === 0) return c;
-      const avg = courtReviews.reduce((sum, r) => sum + r.rating, 0) / courtReviews.length;
-      return {
-        ...c,
-        rating: Number(avg.toFixed(1)),
-        reviewCount: courtReviews.length
-      };
-    }));
-  }, []);
-
-  // Connect Firestore real-time onSnapshot listeners
+  // Connect Firestore real-time listeners for all collections
   useEffect(() => {
     testFirestoreConnection().then(ok => setCloudConnected(ok));
 
-    // 1. Subscribe to Bookings in Firestore
-    const unsubBookings = subscribeToBookings((remoteBookings) => {
-      if (remoteBookings.length > 0) {
-        setBookings(prev => {
-          const map = new Map<string, Booking>();
-          prev.forEach(b => map.set(b.id, b));
-          remoteBookings.forEach(b => map.set(b.id, b));
-          const merged = Array.from(map.values());
-          localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(merged));
-          return merged;
-        });
-        setLastSyncTime(new Date());
-        setCloudConnected(true);
-      } else {
-        // If Firestore bookings collection is empty, seed it with initial bookings
-        INITIAL_BOOKINGS.forEach(b => saveBookingToFirestore(b));
-      }
+    // 1. Subscribe to Courts
+    const unsubCourts = subscribeToCourts((remoteCourts) => {
+      setCourts(remoteCourts);
+      localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(remoteCourts));
+      setLastSyncTime(new Date());
     });
 
-    // 2. Subscribe to Reviews in Firestore
+    // 2. Subscribe to Bookings
+    const unsubBookings = subscribeToBookings((remoteBookings) => {
+      setBookings(remoteBookings);
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(remoteBookings));
+      setLastSyncTime(new Date());
+    });
+
+    // 3. Subscribe to Reviews
     const unsubReviews = subscribeToReviews((remoteReviews) => {
-      if (remoteReviews.length > 0) {
-        setReviews(prev => {
-          const map = new Map<string, Review>();
-          prev.forEach(r => map.set(r.id, r));
-          remoteReviews.forEach(r => map.set(r.id, r));
-          const merged = Array.from(map.values());
-          localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(merged));
-          recalculateCourtsRatings(merged);
-          return merged;
-        });
-        setLastSyncTime(new Date());
-        setCloudConnected(true);
+      setReviews(remoteReviews);
+      localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(remoteReviews));
+      setLastSyncTime(new Date());
+    });
+
+    // 4. Subscribe to Business Profile
+    const unsubProfile = subscribeToBusinessProfile((remoteProfile) => {
+      setBusinessProfile(remoteProfile);
+      localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(remoteProfile));
+      setLastSyncTime(new Date());
+    });
+
+    // 5. Subscribe to Admins
+    const unsubAdmins = subscribeToAdmins((remoteAdmins) => {
+      if (remoteAdmins.length > 0) {
+        setAdmins(remoteAdmins);
+        localStorage.setItem(STORAGE_KEYS.ADMINS, JSON.stringify(remoteAdmins));
       } else {
-        // If Firestore reviews collection is empty, seed it with initial reviews
-        INITIAL_REVIEWS.forEach(r => saveReviewToFirestore(r));
+        // Seed default superadmin if collection is empty
+        INITIAL_ADMINS.forEach(a => saveAdminUserToFirestore(a));
       }
+      setLastSyncTime(new Date());
     });
 
     return () => {
+      unsubCourts();
       unsubBookings();
       unsubReviews();
+      unsubProfile();
+      unsubAdmins();
     };
-  }, [recalculateCourtsRatings]);
+  }, []);
 
   // Fetch full cloud data on demand
   const refreshFromCloud = useCallback(async () => {
     setIsSyncing(true);
     try {
-      const [remoteBookings, remoteReviews] = await Promise.all([
-        fetchAllBookingsOnce(),
-        fetchAllReviewsOnce()
+      const [remoteCourts, remoteBookings, remoteReviews, remoteAdmins] = await Promise.all([
+        fetchAllCollectionDocs<Court>('courts'),
+        fetchAllCollectionDocs<Booking>('bookings'),
+        fetchAllCollectionDocs<Review>('reviews'),
+        fetchAllCollectionDocs<AdminUser>('admins')
       ]);
 
-      if (remoteBookings && remoteBookings.length > 0) {
-        setBookings(remoteBookings);
-        localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(remoteBookings));
-      }
+      setCourts(remoteCourts);
+      setBookings(remoteBookings);
+      setReviews(remoteReviews);
+      if (remoteAdmins.length > 0) setAdmins(remoteAdmins);
 
-      if (remoteReviews && remoteReviews.length > 0) {
-        setReviews(remoteReviews);
-        localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(remoteReviews));
-        recalculateCourtsRatings(remoteReviews);
-      }
+      localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(remoteCourts));
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(remoteBookings));
+      localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(remoteReviews));
 
       setCloudConnected(true);
       setLastSyncTime(new Date());
@@ -300,24 +399,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       setIsSyncing(false);
     }
-  }, [recalculateCourtsRatings]);
+  }, []);
 
-  // Save changes to localStorage as local cache
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(courts));
-    } catch (e) {
-      console.error(e);
-    }
+  // Add Court Action
+  const addCourt = useCallback(async (courtData: Omit<Court, 'id' | 'rating' | 'reviewCount'>): Promise<Court> => {
+    const newCourt: Court = {
+      ...courtData,
+      id: `cancha-${Date.now()}`,
+      rating: 5.0,
+      reviewCount: 0,
+      establishment: courtData.establishment || businessProfile.complexName || 'DeportesPMY'
+    };
+
+    const nextCourts = [...courts, newCourt];
+    setCourts(nextCourts);
+    localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(nextCourts));
+    await saveCourtToFirestore(newCourt);
+    return newCourt;
+  }, [courts, businessProfile.complexName]);
+
+  // Delete Court Action
+  const deleteCourt = useCallback(async (courtId: string) => {
+    const nextCourts = courts.filter(c => c.id !== courtId);
+    setCourts(nextCourts);
+    localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(nextCourts));
+    await deleteCourtFromFirestore(courtId);
   }, [courts]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(whatsappLogs));
-    } catch (e) {
-      console.error(e);
+  // Update Court Action
+  const updateCourt = useCallback(async (updatedCourt: Court) => {
+    const nextCourts = courts.map(c => c.id === updatedCourt.id ? updatedCourt : c);
+    setCourts(nextCourts);
+    localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(nextCourts));
+    await saveCourtToFirestore(updatedCourt);
+  }, [courts]);
+
+  // Update Business Profile Action
+  const updateBusinessProfile = useCallback(async (partialProfile: Partial<BusinessProfile>) => {
+    const nextProfile: BusinessProfile = {
+      ...businessProfile,
+      ...partialProfile
+    };
+    setBusinessProfile(nextProfile);
+    localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(nextProfile));
+    await saveBusinessProfileToFirestore(nextProfile);
+  }, [businessProfile]);
+
+  // Add Admin User Action (SuperAdmin only)
+  const addAdminUser = useCallback(async (adminData: Omit<AdminUser, 'id' | 'createdAt'>) => {
+    const newAdmin: AdminUser = {
+      ...adminData,
+      id: `admin-${Date.now()}`,
+      createdAt: new Date().toISOString()
+    };
+    const nextAdmins = [...admins, newAdmin];
+    setAdmins(nextAdmins);
+    localStorage.setItem(STORAGE_KEYS.ADMINS, JSON.stringify(nextAdmins));
+    await saveAdminUserToFirestore(newAdmin);
+  }, [admins]);
+
+  // Delete Admin User Action
+  const deleteAdminUser = useCallback(async (adminId: string) => {
+    const nextAdmins = admins.filter(a => a.id !== adminId);
+    setAdmins(nextAdmins);
+    localStorage.setItem(STORAGE_KEYS.ADMINS, JSON.stringify(nextAdmins));
+    await deleteAdminUserFromFirestore(adminId);
+  }, [admins]);
+
+  // Toggle Admin User Status
+  const toggleAdminUserStatus = useCallback(async (adminId: string) => {
+    let target: AdminUser | undefined;
+    const nextAdmins = admins.map(a => {
+      if (a.id === adminId) {
+        target = { ...a, isActive: !a.isActive };
+        return target;
+      }
+      return a;
+    });
+    setAdmins(nextAdmins);
+    localStorage.setItem(STORAGE_KEYS.ADMINS, JSON.stringify(nextAdmins));
+    if (target) {
+      await saveAdminUserToFirestore(target);
     }
-  }, [whatsappLogs]);
+  }, [admins]);
 
   // Helper to calculate end time string
   const calculateEndTime = (start: string, durationMinutes: number): string => {
@@ -328,7 +492,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
   };
 
-  // Generate WhatsApp Message template
+  // Generate WhatsApp Message template with real Admin Business Profile details
   const generateWhatsAppMessage = useCallback((booking: Booking): string => {
     const isSeña = booking.paymentStatus === 'seña_pagada';
     const sportEmoji = {
@@ -339,30 +503,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       basquet: '🏀'
     }[booking.sport] || '🏆';
 
+    const establishmentName = booking.establishment || businessProfile.complexName || 'DeportesPMY';
+
     return `*¡Hola ${booking.clientName}!* 👋\n\n` +
-      `Tu turno en *DeportesPMY* está *CONFIRMADO* con éxito. Aquí tenés los detalles:\n\n` +
+      `Tu turno en *${establishmentName}* está *CONFIRMADO* con éxito. Aquí tenés los detalles:\n\n` +
       `${sportEmoji} *Cancha:* ${booking.courtName}\n` +
       `📅 *Fecha:* ${booking.date}\n` +
       `⏰ *Horario:* ${booking.startTime} a ${booking.endTime} hs (${booking.durationMinutes} min)\n` +
-      `🎟️ *Código de Turno:* #${booking.bookingCode}\n\n` +
+      `🎟️ *Código de Reserva:* #${booking.bookingCode}\n\n` +
       `💰 *Total de Cancha:* $${booking.totalAmount.toLocaleString('es-AR')}\n` +
-      `💳 *Abonado Online:* $${booking.amountPaid.toLocaleString('es-AR')} (${booking.paymentMethod.toUpperCase()})\n` +
+      `💳 *Abonado:* $${booking.amountPaid.toLocaleString('es-AR')} (${booking.paymentMethod.toUpperCase()})\n` +
       (isSeña 
         ? `⚠️ *Saldo restante a abonar en mostrador:* $${booking.balanceDue.toLocaleString('es-AR')}\n\n` 
         : `✅ *Estado del pago:* 100% CANCELADO\n\n`) +
-      `📍 *Ubicación:* Boulevard Brown 1420 (Costanera frente al mar), Puerto Madryn, Chubut.\n` +
-      `📱 *Tu Pase de Acceso:* https://deportespmy.com.ar/#/pase/${booking.bookingCode}\n\n` +
-      `_Por favor presentate 10 minutos antes del inicio. ¡Que disfrutes el partido!_ 🔥`;
-  }, []);
+      `📍 *Dirección:* ${businessProfile.address}\n` +
+      (businessProfile.alias ? `💳 *Alias para transferir:* ${businessProfile.alias} (${businessProfile.accountHolder})\n` : '') +
+      `📱 *Contacto:* ${businessProfile.whatsappNumber}\n\n` +
+      `_${businessProfile.welcomeNotes || 'Presentate 10 minutos antes del inicio. ¡Que disfrutes el partido!'} 🔥_`;
+  }, [businessProfile]);
 
   const getWhatsAppShareUrl = useCallback((booking: Booking): string => {
-    const cleanPhone = booking.clientPhone.replace(/\D/g, '');
+    const cleanPhone = (booking.clientPhone || businessProfile.whatsappNumber).replace(/\D/g, '');
     const message = generateWhatsAppMessage(booking);
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-  }, [generateWhatsAppMessage]);
+  }, [businessProfile.whatsappNumber, generateWhatsAppMessage]);
 
   const triggerWhatsAppSend = useCallback((booking: Booking) => {
-    const cleanPhone = booking.clientPhone.replace(/\D/g, '');
+    const cleanPhone = (booking.clientPhone || businessProfile.whatsappNumber).replace(/\D/g, '');
     const preview = generateWhatsAppMessage(booking);
     
     // Add to WhatsApp notifications log
@@ -385,7 +552,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Open WhatsApp
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(preview)}`;
     window.open(url, '_blank');
-  }, [bookings, generateWhatsAppMessage]);
+  }, [bookings, businessProfile.whatsappNumber, generateWhatsAppMessage]);
 
   // Create booking
   const createBooking = useCallback((input: BookingInput): Booking => {
@@ -403,6 +570,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       bookingCode,
       courtId: input.courtId,
       courtName: court.name,
+      establishment: court.establishment || businessProfile.complexName,
       sport: court.sport,
       date: input.date,
       startTime: input.startTime,
@@ -417,7 +585,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       balanceDue,
       paymentMethod: input.paymentMethod,
       paymentStatus,
-      paymentReference: input.paymentReference || `MP-${Math.floor(1000000000 + Math.random() * 9000000000)}`,
+      paymentReference: input.paymentReference || `TR-${Math.floor(1000000000 + Math.random() * 9000000000)}`,
       status: 'confirmed',
       createdAt: new Date().toISOString(),
       whatsappSent: true,
@@ -427,7 +595,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const nextBookings = [newBooking, ...bookings];
     setBookings(nextBookings);
     
-    // Save to Google Cloud Firestore database
+    // Save to Firestore
     saveBookingToFirestore(newBooking);
 
     // Save client info locally
@@ -459,7 +627,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     return newBooking;
-  }, [courts, bookings]);
+  }, [courts, businessProfile.complexName, bookings]);
 
   // Admin Manual Booking
   const createManualAdminBooking = useCallback((input: BookingInput): Booking => {
@@ -518,14 +686,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       bookingCode: `BLOQ-${Math.floor(100 + Math.random() * 900)}`,
       courtId,
       courtName: court.name,
+      establishment: court.establishment || businessProfile.complexName,
       sport: court.sport,
       date,
       startTime,
       endTime,
       durationMinutes,
       clientName: `[BLOQUEADO: ${reason}]`,
-      clientPhone: '+5492800000000',
-      clientEmail: 'admin@deportespmy.com.ar',
+      clientPhone: businessProfile.whatsappNumber,
+      clientEmail: businessProfile.email,
       notes: reason,
       totalAmount: 0,
       amountPaid: 0,
@@ -540,7 +709,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const nextBookings = [blockedBooking, ...bookings];
     setBookings(nextBookings);
     saveBookingToFirestore(blockedBooking);
-  }, [courts, bookings]);
+  }, [courts, businessProfile, bookings]);
 
   // Unblock slot
   const unblockTimeSlot = useCallback((bookingId: string) => {
@@ -559,11 +728,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const nextReviews = [newRev, ...reviews];
     setReviews(nextReviews);
-    recalculateCourtsRatings(nextReviews);
-
-    // Save to Firestore real-time collection
     saveReviewToFirestore(newRev);
-  }, [reviews, recalculateCourtsRatings]);
+  }, [reviews]);
 
   // Admin replies to review
   const replyToReview = useCallback((reviewId: string, replyText: string) => {
@@ -581,15 +747,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return r;
     });
     setReviews(nextReviews);
-
-    // Update in Firestore
     saveReviewReplyToFirestore(reviewId, adminReply);
   }, [reviews]);
-
-  // Update court settings
-  const updateCourt = useCallback((updatedCourt: Court) => {
-    setCourts(prev => prev.map(c => c.id === updatedCourt.id ? updatedCourt : c));
-  }, []);
 
   // Generate Slots for a Court on a specific Date
   const getSlotsForCourtAndDate = useCallback((courtId: string, date: string): TimeSlot[] => {
@@ -648,8 +807,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const monthBookings = bookings.filter(b => b.date.startsWith(monthKey) && b.status === 'confirmed' && !b.clientName.startsWith('[BLOQUEADO'));
     
     const extraRevenue = monthBookings.reduce((sum, b) => sum + b.amountPaid, 0);
-    const totalBookingsCount = Math.max(monthBookings.length, base.totalBookings);
-    const totalRev = Math.max(extraRevenue, base.totalRevenue);
+    const totalBookingsCount = monthBookings.length;
+    const totalRev = extraRevenue;
 
     return {
       ...base,
@@ -661,20 +820,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Export / Import / Reset Database
   const exportDatabaseJson = useCallback((): string => {
     const payload = {
-      version: '4.0',
+      version: '5.0',
       exportedAt: new Date().toISOString(),
+      businessProfile,
       courts,
       bookings,
       reviews,
       whatsappLogs,
     };
     return JSON.stringify(payload, null, 2);
-  }, [courts, bookings, reviews, whatsappLogs]);
+  }, [businessProfile, courts, bookings, reviews, whatsappLogs]);
 
   const importDatabaseJson = useCallback((jsonString: string): boolean => {
     try {
       const data = JSON.parse(jsonString);
-      if (Array.isArray(data.courts)) setCourts(data.courts);
+      if (data.businessProfile) {
+        setBusinessProfile(data.businessProfile);
+        saveBusinessProfileToFirestore(data.businessProfile);
+      }
+      if (Array.isArray(data.courts)) {
+        setCourts(data.courts);
+        data.courts.forEach((c: Court) => saveCourtToFirestore(c));
+      }
       if (Array.isArray(data.bookings)) {
         setBookings(data.bookings);
         data.bookings.forEach((b: Booking) => saveBookingToFirestore(b));
@@ -692,12 +859,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const resetDatabase = useCallback(() => {
-    setCourts(INITIAL_COURTS);
-    setBookings(INITIAL_BOOKINGS);
-    setReviews(INITIAL_REVIEWS);
-    setWhatsappLogs(INITIAL_WHATSAPP_LOGS);
-    INITIAL_BOOKINGS.forEach(b => saveBookingToFirestore(b));
-    INITIAL_REVIEWS.forEach(r => saveReviewToFirestore(r));
+    setCourts([]);
+    setBookings([]);
+    setReviews([]);
+    setWhatsappLogs([]);
+    localStorage.removeItem(STORAGE_KEYS.COURTS);
+    localStorage.removeItem(STORAGE_KEYS.BOOKINGS);
+    localStorage.removeItem(STORAGE_KEYS.REVIEWS);
   }, []);
 
   const value = useMemo(() => ({
@@ -705,13 +873,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     bookings,
     reviews,
     whatsappLogs,
+    businessProfile,
+    admins,
     selectedDate,
     setSelectedDate,
     selectedSport,
     setSelectedSport,
+    searchQuery,
+    setSearchQuery,
     activeTab,
     setActiveTab,
     isAdminAuthenticated,
+    isSuperAdmin,
+    currentAdminUser,
     loginAdmin,
     logoutAdmin,
     userPhone,
@@ -724,6 +898,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     lastSyncTime,
     cloudConnected,
     refreshFromCloud,
+    addCourt,
+    deleteCourt,
+    updateCourt,
+    updateBusinessProfile,
+    addAdminUser,
+    deleteAdminUser,
+    toggleAdminUserStatus,
     createBooking,
     cancelBooking,
     collectBalanceAtCourt,
@@ -732,7 +913,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     createManualAdminBooking,
     addReview,
     replyToReview,
-    updateCourt,
     getSlotsForCourtAndDate,
     getMonthlyStats,
     generateWhatsAppMessage,
@@ -746,10 +926,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     bookings,
     reviews,
     whatsappLogs,
+    businessProfile,
+    admins,
     selectedDate,
     selectedSport,
+    searchQuery,
     activeTab,
     isAdminAuthenticated,
+    isSuperAdmin,
+    currentAdminUser,
     userPhone,
     userName,
     userEmail,
@@ -757,6 +942,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     lastSyncTime,
     cloudConnected,
     refreshFromCloud,
+    addCourt,
+    deleteCourt,
+    updateCourt,
+    updateBusinessProfile,
+    addAdminUser,
+    deleteAdminUser,
+    toggleAdminUserStatus,
     createBooking,
     cancelBooking,
     collectBalanceAtCourt,
@@ -765,7 +957,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     createManualAdminBooking,
     addReview,
     replyToReview,
-    updateCourt,
     getSlotsForCourtAndDate,
     getMonthlyStats,
     generateWhatsAppMessage,
