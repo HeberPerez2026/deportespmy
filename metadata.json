@@ -1,0 +1,6 @@
+{
+  "name": "DeportesPMY - Gestión y Reservas de Turnos Deportivos",
+  "description": "Plataforma de reserva y gestión de turnos para canchas de fútbol, pádel, tenis y básquet con pagos online, notificaciones por WhatsApp, estadísticas mensuales y panel para usuarios y administradores.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

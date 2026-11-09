@@ -1,0 +1,765 @@
+import React, { useState } from 'react';
+import { useApp } from '../context/AppContext';
+import { Court, PaymentMethod, Booking } from '../types';
+import { 
+  X, 
+  Calendar, 
+  Clock, 
+  User, 
+  Phone, 
+  Mail, 
+  CreditCard, 
+  ShieldCheck, 
+  CheckCircle, 
+  MessageCircle, 
+  QrCode, 
+  ArrowRight, 
+  ArrowLeft,
+  Sparkles,
+  Info,
+  Copy,
+  Check
+} from 'lucide-react';
+
+interface BookingModalProps {
+  court: Court;
+  initialSlotTime?: string;
+  onClose: () => void;
+}
+
+export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTime, onClose }) => {
+  const { 
+    selectedDate, 
+    setSelectedDate,
+    getSlotsForCourtAndDate, 
+    createBooking,
+    generateWhatsAppMessage,
+    getWhatsAppShareUrl,
+    triggerWhatsAppSend,
+    userPhone,
+    userName,
+    userEmail,
+    setActiveTab
+  } = useApp();
+
+  // Multi-step state: 1 (Turno) -> 2 (Datos) -> 3 (Pago Online) -> 4 (Confirmado)
+  const [step, setStep] = useState<number>(initialSlotTime ? 2 : 1);
+  const [selectedSlotTime, setSelectedSlotTime] = useState<string>(initialSlotTime || '19:00');
+  const [durationMinutes, setDurationMinutes] = useState<number>(court.sport === 'padel' || court.sport === 'tenis' ? 90 : 60);
+  
+  // Client input states
+  const [name, setName] = useState(userName || '');
+  const [phone, setPhone] = useState(userPhone || '+5492804567890');
+  const [email, setEmail] = useState(userEmail || 'jugador@gmail.com');
+  const [notes, setNotes] = useState('');
+
+  // Payment states
+  const [paymentOption, setPaymentOption] = useState<'deposit' | 'full'>('deposit');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mercadopago');
+  const [cardNumber, setCardNumber] = useState('4509 2384 1920 3821');
+  const [cardExpiry, setCardExpiry] = useState('08/29');
+  const [cardCvv, setCardCvv] = useState('841');
+  const [cardHolder, setCardHolder] = useState(userName || 'Gonzalo Morales');
+  const [transferRef, setTransferRef] = useState('');
+
+  // Processing & Created Booking
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
+  const [copiedMessage, setCopiedMessage] = useState(false);
+
+  // Available slots for selected date
+  const slots = getSlotsForCourtAndDate(court.id, selectedDate);
+  const hourNum = parseInt(selectedSlotTime.split(':')[0], 10);
+  const isNight = hourNum >= 18;
+  const baseHourlyPrice = isNight ? court.hourlyRateNight : court.hourlyRateDay;
+  const totalPrice = durationMinutes === 90 ? Math.round(baseHourlyPrice * 1.5) : baseHourlyPrice;
+  const depositAmount = Math.round(totalPrice * (court.depositRequired / 100));
+  const amountToPayNow = paymentOption === 'deposit' ? depositAmount : totalPrice;
+  const balanceDue = totalPrice - amountToPayNow;
+
+  // Handle Booking submission
+  const handleConfirmAndPay = () => {
+    setIsProcessing(true);
+
+    setTimeout(() => {
+      try {
+        const newBooking = createBooking({
+          courtId: court.id,
+          date: selectedDate,
+          startTime: selectedSlotTime,
+          durationMinutes,
+          clientName: name,
+          clientPhone: phone,
+          clientEmail: email,
+          notes,
+          totalAmount: totalPrice,
+          isDepositOnly: paymentOption === 'deposit',
+          paymentMethod,
+          paymentReference: paymentMethod === 'transferencia' ? (transferRef || 'TRF-PROV-9921') : undefined,
+        });
+
+        setConfirmedBooking(newBooking);
+        setStep(4);
+      } catch (err) {
+        alert('Error al crear la reserva: ' + (err as Error).message);
+      } finally {
+        setIsProcessing(false);
+      }
+    }, 1200);
+  };
+
+  const copyWhatsAppText = () => {
+    if (!confirmedBooking) return;
+    const msg = generateWhatsAppMessage(confirmedBooking);
+    navigator.clipboard.writeText(msg);
+    setCopiedMessage(true);
+    setTimeout(() => setCopiedMessage(false), 2000);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+      <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl text-slate-100 overflow-hidden my-8">
+        
+        {/* Modal Top Header */}
+        <div className="flex items-center justify-between px-6 py-4 bg-slate-950/80 border-b border-slate-800">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                Reserva Online • DeportesPMY
+              </span>
+              <span className="text-slate-600">•</span>
+              <span className="text-xs text-slate-400 font-mono">deportespmy.com.ar</span>
+            </div>
+            <h2 className="text-lg font-bold text-white font-heading">
+              {court.name}
+            </h2>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Multi-step progress bar */}
+        {step < 4 && (
+          <div className="px-6 py-3 bg-slate-950/40 border-b border-slate-800/80 flex items-center justify-between text-xs">
+            <div className={`flex items-center gap-1.5 ${step >= 1 ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${step >= 1 ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800'}`}>1</span>
+              <span>Horario</span>
+            </div>
+            <div className="w-8 h-0.5 bg-slate-800" />
+            <div className={`flex items-center gap-1.5 ${step >= 2 ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${step >= 2 ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800'}`}>2</span>
+              <span>Tus Datos</span>
+            </div>
+            <div className="w-8 h-0.5 bg-slate-800" />
+            <div className={`flex items-center gap-1.5 ${step >= 3 ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${step >= 3 ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800'}`}>3</span>
+              <span>Pago Seguro</span>
+            </div>
+          </div>
+        )}
+
+        <div className="p-6">
+          
+          {/* STEP 1: Select Slot & Duration */}
+          {step === 1 && (
+            <div className="space-y-6">
+              
+              {/* Date & Duration Pickers */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Fecha
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      value={selectedDate}
+                      onChange={(e) => setSelectedDate(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Duración del Turno
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDurationMinutes(60)}
+                      className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all ${
+                        durationMinutes === 60 
+                          ? 'bg-emerald-500 text-slate-950 border-emerald-400' 
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-750'
+                      }`}
+                    >
+                      60 Minutos (1h)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDurationMinutes(90)}
+                      className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all ${
+                        durationMinutes === 90 
+                          ? 'bg-emerald-500 text-slate-950 border-emerald-400' 
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-750'
+                      }`}
+                    >
+                      90 Minutos (1.5h)
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Time Slots Grid */}
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                  <span>Horarios Disponibles para {selectedDate}</span>
+                  <span className="text-[11px] font-normal text-emerald-400">Verde = Libre</span>
+                </label>
+
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-60 overflow-y-auto pr-1">
+                  {slots.map((slot) => {
+                    const isAvailable = slot.status === 'available';
+                    const isSelected = selectedSlotTime === slot.startTime;
+                    const slotHour = parseInt(slot.startTime.split(':')[0], 10);
+                    const isNightSlot = slotHour >= 18;
+
+                    return (
+                      <button
+                        key={slot.id}
+                        type="button"
+                        disabled={!isAvailable}
+                        onClick={() => setSelectedSlotTime(slot.startTime)}
+                        className={`p-2.5 rounded-xl text-center border text-xs font-semibold transition-all relative ${
+                          !isAvailable
+                            ? 'bg-slate-800/40 text-slate-600 border-slate-800 cursor-not-allowed line-through'
+                            : isSelected
+                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold shadow-md shadow-emerald-500/20'
+                            : 'bg-slate-800/90 text-slate-200 border-slate-700/80 hover:border-emerald-500/60 hover:bg-slate-750'
+                        }`}
+                      >
+                        <div className="text-sm font-bold">{slot.startTime}</div>
+                        <div className="text-[10px] opacity-80">
+                          {isAvailable ? `$${(durationMinutes === 90 ? Math.round(slot.price * 1.5) : slot.price).toLocaleString('es-AR')}` : 'Ocupado'}
+                        </div>
+                        {isNightSlot && isAvailable && (
+                          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400" title="Tarifa nocturna con luz" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Court Amenities Summary */}
+              <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 flex items-center justify-between text-xs text-slate-300">
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  {court.surface} • {court.isIndoor ? 'Techada' : 'Al aire libre'}
+                </span>
+                <span className="font-bold text-emerald-300">
+                  Total: ${totalPrice.toLocaleString('es-AR')}
+                </span>
+              </div>
+
+              {/* Step 1 Actions */}
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-emerald-500/20"
+                >
+                  <span>Continuar con Datos</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+
+            </div>
+          )}
+
+          {/* STEP 2: Client Info & WhatsApp Phone */}
+          {step === 2 && (
+            <div className="space-y-4">
+              
+              <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-start gap-2.5">
+                <MessageCircle className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+                <div>
+                  <p className="font-bold">Notificación Automática por WhatsApp</p>
+                  <p className="text-slate-300 mt-0.5">
+                    Al confirmar, el sistema generará y enviará inmediatamente el comprobante con código QR y detalles del partido a tu número de WhatsApp.
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-emerald-400" />
+                  Nombre Completo del Titular
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: Gonzalo Morales"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-emerald-400" />
+                  Celular WhatsApp (Con código de área)
+                </label>
+                <input
+                  type="tel"
+                  required
+                  placeholder="+5492804567890"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono"
+                />
+                <span className="text-[11px] text-slate-500 mt-1 block">
+                  Ejemplo Puerto Madryn: +54 9 280 456-7890
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-emerald-400" />
+                  Email (Para comprobante electrónico)
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="tuemail@gmail.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1">
+                  Notas o Solicitudes Adicionales (Opcional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Ej: Necesitamos 10 chalecos, paletas de pádel o reserva de parrilla post-partido..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
+                />
+              </div>
+
+              {/* Step 2 Actions */}
+              <div className="flex justify-between pt-3">
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Volver</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={!name.trim() || !phone.trim()}
+                  onClick={() => setStep(3)}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-sm flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-emerald-500/20"
+                >
+                  <span>Ir a Pago Online</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+
+            </div>
+          )}
+
+          {/* STEP 3: Online Payment Checkout */}
+          {step === 3 && (
+            <div className="space-y-5">
+              
+              {/* Payment Split Option (50% Seña vs 100% Total) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                  Modalidad de Pago Online
+                </label>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentOption('deposit')}
+                    className={`p-3.5 rounded-2xl border text-left transition-all ${
+                      paymentOption === 'deposit'
+                        ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-md'
+                        : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-750'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase text-emerald-400">Seña 50%</span>
+                      <span className="text-sm font-extrabold text-white">${depositAmount.toLocaleString('es-AR')}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Abonás la mitad ahora y el saldo restante de ${depositAmount.toLocaleString('es-AR')} en la cancha antes de jugar.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentOption('full')}
+                    className={`p-3.5 rounded-2xl border text-left transition-all ${
+                      paymentOption === 'full'
+                        ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-md'
+                        : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-750'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase text-emerald-400">Pago Total 100%</span>
+                      <span className="text-sm font-extrabold text-white">${totalPrice.toLocaleString('es-AR')}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Dejás la cancha 100% cancelada. Llegás al complejo y pasás directo a jugar.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Payment Method Selector */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                  Seleccionar Medio de Pago
+                </label>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('mercadopago')}
+                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center gap-1 ${
+                      paymentMethod === 'mercadopago'
+                        ? 'bg-sky-500/20 border-sky-400 text-sky-300 font-bold'
+                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750'
+                    }`}
+                  >
+                    <span className="text-xs">💙 Mercado Pago</span>
+                    <span className="text-[10px] text-slate-400">QR o Saldo MP</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('tarjeta')}
+                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center gap-1 ${
+                      paymentMethod === 'tarjeta'
+                        ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 font-bold'
+                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750'
+                    }`}
+                  >
+                    <CreditCard className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs">Tarjeta Débito/Crédito</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('transferencia')}
+                    className={`p-2.5 rounded-xl border text-center transition-all flex flex-col items-center gap-1 ${
+                      paymentMethod === 'transferencia'
+                        ? 'bg-amber-500/20 border-amber-400 text-amber-300 font-bold'
+                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750'
+                    }`}
+                  >
+                    <span className="text-xs">🏦 Transferencia</span>
+                    <span className="text-[10px] text-slate-400">Alias o CBU</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Method Specific Form Details */}
+              {paymentMethod === 'mercadopago' && (
+                <div className="p-4 bg-sky-950/30 border border-sky-800/60 rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-sky-300">Mercado Pago Checkout Pro</span>
+                    <span className="text-[10px] bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full font-bold">Acreditación Inmediata</span>
+                  </div>
+                  <p className="text-xs text-slate-300">
+                    Al confirmar, se procesará el cargo seguro de <strong className="text-white">${amountToPayNow.toLocaleString('es-AR')}</strong> con tu cuenta o tarjeta asociada a Mercado Pago.
+                  </p>
+                  <div className="flex items-center gap-3 p-2.5 bg-slate-900 rounded-xl border border-slate-800 text-xs text-slate-300">
+                    <QrCode className="w-8 h-8 text-sky-400 shrink-0" />
+                    <div>
+                      <span className="font-bold text-white block">Checkout integrado DeportesPMY</span>
+                      <span className="text-[11px] text-slate-400">Genera confirmación instantánea con webhook oficial</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {paymentMethod === 'tarjeta' && (
+                <div className="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl space-y-3 text-xs">
+                  <div>
+                    <label className="block text-slate-400 mb-1">Número de Tarjeta</label>
+                    <input
+                      type="text"
+                      value={cardNumber}
+                      onChange={(e) => setCardNumber(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-sm"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-400 mb-1">Vencimiento</label>
+                      <input
+                        type="text"
+                        value={cardExpiry}
+                        onChange={(e) => setCardExpiry(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 mb-1">CVV / CVC</label>
+                      <input
+                        type="password"
+                        maxLength={4}
+                        value={cardCvv}
+                        onChange={(e) => setCardCvv(e.target.value)}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1">Nombre en la Tarjeta</label>
+                    <input
+                      type="text"
+                      value={cardHolder}
+                      onChange={(e) => setCardHolder(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {paymentMethod === 'transferencia' && (
+                <div className="p-4 bg-amber-950/25 border border-amber-800/50 rounded-2xl space-y-2.5 text-xs">
+                  <div className="flex justify-between items-center text-amber-300 font-bold">
+                    <span>Datos Bancarios Oficiales</span>
+                    <span className="text-[10px] bg-amber-500/20 px-2 py-0.5 rounded-full">Banco del Chubut</span>
+                  </div>
+                  
+                  <div className="space-y-1 text-slate-300 bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                    <div><strong>Alias:</strong> <span className="font-mono text-emerald-400">DEPORTES.PMY.MP</span></div>
+                    <div><strong>CBU:</strong> <span className="font-mono text-slate-200">0830006501002938472910</span></div>
+                    <div><strong>Titular:</strong> Deportes PMY SRL (CUIT 30-71649201-9)</div>
+                    <div><strong>Monto a Transferir:</strong> <span className="text-white font-bold">${amountToPayNow.toLocaleString('es-AR')}</span></div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-400 mb-1">Nº de Operación / Comprobante (Opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="Ej: TRF-98231 o últimos 4 dígitos"
+                      value={transferRef}
+                      onChange={(e) => setTransferRef(e.target.value)}
+                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-sm font-mono"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Order summary breakdown */}
+              <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800/80 space-y-1.5 text-xs text-slate-300">
+                <div className="flex justify-between">
+                  <span>Turno: {selectedDate} ({selectedSlotTime} hs)</span>
+                  <span className="text-slate-400">{durationMinutes} min</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Valor Cancha:</span>
+                  <span>${totalPrice.toLocaleString('es-AR')}</span>
+                </div>
+                <div className="flex justify-between text-emerald-400 font-bold pt-1 border-t border-slate-800">
+                  <span>A Pagar Ahora ({paymentOption === 'deposit' ? 'Seña 50%' : 'Total 100%'}):</span>
+                  <span className="text-base">${amountToPayNow.toLocaleString('es-AR')}</span>
+                </div>
+                {balanceDue > 0 && (
+                  <div className="flex justify-between text-[11px] text-amber-300">
+                    <span>Saldo a pagar en cancha:</span>
+                    <span>${balanceDue.toLocaleString('es-AR')}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Step 3 Actions */}
+              <div className="flex justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Volver</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isProcessing}
+                  onClick={handleConfirmAndPay}
+                  className="px-8 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-black text-sm flex items-center gap-2 transition-all cursor-pointer shadow-xl shadow-emerald-500/25"
+                >
+                  {isProcessing ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                      <span>Procesando Pago Seguro...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Pagar y Confirmar Reserva</span>
+                      <ShieldCheck className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </div>
+          )}
+
+          {/* STEP 4: Success & Automated WhatsApp Confirmation */}
+          {step === 4 && confirmedBooking && (
+            <div className="space-y-6 text-center py-2">
+              
+              <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+                <CheckCircle className="w-10 h-10" />
+              </div>
+
+              <div>
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                  ¡Reserva Exitosa y Pago Acreditado!
+                </span>
+                <h3 className="text-2xl font-black text-white font-heading mt-1">
+                  Turno Confirmado #{confirmedBooking.bookingCode}
+                </h3>
+                <p className="text-xs text-slate-300 mt-1 max-w-md mx-auto">
+                  Tu turno en {confirmedBooking.courtName} quedó reservado para el {confirmedBooking.date} de {confirmedBooking.startTime} a {confirmedBooking.endTime} hs.
+                </p>
+              </div>
+
+              {/* QR and Ticket Pass Card */}
+              <div className="max-w-sm mx-auto bg-slate-950 p-4 rounded-2xl border border-slate-800 text-left space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <QrCode className="w-5 h-5 text-emerald-400" />
+                    <span className="text-xs font-bold text-white">Pase Digital de Ingreso</span>
+                  </div>
+                  <span className="text-[11px] font-mono text-emerald-400 font-bold">
+                    #{confirmedBooking.bookingCode}
+                  </span>
+                </div>
+
+                {/* Simulated QR Code graphic */}
+                <div className="bg-white p-3 rounded-xl mx-auto w-36 h-36 flex flex-col items-center justify-center shadow-md">
+                  <div className="grid grid-cols-4 gap-1 w-28 h-28 p-1 border-2 border-slate-950">
+                    <div className="bg-slate-900 rounded-sm"></div>
+                    <div className="bg-slate-900 rounded-sm"></div>
+                    <div className="bg-slate-200"></div>
+                    <div className="bg-slate-900 rounded-sm"></div>
+                    <div className="bg-slate-900 rounded-sm"></div>
+                    <div className="bg-slate-200"></div>
+                    <div className="bg-slate-900 rounded-sm"></div>
+                    <div className="bg-slate-900 rounded-sm"></div>
+                    <div className="bg-slate-200"></div>
+                    <div className="bg-slate-900 rounded-sm"></div>
+                    <div className="bg-slate-900 rounded-sm"></div>
+                    <div className="bg-slate-200"></div>
+                    <div className="bg-slate-900 rounded-sm"></div>
+                    <div className="bg-slate-200"></div>
+                    <div className="bg-slate-900 rounded-sm"></div>
+                    <div className="bg-slate-900 rounded-sm"></div>
+                  </div>
+                  <span className="text-[9px] text-slate-800 font-mono mt-1 font-bold">PMY-CHECKIN</span>
+                </div>
+
+                <div className="text-xs text-slate-300 space-y-1 pt-1">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Titular:</span>
+                    <strong className="text-white">{confirmedBooking.clientName}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Total Abonado:</span>
+                    <strong className="text-emerald-400">${confirmedBooking.amountPaid.toLocaleString('es-AR')}</strong>
+                  </div>
+                  {confirmedBooking.balanceDue > 0 && (
+                    <div className="flex justify-between text-amber-300">
+                      <span>Resta pagar en cancha:</span>
+                      <strong>${confirmedBooking.balanceDue.toLocaleString('es-AR')}</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Automatic WhatsApp Action Box */}
+              <div className="p-4 bg-emerald-950/40 border border-emerald-500/40 rounded-2xl max-w-md mx-auto space-y-3">
+                <div className="flex items-center justify-center gap-2 text-emerald-300 font-bold text-sm">
+                  <MessageCircle className="w-5 h-5 text-emerald-400" />
+                  <span>Notificación por WhatsApp Generada</span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Enviá el comprobante oficial a tu WhatsApp o compartilo con tu grupo de amigos del partido:
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                  <button
+                    type="button"
+                    onClick={() => triggerWhatsAppSend(confirmedBooking)}
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/30 transition-all cursor-pointer"
+                  >
+                    <MessageCircle className="w-4 h-4 fill-slate-950" />
+                    <span>Abrir en WhatsApp</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={copyWhatsAppText}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    {copiedMessage ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    <span>{copiedMessage ? '¡Mensaje Copiado!' : 'Copiar Texto'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Final dismiss buttons */}
+              <div className="flex flex-col sm:flex-row gap-2 justify-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    setActiveTab('mis_turnos');
+                  }}
+                  className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-white font-semibold text-xs cursor-pointer"
+                >
+                  Ver en Mis Turnos
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-6 py-2.5 rounded-xl bg-slate-900 border border-slate-700 hover:bg-slate-800 text-slate-300 font-semibold text-xs cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+            </div>
+          )}
+
+        </div>
+
+      </div>
+    </div>
+  );
+};
