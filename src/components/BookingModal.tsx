@@ -18,7 +18,8 @@ import {
   Sparkles,
   Info,
   Copy,
-  Check
+  Check,
+  ExternalLink
 } from 'lucide-react';
 
 interface BookingModalProps {
@@ -39,6 +40,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     userPhone,
     userName,
     userEmail,
+    businessProfile,
     setActiveTab
   } = useApp();
 
@@ -66,6 +68,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const [isProcessing, setIsProcessing] = useState(false);
   const [confirmedBooking, setConfirmedBooking] = useState<Booking | null>(null);
   const [copiedMessage, setCopiedMessage] = useState(false);
+  const [copiedAlias, setCopiedAlias] = useState(false);
+  const [copiedCbu, setCopiedCbu] = useState(false);
 
   // Available slots for selected date
   const slots = getSlotsForCourtAndDate(court.id, selectedDate);
@@ -77,9 +81,30 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const amountToPayNow = paymentOption === 'deposit' ? depositAmount : totalPrice;
   const balanceDue = totalPrice - amountToPayNow;
 
-  // Handle Booking submission
+  // Open Mercado Pago web or app with alias copied to clipboard
+  const openMercadoPagoPayment = () => {
+    const aliasToCopy = businessProfile.alias || 'DEPORTES.PMY.MP';
+    try {
+      navigator.clipboard.writeText(aliasToCopy);
+      setCopiedAlias(true);
+      setTimeout(() => setCopiedAlias(false), 2500);
+    } catch {}
+
+    const targetUrl = businessProfile.mpLink && businessProfile.mpLink.startsWith('http')
+      ? businessProfile.mpLink
+      : 'https://www.mercadopago.com.ar';
+
+    window.open(targetUrl, '_blank');
+  };
+
+  // Handle Booking submission & online payment trigger
   const handleConfirmAndPay = () => {
     setIsProcessing(true);
+
+    // If player chose Mercado Pago, automatically open the app / website
+    if (paymentMethod === 'mercadopago') {
+      openMercadoPagoPayment();
+    }
 
     setTimeout(() => {
       try {
@@ -483,19 +508,57 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
               {paymentMethod === 'mercadopago' && (
                 <div className="p-4 bg-sky-950/30 border border-sky-800/60 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-sky-300">Mercado Pago Checkout Pro</span>
-                    <span className="text-[10px] bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full font-bold">Acreditación Inmediata</span>
+                    <span className="text-xs font-bold text-sky-300">Mercado Pago • Pago Online Inmediato</span>
+                    <span className="text-[10px] bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full font-bold">Acreditación Automática</span>
                   </div>
-                  <p className="text-xs text-slate-300">
-                    Al confirmar, se procesará el cargo seguro de <strong className="text-white">${amountToPayNow.toLocaleString('es-AR')}</strong> con tu cuenta o tarjeta asociada a Mercado Pago.
-                  </p>
-                  <div className="flex items-center gap-3 p-2.5 bg-slate-900 rounded-xl border border-slate-800 text-xs text-slate-300">
-                    <QrCode className="w-8 h-8 text-sky-400 shrink-0" />
-                    <div>
-                      <span className="font-bold text-white block">Checkout integrado DeportesPMY</span>
-                      <span className="text-[11px] text-slate-400">Genera confirmación instantánea con webhook oficial</span>
+
+                  <div className="p-3 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-xs text-slate-300">
+                    <div className="flex justify-between items-center">
+                      <span>Monto a Abonar Ahora:</span>
+                      <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
                     </div>
+
+                    <div className="flex justify-between items-center pt-1.5 border-t border-slate-800">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Alias Mercado Pago del Complejo:</span>
+                        <strong className="font-mono text-emerald-400 text-sm font-black">
+                          {businessProfile.alias || 'DEPORTES.PMY.MP'}
+                        </strong>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(businessProfile.alias || 'DEPORTES.PMY.MP');
+                          setCopiedAlias(true);
+                          setTimeout(() => setCopiedAlias(false), 2000);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                      >
+                        {copiedAlias ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                        <span>{copiedAlias ? '¡Copiado!' : 'Copiar Alias'}</span>
+                      </button>
+                    </div>
+
+                    {(businessProfile.accountHolder || businessProfile.ownerName) && (
+                      <div className="flex justify-between text-slate-400 text-[11px] pt-1">
+                        <span>Titular:</span>
+                        <span className="text-slate-300">{businessProfile.accountHolder || businessProfile.ownerName}</span>
+                      </div>
+                    )}
                   </div>
+
+                  <p className="text-xs text-slate-300">
+                    Al presionar <strong>"Pagar y Confirmar Reserva"</strong>, se abrirá automáticamente la aplicación o web de Mercado Pago y se copiará el Alias para que abones los <strong className="text-white">${amountToPayNow.toLocaleString('es-AR')}</strong>.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={openMercadoPagoPayment}
+                    className="w-full py-2 px-3 rounded-xl bg-sky-600/30 hover:bg-sky-600/50 text-sky-200 border border-sky-500/40 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <span>Abrir Mercado Pago en una pestaña nueva</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               )}
 
@@ -548,15 +611,62 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
               {paymentMethod === 'transferencia' && (
                 <div className="p-4 bg-amber-950/25 border border-amber-800/50 rounded-2xl space-y-2.5 text-xs">
                   <div className="flex justify-between items-center text-amber-300 font-bold">
-                    <span>Datos Bancarios Oficiales</span>
-                    <span className="text-[10px] bg-amber-500/20 px-2 py-0.5 rounded-full">Banco del Chubut</span>
+                    <span>Datos Bancarios del Complejo</span>
+                    <span className="text-[10px] bg-amber-500/20 px-2 py-0.5 rounded-full">Transferencia Inmediata</span>
                   </div>
                   
-                  <div className="space-y-1 text-slate-300 bg-slate-900/90 p-3 rounded-xl border border-slate-800">
-                    <div><strong>Alias:</strong> <span className="font-mono text-emerald-400">DEPORTES.PMY.MP</span></div>
-                    <div><strong>CBU:</strong> <span className="font-mono text-slate-200">0830006501002938472910</span></div>
-                    <div><strong>Titular:</strong> Deportes PMY SRL (CUIT 30-71649201-9)</div>
-                    <div><strong>Monto a Transferir:</strong> <span className="text-white font-bold">${amountToPayNow.toLocaleString('es-AR')}</span></div>
+                  <div className="space-y-2 text-slate-300 bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <span className="text-[10px] text-slate-400 block">Alias:</span>
+                        <strong className="font-mono text-emerald-400 text-sm font-black">
+                          {businessProfile.alias || 'DEPORTES.PMY.MP'}
+                        </strong>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(businessProfile.alias || 'DEPORTES.PMY.MP');
+                          setCopiedAlias(true);
+                          setTimeout(() => setCopiedAlias(false), 2000);
+                        }}
+                        className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                      >
+                        {copiedAlias ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                        <span>{copiedAlias ? '¡Copiado!' : 'Copiar'}</span>
+                      </button>
+                    </div>
+
+                    {businessProfile.cbu && (
+                      <div className="flex justify-between items-center pt-1 border-t border-slate-800">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block">CBU / CVU:</span>
+                          <span className="font-mono text-slate-200 text-xs font-bold">{businessProfile.cbu}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(businessProfile.cbu);
+                            setCopiedCbu(true);
+                            setTimeout(() => setCopiedCbu(false), 2000);
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                        >
+                          {copiedCbu ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                          <span>{copiedCbu ? '¡Copiado!' : 'Copiar'}</span>
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="pt-1 border-t border-slate-800 text-[11px] flex justify-between">
+                      <span className="text-slate-400">Titular:</span>
+                      <strong className="text-white">{businessProfile.accountHolder || businessProfile.ownerName || 'Administración de Canchas'}</strong>
+                    </div>
+
+                    <div className="pt-1 border-t border-slate-800 flex justify-between text-xs">
+                      <span><strong>Monto a Transferir:</strong></span>
+                      <span className="text-white font-bold">${amountToPayNow.toLocaleString('es-AR')}</span>
+                    </div>
                   </div>
 
                   <div>
@@ -648,58 +758,91 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 </p>
               </div>
 
-              {/* QR and Ticket Pass Card */}
-              <div className="max-w-sm mx-auto bg-slate-950 p-4 rounded-2xl border border-slate-800 text-left space-y-3">
+              {/* Clean Reservation Details Summary Card */}
+              <div className="max-w-md mx-auto bg-slate-950 p-4 rounded-2xl border border-slate-800 text-left space-y-2.5 text-xs text-slate-300">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <QrCode className="w-5 h-5 text-emerald-400" />
-                    <span className="text-xs font-bold text-white">Pase Digital de Ingreso</span>
-                  </div>
+                  <span className="text-xs font-bold text-white uppercase tracking-wider">Detalles del Turno Reservado</span>
                   <span className="text-[11px] font-mono text-emerald-400 font-bold">
                     #{confirmedBooking.bookingCode}
                   </span>
                 </div>
 
-                {/* Simulated QR Code graphic */}
-                <div className="bg-white p-3 rounded-xl mx-auto w-36 h-36 flex flex-col items-center justify-center shadow-md">
-                  <div className="grid grid-cols-4 gap-1 w-28 h-28 p-1 border-2 border-slate-950">
-                    <div className="bg-slate-900 rounded-sm"></div>
-                    <div className="bg-slate-900 rounded-sm"></div>
-                    <div className="bg-slate-200"></div>
-                    <div className="bg-slate-900 rounded-sm"></div>
-                    <div className="bg-slate-900 rounded-sm"></div>
-                    <div className="bg-slate-200"></div>
-                    <div className="bg-slate-900 rounded-sm"></div>
-                    <div className="bg-slate-900 rounded-sm"></div>
-                    <div className="bg-slate-200"></div>
-                    <div className="bg-slate-900 rounded-sm"></div>
-                    <div className="bg-slate-900 rounded-sm"></div>
-                    <div className="bg-slate-200"></div>
-                    <div className="bg-slate-900 rounded-sm"></div>
-                    <div className="bg-slate-200"></div>
-                    <div className="bg-slate-900 rounded-sm"></div>
-                    <div className="bg-slate-900 rounded-sm"></div>
-                  </div>
-                  <span className="text-[9px] text-slate-800 font-mono mt-1 font-bold">PMY-CHECKIN</span>
-                </div>
-
-                <div className="text-xs text-slate-300 space-y-1 pt-1">
+                <div className="space-y-1.5">
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Titular:</span>
+                    <span className="text-slate-400">Cancha:</span>
+                    <strong className="text-white">{confirmedBooking.courtName}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Fecha y Horario:</span>
+                    <strong className="text-white">{confirmedBooking.date} • {confirmedBooking.startTime} a {confirmedBooking.endTime} hs</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Titular del Turno:</span>
                     <strong className="text-white">{confirmedBooking.clientName}</strong>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Total Abonado:</span>
+                    <span className="text-slate-400">Total Cancha:</span>
+                    <strong className="text-white">${confirmedBooking.totalAmount.toLocaleString('es-AR')}</strong>
+                  </div>
+                  <div className="flex justify-between pt-1 border-t border-slate-800">
+                    <span className="text-slate-400">Monto Abonado ({confirmedBooking.paymentMethod.toUpperCase()}):</span>
                     <strong className="text-emerald-400">${confirmedBooking.amountPaid.toLocaleString('es-AR')}</strong>
                   </div>
                   {confirmedBooking.balanceDue > 0 && (
                     <div className="flex justify-between text-amber-300">
-                      <span>Resta pagar en cancha:</span>
+                      <span>Saldo restante a pagar en la cancha:</span>
                       <strong>${confirmedBooking.balanceDue.toLocaleString('es-AR')}</strong>
                     </div>
                   )}
                 </div>
               </div>
+
+              {/* Direct Mercado Pago Action Card if user selected Mercado Pago */}
+              {confirmedBooking.paymentMethod === 'mercadopago' && (
+                <div className="max-w-md mx-auto p-4 bg-sky-950/40 border border-sky-500/40 rounded-2xl text-left space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-sky-300 uppercase tracking-wider">💙 Pago por Mercado Pago</span>
+                    <span className="text-[11px] bg-sky-500/20 text-sky-300 px-2.5 py-0.5 rounded-full font-bold">
+                      ${confirmedBooking.amountPaid.toLocaleString('es-AR')}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-300">
+                    Si aún no abonaste o querés verificar tu pago, podés abrir Mercado Pago directamente o transferir al Alias:
+                  </p>
+
+                  <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block">Alias para transferir:</span>
+                      <strong className="font-mono text-emerald-400 text-sm font-black">{businessProfile.alias || 'DEPORTES.PMY.MP'}</strong>
+                      {(businessProfile.accountHolder || businessProfile.ownerName) && (
+                        <span className="text-[11px] text-slate-400 block">Titular: {businessProfile.accountHolder || businessProfile.ownerName}</span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(businessProfile.alias || 'DEPORTES.PMY.MP');
+                        setCopiedAlias(true);
+                        setTimeout(() => setCopiedAlias(false), 2000);
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 flex items-center gap-1 transition-colors cursor-pointer border border-slate-700"
+                    >
+                      {copiedAlias ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                      <span>{copiedAlias ? '¡Copiado!' : 'Copiar Alias'}</span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={openMercadoPagoPayment}
+                    className="w-full py-3 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-500/25 transition-all cursor-pointer"
+                  >
+                    <span>Abrir Mercado Pago</span>
+                    <ExternalLink className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
 
               {/* Automatic WhatsApp Action Box */}
               <div className="p-4 bg-emerald-950/40 border border-emerald-500/40 rounded-2xl max-w-md mx-auto space-y-3">

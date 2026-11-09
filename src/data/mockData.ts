@@ -17,15 +17,29 @@ export const INITIAL_REVIEWS: Review[] = [];
 export const INITIAL_WHATSAPP_LOGS: WhatsAppNotificationLog[] = [];
 
 export const DEFAULT_BUSINESS_PROFILE: BusinessProfile = {
-  ownerName: 'Administración DeportesPMY',
-  complexName: 'Complejo Deportivo Puerto Madryn',
-  cbu: '0830001234000000000000',
-  alias: 'DEPORTES.PMY.MP',
-  accountHolder: 'DeportesPMY Oficial',
-  whatsappNumber: '+5492804567890',
-  address: 'Boulevard Brown 1420 (Costanera frente al Golfo Nuevo), Puerto Madryn, Chubut',
-  email: 'reservas@deportespmy.com.ar',
-  welcomeNotes: 'Presentarse 10 minutos antes del inicio del turno. Contamos con estacionamiento, vestuarios y buffet.'
+  ownerName: '',
+  complexName: '',
+  cbu: '',
+  alias: '',
+  accountHolder: '',
+  whatsappNumber: '',
+  address: '',
+  email: '',
+  welcomeNotes: '',
+  mpLink: ''
+};
+
+export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
+  ownerName: '',
+  complexName: '',
+  cbu: '',
+  alias: '',
+  accountHolder: '',
+  whatsappNumber: '',
+  address: '',
+  email: '',
+  welcomeNotes: '',
+  mpLink: ''
 };
 
 // Default Developer Contact for footer, editable by SuperAdmin

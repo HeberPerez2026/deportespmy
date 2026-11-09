@@ -198,16 +198,44 @@ export const saveReviewReplyToFirestore = async (
   }
 };
 
-// Real-time listener for Business Profile
+// Real-time listener for Business Profile (supports per-admin profile or general profile)
 export const subscribeToBusinessProfile = (
-  onUpdate: (profile: BusinessProfile) => void
+  onUpdate: (profile: BusinessProfile) => void,
+  profileKey?: string
 ): (() => void) => {
+  const docId = profileKey ? `profile_${profileKey.toLowerCase().replace(/[^a-z0-9_-]/g, '')}` : 'businessProfile';
   try {
     return onSnapshot(
-      doc(db, 'settings', 'businessProfile'),
+      doc(db, 'settings', docId),
       (snap) => {
         if (snap.exists()) {
-          onUpdate(snap.data() as BusinessProfile);
+          const data = snap.data() as BusinessProfile;
+          onUpdate({
+            ownerName: data.ownerName || '',
+            complexName: data.complexName || '',
+            cbu: data.cbu || '',
+            alias: data.alias || '',
+            accountHolder: data.accountHolder || '',
+            whatsappNumber: data.whatsappNumber || '',
+            address: data.address || '',
+            email: data.email || '',
+            welcomeNotes: data.welcomeNotes || '',
+            mpLink: data.mpLink || ''
+          });
+        } else if (profileKey) {
+          // If a new admin does not have a profile saved yet, return 100% empty fields
+          onUpdate({
+            ownerName: '',
+            complexName: '',
+            cbu: '',
+            alias: '',
+            accountHolder: '',
+            whatsappNumber: '',
+            address: '',
+            email: '',
+            welcomeNotes: '',
+            mpLink: ''
+          });
         }
       },
       (error) => {
@@ -221,9 +249,17 @@ export const subscribeToBusinessProfile = (
 };
 
 // Save Business Profile
-export const saveBusinessProfileToFirestore = async (profile: BusinessProfile): Promise<boolean> => {
+export const saveBusinessProfileToFirestore = async (
+  profile: BusinessProfile,
+  profileKey?: string
+): Promise<boolean> => {
+  const docId = profileKey ? `profile_${profileKey.toLowerCase().replace(/[^a-z0-9_-]/g, '')}` : 'businessProfile';
   try {
-    await setDoc(doc(db, 'settings', 'businessProfile'), profile);
+    await setDoc(doc(db, 'settings', docId), profile);
+    // Mirror to public businessProfile only if it contains active venue data
+    if (!profileKey || profileKey === 'heberperez1984' || (profile.alias && profile.complexName)) {
+      await setDoc(doc(db, 'settings', 'businessProfile'), profile, { merge: true });
+    }
     return true;
   } catch (err) {
     console.warn('[Firestore] Save business profile error:', err);

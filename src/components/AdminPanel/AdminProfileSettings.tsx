@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   Building2, 
@@ -9,7 +9,8 @@ import {
   User, 
   CheckCircle2, 
   Save,
-  HelpCircle
+  HelpCircle,
+  ExternalLink
 } from 'lucide-react';
 
 export const AdminProfileSettings: React.FC = () => {
@@ -24,8 +25,23 @@ export const AdminProfileSettings: React.FC = () => {
   const [address, setAddress] = useState(businessProfile.address || '');
   const [email, setEmail] = useState(businessProfile.email || '');
   const [welcomeNotes, setWelcomeNotes] = useState(businessProfile.welcomeNotes || '');
+  const [mpLink, setMpLink] = useState(businessProfile.mpLink || '');
 
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // Synchronize state when businessProfile updates or a different admin logs in
+  useEffect(() => {
+    setOwnerName(businessProfile.ownerName || '');
+    setComplexName(businessProfile.complexName || '');
+    setCbu(businessProfile.cbu || '');
+    setAlias(businessProfile.alias || '');
+    setAccountHolder(businessProfile.accountHolder || '');
+    setWhatsappNumber(businessProfile.whatsappNumber || '');
+    setAddress(businessProfile.address || '');
+    setEmail(businessProfile.email || '');
+    setWelcomeNotes(businessProfile.welcomeNotes || '');
+    setMpLink(businessProfile.mpLink || '');
+  }, [businessProfile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +54,8 @@ export const AdminProfileSettings: React.FC = () => {
       whatsappNumber: whatsappNumber.trim(),
       address: address.trim(),
       email: email.trim(),
-      welcomeNotes: welcomeNotes.trim()
+      welcomeNotes: welcomeNotes.trim(),
+      mpLink: mpLink.trim()
     });
 
     setSavedSuccess(true);
@@ -124,7 +141,6 @@ export const AdminProfileSettings: React.FC = () => {
               <label className="font-bold text-slate-700 block mb-1">Alias de Transferencia (MP / Banco)</label>
               <input
                 type="text"
-                required
                 value={alias}
                 onChange={(e) => setAlias(e.target.value)}
                 placeholder="Ej: DEPORTES.PMY.MP"
@@ -152,6 +168,23 @@ export const AdminProfileSettings: React.FC = () => {
                 placeholder="Ej: Deportes Puerto Madryn SRL"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
               />
+            </div>
+
+            <div className="sm:col-span-3">
+              <label className="font-bold text-slate-700 block mb-1 flex items-center gap-1.5">
+                <ExternalLink className="w-3.5 h-3.5 text-sky-600" />
+                <span>Link Directo de Cobro Mercado Pago (Opcional)</span>
+              </label>
+              <input
+                type="url"
+                value={mpLink}
+                onChange={(e) => setMpLink(e.target.value)}
+                placeholder="Ej: https://link.mercadopago.com.ar/micomplejo o https://mpago.la/..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono text-slate-800"
+              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">
+                Si lo completás, el botón "Abrir Mercado Pago" del jugador abrirá directamente tu link de pago oficial. Si lo dejás vacío, abrirá Mercado Pago para transferir a tu Alias.
+              </span>
             </div>
           </div>
         </div>

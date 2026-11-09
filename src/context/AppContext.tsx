@@ -21,6 +21,7 @@ import {
   INITIAL_REVIEWS, 
   INITIAL_WHATSAPP_LOGS, 
   DEFAULT_BUSINESS_PROFILE,
+  EMPTY_BUSINESS_PROFILE,
   DEFAULT_DEVELOPER_CONTACT,
   INITIAL_ADMINS,
   MONTHLY_STATS_DATA, 
@@ -201,9 +202,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
-  // Business Profile State
+  // Business Profile State (scoped per admin user so new admins always start with 100% empty fields)
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile>(() => {
     try {
+      const currentAdminRaw = localStorage.getItem(STORAGE_KEYS.CURRENT_ADMIN);
+      if (currentAdminRaw) {
+        const parsedAdmin: AdminUser = JSON.parse(currentAdminRaw);
+        if (parsedAdmin.username && parsedAdmin.username !== 'heberperez1984') {
+          const userSaved = localStorage.getItem(`deportespmy_profile_${parsedAdmin.username}`);
+          return userSaved ? JSON.parse(userSaved) : EMPTY_BUSINESS_PROFILE;
+        }
+      }
       const saved = localStorage.getItem(STORAGE_KEYS.PROFILE);
       return saved ? JSON.parse(saved) : DEFAULT_BUSINESS_PROFILE;
     } catch {
@@ -285,6 +294,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (foundAdmin) {
       setCurrentAdminUser(foundAdmin);
       localStorage.setItem(STORAGE_KEYS.CURRENT_ADMIN, JSON.stringify(foundAdmin));
+
+      // Load this specific admin's profile or default to empty
+      const userSaved = localStorage.getItem(`deportespmy_profile_${foundAdmin.username}`);
+      if (userSaved) {
+        setBusinessProfile(JSON.parse(userSaved));
+      } else {
+        setBusinessProfile(EMPTY_BUSINESS_PROFILE);
+      }
+
       return { success: true, isSuperAdmin: foundAdmin.role === 'superadmin' };
     }
 
@@ -294,6 +312,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logoutAdmin = () => {
     setCurrentAdminUser(null);
     localStorage.removeItem(STORAGE_KEYS.CURRENT_ADMIN);
+    try {
+      const publicSaved = localStorage.getItem(STORAGE_KEYS.PROFILE);
+      setBusinessProfile(publicSaved ? JSON.parse(publicSaved) : DEFAULT_BUSINESS_PROFILE);
+    } catch {
+      setBusinessProfile(DEFAULT_BUSINESS_PROFILE);
+    }
     setActiveTab('turnos');
   };
 
@@ -347,12 +371,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setLastSyncTime(new Date());
     });
 
-    // 4. Subscribe to Business Profile
+    // 4. Subscribe to Business Profile (scoped to logged-in admin or public venue)
+    const adminKey = currentAdminUser ? currentAdminUser.username : undefined;
     const unsubProfile = subscribeToBusinessProfile((remoteProfile) => {
       setBusinessProfile(remoteProfile);
-      localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(remoteProfile));
+      const storageKey = adminKey ? `deportespmy_profile_${adminKey}` : STORAGE_KEYS.PROFILE;
+      localStorage.setItem(storageKey, JSON.stringify(remoteProfile));
       setLastSyncTime(new Date());
-    });
+    }, adminKey);
 
     // 5. Subscribe to Developer Contact (for footer)
     const unsubDevContact = subscribeToDeveloperContact((remoteDev) => {
@@ -381,7 +407,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubDevContact();
       unsubAdmins();
     };
-  }, []);
+  }, [currentAdminUser?.username]);
 
   // Fetch full cloud data on demand
   const refreshFromCloud = useCallback(async () => {
@@ -464,9 +490,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...partialProfile
     };
     setBusinessProfile(nextProfile);
-    localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(nextProfile));
-    await saveBusinessProfileToFirestore(nextProfile);
-  }, [businessProfile]);
+    const adminKey = currentAdminUser ? currentAdminUser.username : undefined;
+    const storageKey = adminKey ? `deportespmy_profile_${adminKey}` : STORAGE_KEYS.PROFILE;
+    localStorage.setItem(storageKey, JSON.stringify(nextProfile));
+    await saveBusinessProfileToFirestore(nextProfile, adminKey);
+  }, [businessProfile, currentAdminUser]);
 
   // Update Developer Contact (SuperAdmin editable, for footer)
   const updateDeveloperContact = useCallback(async (partialContact: Partial<DeveloperContact>) => {
@@ -490,6 +518,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAdmins(nextAdmins);
     localStorage.setItem(STORAGE_KEYS.ADMINS, JSON.stringify(nextAdmins));
     await saveAdminUserToFirestore(newAdmin);
+
+    // Initialize the new admin's profile completely empty in Firestore and localStorage
+    await saveBusinessProfileToFirestore(EMPTY_BUSINESS_PROFILE, newAdmin.username);
+    localStorage.setItem(`deportespmy_profile_${newAdmin.username}`, JSON.stringify(EMPTY_BUSINESS_PROFILE));
   }, [admins]);
 
   // Update/Modify Admin User Action (SuperAdmin only)

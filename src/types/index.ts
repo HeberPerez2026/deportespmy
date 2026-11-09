@@ -104,6 +104,7 @@ export interface BusinessProfile {
   address: string;
   email: string;
   welcomeNotes?: string;
+  mpLink?: string;
 }
 
 export interface DeveloperContact {

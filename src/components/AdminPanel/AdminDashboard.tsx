@@ -131,8 +131,15 @@ export const AdminDashboard: React.FC = () => {
             Gestión de Canchas, Turnos & Caja
           </h1>
           <p className="text-slate-300 text-xs sm:text-sm mt-1 max-w-xl">
-            {businessProfile.ownerName ? `Responsable: ${businessProfile.ownerName} | ` : ''}
-            Alias: <strong className="font-mono text-emerald-400">{businessProfile.alias}</strong> | WhatsApp: <span className="font-mono">{businessProfile.whatsappNumber}</span>
+            {businessProfile.ownerName && <span>Responsable: {businessProfile.ownerName} • </span>}
+            {businessProfile.alias ? (
+              <span>Alias: <strong className="font-mono text-emerald-400">{businessProfile.alias}</strong></span>
+            ) : (
+              <span className="text-amber-300 font-semibold">Configurá tu CBU y Alias en Datos del Complejo</span>
+            )}
+            {businessProfile.whatsappNumber && (
+              <span> • WhatsApp: <span className="font-mono">{businessProfile.whatsappNumber}</span></span>
+            )}
           </p>
 
           <div className="flex flex-wrap items-center gap-3 mt-4 text-xs">
