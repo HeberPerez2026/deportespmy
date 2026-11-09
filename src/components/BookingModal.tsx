@@ -42,6 +42,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     userEmail,
     businessProfile,
     confirmMercadoPagoBooking,
+    verifyAndConfirmMercadoPagoPayment,
     setActiveTab
   } = useApp();
 
@@ -73,6 +74,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const [copiedAlias, setCopiedAlias] = useState(false);
   const [copiedCbu, setCopiedCbu] = useState(false);
   const [mpOpened, setMpOpened] = useState(false);
+  const [isVerifyingMp, setIsVerifyingMp] = useState(false);
+  const [verifyMessage, setVerifyMessage] = useState<{ text: string; isSuccess: boolean } | null>(null);
 
   // Available slots for selected date
   const slots = getSlotsForCourtAndDate(court.id, selectedDate);
@@ -815,28 +818,47 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
               {confirmedBooking.status === 'pending' && (
                 <div className="max-w-md mx-auto p-4 bg-amber-950/40 border border-amber-500/40 rounded-2xl text-left space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-amber-300 uppercase tracking-wider">⏳ Pago Pendiente de Confirmación MP</span>
+                    <span className="text-xs font-bold text-amber-300 uppercase tracking-wider">⏳ Pago Pendiente de Verificación MP</span>
                     <span className="text-[11px] bg-amber-500/20 text-amber-300 px-2.5 py-0.5 rounded-full font-bold">
-                      Pendiente
+                      Pendiente en API
                     </span>
                   </div>
                   <p className="text-xs text-slate-300">
-                    Tu turno se encuentra registrado en modo pendiente. Para confirmar y aprobar el pago en el sistema mediante el webhook / redirección de Mercado Pago, hacé clic en el botón de abajo:
+                    Tu turno se guardó como <strong>PENDIENTE</strong>. El sistema consultará la API / Webhook de Mercado Pago para verificar que la transacción figure APROBADA antes de otorgar el turno definitivo.
                   </p>
+                  
+                  {verifyMessage && (
+                    <div className={`p-3 rounded-xl text-xs font-bold border ${verifyMessage.isSuccess ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50' : 'bg-rose-500/20 text-rose-300 border-rose-500/50'}`}>
+                      {verifyMessage.text}
+                    </div>
+                  )}
+
                   <button
                     type="button"
-                    onClick={() => {
-                      confirmMercadoPagoBooking(confirmedBooking.id);
-                      setConfirmedBooking({ 
-                        ...confirmedBooking, 
-                        status: 'confirmed', 
-                        paymentStatus: confirmedBooking.amountPaid < confirmedBooking.totalAmount ? 'seña_pagada' : 'total_pagado' 
-                      });
+                    disabled={isVerifyingMp}
+                    onClick={async () => {
+                      setIsVerifyingMp(true);
+                      setVerifyMessage(null);
+                      const res = await verifyAndConfirmMercadoPagoPayment(confirmedBooking.id);
+                      setIsVerifyingMp(false);
+                      setVerifyMessage({ text: res.message, isSuccess: res.success });
+                      if (res.success && res.booking) {
+                        setConfirmedBooking(res.booking);
+                      }
                     }}
-                    className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                    className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
                   >
-                    <CheckCircle className="w-4 h-4" />
-                    <span>✓ Verificar Pago y Confirmar Turno (Webhook OK)</span>
+                    {isVerifyingMp ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                        <span>Verificando con API MercadoPago...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        <span>✓ Verificar Estado del Pago con MercadoPago</span>
+                      </>
+                    )}
                   </button>
                 </div>
               )}

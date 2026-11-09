@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/Header';
 import { HeroBanner } from './components/HeroBanner';
@@ -7,10 +7,49 @@ import { ReviewsSection } from './components/ReviewsSection';
 import { AdminDashboard } from './components/AdminPanel/AdminDashboard';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { Footer } from './components/Footer';
+import { CheckCircle, AlertTriangle, X } from 'lucide-react';
 
 const MainContent: React.FC = () => {
-  const { activeTab, setActiveTab, isAdminAuthenticated, reviews } = useApp();
+  const { activeTab, setActiveTab, isAdminAuthenticated, reviews, verifyAndConfirmMercadoPagoPayment } = useApp();
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+  const [mpBanner, setMpBanner] = useState<{ type: 'success' | 'warning'; title: string; text: string } | null>(null);
+
+  // Automatic MercadoPago return verification handler from URL parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('status') || params.get('collection_status');
+    const bookingId = params.get('booking_id') || params.get('external_reference');
+    const paymentId = params.get('payment_id') || params.get('collection_id');
+
+    if (bookingId || paymentId) {
+      if (status === 'success' || status === 'approved' || paymentId) {
+        verifyAndConfirmMercadoPagoPayment(bookingId || '', paymentId || '').then((res) => {
+          if (res.success) {
+            setMpBanner({
+              type: 'success',
+              title: '¡Pago Verificado por MercadoPago!',
+              text: res.message || 'Tu reserva ha sido APROBADA y CONFIRMADA en el sistema.'
+            });
+          } else {
+            setMpBanner({
+              type: 'warning',
+              title: 'Pago Pendiente de Verificación MP',
+              text: res.message || 'MercadoPago reporta que el pago aún figura pendiente. El turno no se confirmará hasta su acreditación.'
+            });
+          }
+        });
+      } else if (status === 'failure') {
+        setMpBanner({
+          type: 'warning',
+          title: 'Pago Rechazado o Cancelado',
+          text: 'La transacción en MercadoPago no pudo ser completada. El turno permanece sin abonar.'
+        });
+      }
+
+      // Clean query parameters from URL address bar
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [verifyAndConfirmMercadoPagoPayment]);
 
   const avgRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1) : '5.0';
   const headingText = reviews.length > 0 
@@ -20,6 +59,24 @@ const MainContent: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-emerald-500 selection:text-slate-950">
       
+      {/* MercadoPago Return Verification Banner */}
+      {mpBanner && (
+        <div className={`px-4 py-3 text-xs font-bold shadow-md flex items-center justify-between transition-all ${
+          mpBanner.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white'
+        }`}>
+          <div className="flex items-center gap-2 max-w-4xl mx-auto">
+            {mpBanner.type === 'success' ? <CheckCircle className="w-5 h-5 shrink-0" /> : <AlertTriangle className="w-5 h-5 shrink-0" />}
+            <div>
+              <span className="font-extrabold uppercase tracking-wide mr-2">{mpBanner.title}:</span>
+              <span className="font-normal opacity-90">{mpBanner.text}</span>
+            </div>
+          </div>
+          <button onClick={() => setMpBanner(null)} className="p-1 hover:bg-black/20 rounded-lg text-white">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header with Player Navigation & Top-Right Admin Login */}
       <Header
         onOpenAdminLogin={() => setIsAdminLoginOpen(true)}

@@ -123,6 +123,7 @@ interface AppContextType {
   // Bookings & Reviews Actions
   createBooking: (input: BookingInput) => Booking;
   confirmMercadoPagoBooking: (bookingId: string) => void;
+  verifyAndConfirmMercadoPagoPayment: (bookingId: string, paymentId?: string) => Promise<{ success: boolean; message: string; booking?: Booking }>;
   cancelBooking: (bookingId: string) => void;
   collectBalanceAtCourt: (bookingId: string) => void;
   blockTimeSlot: (courtId: string, date: string, startTime: string, durationMinutes: number, reason: string) => void;
@@ -787,7 +788,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const isSeña = b.amountPaid < b.totalAmount;
         const updatedBooking: Booking = {
           ...b,
-          status: 'confirmed',
+          status: 'confirmed' as const,
           paymentStatus: isSeña ? 'seña_pagada' : 'total_pagado',
           paymentReference: `MP-REDIRECT-VERIFIED-${Math.floor(100000 + Math.random() * 900000)}`
         };
@@ -798,6 +799,68 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setBookings(updated);
     localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(updated));
+  }, [bookings]);
+
+  // Strict Mercado Pago verification query against backend API / Webhook store
+  const verifyAndConfirmMercadoPagoPayment = useCallback(async (bookingId: string, paymentId?: string): Promise<{ success: boolean; message: string; booking?: Booking }> => {
+    try {
+      const q = new URLSearchParams();
+      if (bookingId) q.append('booking_id', bookingId);
+      if (paymentId) q.append('payment_id', paymentId);
+
+      const res = await fetch(`/api/mercadopago/verify-payment?${q.toString()}`);
+      const data = await res.json();
+
+      if (data.approved) {
+        let updatedTarget: Booking | undefined;
+        const updated = bookings.map(b => {
+          if (b.id === bookingId || b.bookingCode === bookingId) {
+            const isSeña = b.amountPaid < b.totalAmount;
+            updatedTarget = {
+              ...b,
+              status: 'confirmed' as const,
+              paymentStatus: isSeña ? 'seña_pagada' : 'total_pagado',
+              paymentReference: data.paymentId ? `MP-VERIFIED-${data.paymentId}` : `MP-API-APPROVED`,
+              whatsappSent: true,
+              whatsappSentAt: new Date().toISOString()
+            };
+            saveBookingToFirestore(updatedTarget);
+            return updatedTarget;
+          }
+          return b;
+        });
+
+        if (updatedTarget) {
+          setBookings(updated);
+          localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(updated));
+
+          try {
+            confetti({
+              particleCount: 100,
+              spread: 80,
+              origin: { y: 0.6 }
+            });
+          } catch {}
+
+          return {
+            success: true,
+            message: data.message || '¡Pago verificado y acreditado por MercadoPago!',
+            booking: updatedTarget
+          };
+        }
+      }
+
+      return {
+        success: false,
+        message: data.message || 'MercadoPago informa que el pago no está acreditado aún (Estado: Pendiente).'
+      };
+    } catch (err: any) {
+      console.error('[MP Verify Error]', err);
+      return {
+        success: false,
+        message: 'No se pudo conectar con la API de verificación de MercadoPago.'
+      };
+    }
   }, [bookings]);
 
   // Admin Manual Booking
@@ -1081,6 +1144,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     toggleAdminUserStatus,
     createBooking,
     confirmMercadoPagoBooking,
+    verifyAndConfirmMercadoPagoPayment,
     cancelBooking,
     collectBalanceAtCourt,
     blockTimeSlot,
@@ -1129,6 +1193,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     toggleAdminUserStatus,
     createBooking,
     confirmMercadoPagoBooking,
+    verifyAndConfirmMercadoPagoPayment,
     cancelBooking,
     collectBalanceAtCourt,
     blockTimeSlot,
