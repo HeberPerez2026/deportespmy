@@ -10,7 +10,8 @@ import {
   CheckCircle2, 
   Save,
   HelpCircle,
-  ExternalLink
+  ExternalLink,
+  ShieldCheck
 } from 'lucide-react';
 
 export const AdminProfileSettings: React.FC = () => {
@@ -26,6 +27,7 @@ export const AdminProfileSettings: React.FC = () => {
   const [email, setEmail] = useState(businessProfile.email || '');
   const [welcomeNotes, setWelcomeNotes] = useState(businessProfile.welcomeNotes || '');
   const [mpLink, setMpLink] = useState(businessProfile.mpLink || '');
+  const [mpAccessToken, setMpAccessToken] = useState(businessProfile.mpAccessToken || '');
   const [whatsappTemplate, setWhatsappTemplate] = useState(businessProfile.whatsappTemplate || '');
 
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -42,6 +44,7 @@ export const AdminProfileSettings: React.FC = () => {
     setEmail(businessProfile.email || '');
     setWelcomeNotes(businessProfile.welcomeNotes || '');
     setMpLink(businessProfile.mpLink || '');
+    setMpAccessToken(businessProfile.mpAccessToken || '');
     setWhatsappTemplate(businessProfile.whatsappTemplate || '');
   }, [businessProfile]);
 
@@ -58,6 +61,7 @@ export const AdminProfileSettings: React.FC = () => {
       email: email.trim(),
       welcomeNotes: welcomeNotes.trim(),
       mpLink: mpLink.trim(),
+      mpAccessToken: mpAccessToken.trim(),
       whatsappTemplate: whatsappTemplate.trim()
     });
 
@@ -196,6 +200,23 @@ export const AdminProfileSettings: React.FC = () => {
               />
               <span className="text-[10px] text-slate-400 mt-0.5 block">
                 Si lo completás con tu link de cobro personal de MP (link.mercadopago.com.ar/tu_nombre), se abrirá directamente con el importe exacto precargado. Si lo dejás vacío, abrirá Mercado Pago directamente para transferir a tu Alias.
+              </span>
+            </div>
+
+            <div className="sm:col-span-3 pt-2 border-t border-slate-100">
+              <label className="font-bold text-slate-700 block mb-1 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Access Token de Mercado Pago (Opcional - Para cobros automáticos Checkout Pro)</span>
+              </label>
+              <input
+                type="password"
+                value={mpAccessToken}
+                onChange={(e) => setMpAccessToken(e.target.value)}
+                placeholder="Ej: APP_USR-1234567890123456-..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono text-slate-800"
+              />
+              <span className="text-[10px] text-slate-400 mt-0.5 block">
+                <strong>Opcional:</strong> Si ingresás tu Access Token de producción (APP_USR-...), el sistema utilizará la Pasarela Checkout Pro oficial para cobrar tus reservas automáticamente con tarjetas, QR o saldo MP de forma 100% independiente. Si lo dejás en blanco, funcionará en modo directo por Alias/Link.
               </span>
             </div>
           </div>

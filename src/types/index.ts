@@ -107,6 +107,7 @@ export interface BusinessProfile {
   email: string;
   welcomeNotes?: string;
   mpLink?: string;
+  mpAccessToken?: string;
   whatsappTemplate?: string;
 }
 

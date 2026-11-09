@@ -77,71 +77,71 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const amountToPayNow = paymentOption === 'deposit' ? depositAmount : totalPrice;
   const balanceDue = totalPrice - amountToPayNow;
 
-  // Handle direct Mercado Pago App opening or CBU transfer reservation
-  const handleConfirmAndPay = () => {
+  // Handle Checkout Pro preference creation & CBU transfer reservation
+  const handleConfirmAndPay = async () => {
     setIsProcessing(true);
     const targetAlias = (businessProfile.alias || 'DEPORTES.PMY.MP').trim();
 
     if (paymentMethod === 'mercadopago') {
-      // 1. Copy Alias to clipboard automatically so it's ready in the app
       try {
-        navigator.clipboard.writeText(targetAlias);
-        setCopiedAlias(true);
-        setTimeout(() => setCopiedAlias(false), 3000);
-      } catch {}
+        // 1. Create booking in pending_payment status first
+        const newBooking = createBooking({
+          courtId: court.id,
+          date: selectedDate,
+          startTime: selectedSlotTime,
+          durationMinutes,
+          clientName: name,
+          clientPhone: phone,
+          clientEmail: email,
+          notes,
+          totalAmount: totalPrice,
+          isDepositOnly: paymentOption === 'deposit',
+          paymentMethod: 'mercadopago',
+          paymentReference: `MP-PENDING-${Date.now()}`,
+          status: 'pending_payment'
+        });
 
-      // 2. Open Mercado Pago app with the amount ready to transfer
-      let targetUrl = '';
-      if (businessProfile.mpLink && businessProfile.mpLink.trim().startsWith('http')) {
-        const clean = businessProfile.mpLink.trim().replace(/\/$/, '');
-        if (clean.includes('link.mercadopago.com.ar')) {
-          targetUrl = `${clean}/${amountToPayNow}`;
-        } else {
-          targetUrl = clean;
-        }
-      } else {
-        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-        if (isMobile) {
-          // Deep link to open the Mercado Pago native app
-          targetUrl = 'mercadopago://';
-        } else {
-          targetUrl = `https://link.mercadopago.com.ar/${encodeURIComponent(targetAlias)}/${amountToPayNow}`;
-        }
-      }
-
-      try {
-        window.open(targetUrl, '_blank');
-      } catch {
-        window.location.href = targetUrl;
-      }
-
-      // 3. Confirm booking in DeportesPMY
-      setTimeout(() => {
-        try {
-          const newBooking = createBooking({
-            courtId: court.id,
+        // 2. Call backend preference API for Checkout Pro
+        const res = await fetch('/api/mercadopago/preference', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bookingId: newBooking.id,
+            bookingCode: newBooking.bookingCode,
+            courtName: court.name,
             date: selectedDate,
             startTime: selectedSlotTime,
-            durationMinutes,
+            unit_price: amountToPayNow,
+            quantity: 1,
             clientName: name,
-            clientPhone: phone,
             clientEmail: email,
-            notes,
-            totalAmount: totalPrice,
-            isDepositOnly: paymentOption === 'deposit',
-            paymentMethod: 'mercadopago',
-            paymentReference: `MP-${targetAlias}`,
-            status: 'confirmed'
-          });
+            clientPhone: phone,
+            accessToken: businessProfile.mpAccessToken
+          })
+        });
 
-          setConfirmedBooking(newBooking);
-          setStep(4);
-        } catch (err: any) {
-          alert('Error al registrar reserva: ' + (err?.message || 'Error'));
-        } finally {
-          setIsProcessing(false);
+        const data = await res.json();
+
+        if (data.init_point) {
+          // Open Mercado Pago Checkout Pro payment link
+          window.location.href = data.init_point;
+          return;
         }
-      }, 700);
+
+        // Fallback if preference API couldn't be created
+        setConfirmedBooking(newBooking);
+        setStep(4);
+      } catch (err: any) {
+        console.error('Error al generar preferencia de Mercado Pago:', err);
+        // Fallback alias open
+        try {
+          navigator.clipboard.writeText(targetAlias);
+        } catch {}
+        const fallbackUrl = `https://link.mercadopago.com.ar/${encodeURIComponent(targetAlias)}/${amountToPayNow}`;
+        window.open(fallbackUrl, '_blank');
+      } finally {
+        setIsProcessing(false);
+      }
 
     } else {
       // CBU / Transferencia Bancaria
