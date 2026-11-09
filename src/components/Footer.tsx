@@ -7,19 +7,15 @@ import {
   Clock, 
   ShieldCheck, 
   MessageCircle, 
-  Github, 
-  Heart,
-  Calendar,
-  Layers,
-  Star
+  Lock
 } from 'lucide-react';
 
 interface FooterProps {
-  onOpenGitHubModal: () => void;
+  onOpenAdminLogin: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ onOpenGitHubModal }) => {
-  const { setActiveTab, setCurrentRole } = useApp();
+export const Footer: React.FC<FooterProps> = ({ onOpenAdminLogin }) => {
+  const { setActiveTab, isAdminAuthenticated } = useApp();
 
   return (
     <footer className="bg-slate-950 text-slate-400 border-t border-slate-900 pt-12 pb-8">
@@ -52,34 +48,38 @@ export const Footer: React.FC<FooterProps> = ({ onOpenGitHubModal }) => {
             </h4>
             <ul className="space-y-2">
               <li>
-                <button onClick={() => setActiveTab('turnos')} className="hover:text-emerald-400 transition-colors">
+                <button onClick={() => setActiveTab('turnos')} className="hover:text-emerald-400 transition-colors cursor-pointer">
                   Reservar Turnos Online
                 </button>
               </li>
               <li>
-                <button onClick={() => setActiveTab('canchas')} className="hover:text-emerald-400 transition-colors">
+                <button onClick={() => setActiveTab('canchas')} className="hover:text-emerald-400 transition-colors cursor-pointer">
                   Nuestras Canchas & Tarifas
                 </button>
               </li>
               <li>
-                <button onClick={() => setActiveTab('mis_turnos')} className="hover:text-emerald-400 transition-colors">
+                <button onClick={() => setActiveTab('mis_turnos')} className="hover:text-emerald-400 transition-colors cursor-pointer">
                   Mis Reservas & Pase QR
                 </button>
               </li>
               <li>
-                <button onClick={() => setActiveTab('valoraciones')} className="hover:text-emerald-400 transition-colors">
+                <button onClick={() => setActiveTab('valoraciones')} className="hover:text-emerald-400 transition-colors cursor-pointer">
                   Opiniones de Jugadores
                 </button>
               </li>
               <li>
                 <button 
                   onClick={() => {
-                    setCurrentRole('admin');
-                    setActiveTab('admin');
+                    if (isAdminAuthenticated) {
+                      setActiveTab('admin');
+                    } else {
+                      onOpenAdminLogin();
+                    }
                   }} 
-                  className="hover:text-blue-400 transition-colors text-slate-300 font-semibold"
+                  className="hover:text-blue-400 transition-colors text-slate-400 hover:underline cursor-pointer flex items-center gap-1"
                 >
-                  Acceso Panel Administrador
+                  <Lock className="w-3 h-3 text-blue-400" />
+                  <span>Acceso Administrador</span>
                 </button>
               </li>
             </ul>
@@ -123,13 +123,21 @@ export const Footer: React.FC<FooterProps> = ({ onOpenGitHubModal }) => {
               </div>
             </div>
 
-            <button
-              onClick={onOpenGitHubModal}
-              className="mt-3 w-full py-2 px-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-            >
-              <Github className="w-3.5 h-3.5" />
-              <span>Ver Configuración de Hosting GitHub</span>
-            </button>
+            <div className="pt-2">
+              <button
+                onClick={() => {
+                  if (isAdminAuthenticated) {
+                    setActiveTab('admin');
+                  } else {
+                    onOpenAdminLogin();
+                  }
+                }}
+                className="w-full py-2 px-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-blue-600/50 text-slate-300 hover:text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />
+                <span>{isAdminAuthenticated ? 'Ir al Panel Admin' : 'Ingreso Administrador'}</span>
+              </button>
+            </div>
           </div>
 
         </div>

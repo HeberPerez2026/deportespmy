@@ -6,29 +6,30 @@ import { CourtCatalog } from './components/CourtCatalog';
 import { UserPortal } from './components/UserPortal';
 import { ReviewsSection } from './components/ReviewsSection';
 import { AdminDashboard } from './components/AdminPanel/AdminDashboard';
-import { AndroidAppSimulator } from './components/AndroidAppSimulator';
-import { GitHubHostingModal } from './components/GitHubHostingModal';
+import { AdminLoginModal } from './components/AdminLoginModal';
 import { Footer } from './components/Footer';
 
 const MainContent: React.FC = () => {
-  const { activeTab, setActiveTab } = useApp();
-  const [isGitHubModalOpen, setIsGitHubModalOpen] = useState(false);
+  const { activeTab, setActiveTab, isAdminAuthenticated } = useApp();
+  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-emerald-500 selection:text-slate-950">
       
-      {/* Header */}
+      {/* Header with Player Navigation & Top-Right Admin Login */}
       <Header
-        onOpenGitHubModal={() => setIsGitHubModalOpen(true)}
-        onOpenWhatsAppHistory={() => setActiveTab('admin')}
+        onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
       />
 
       {/* Main Body */}
       <main className="flex-1">
+        
+        {/* PLAYER VIEW 1: RESERVAS & HERO */}
         {activeTab === 'turnos' && (
           <>
             <HeroBanner />
             <CourtCatalog />
+            
             {/* Quick Community Reviews preview teaser */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
               <div className="bg-gradient-to-r from-emerald-900 via-slate-900 to-teal-950 text-white rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl border border-emerald-900/40">
@@ -40,7 +41,7 @@ const MainContent: React.FC = () => {
                     +4.9 estrellas en más de 140 partidos jugados
                   </h3>
                   <p className="text-xs text-slate-300 max-w-lg">
-                    Conocé las opiniones detalladas sobre la calidad del césped, la iluminación nocturna y la atención en el buffet.
+                    Conocé las opiniones de jugadores reales sobre el estado del césped, la iluminación y la atención del buffet.
                   </p>
                 </div>
                 <button
@@ -54,33 +55,57 @@ const MainContent: React.FC = () => {
           </>
         )}
 
+        {/* PLAYER VIEW 2: NUESTRAS CANCHAS & TARIFAS */}
         {activeTab === 'canchas' && (
           <div className="py-6">
             <CourtCatalog />
           </div>
         )}
 
+        {/* PLAYER VIEW 3: MIS TURNOS & PASE QR */}
         {activeTab === 'mis_turnos' && (
           <UserPortal />
         )}
 
+        {/* PLAYER VIEW 4: OPINIONES Y VALORACIONES */}
         {activeTab === 'valoraciones' && (
           <ReviewsSection />
         )}
 
+        {/* EXCLUSIVE ADMIN VIEW: ONLY ACCESSIBLE WHEN AUTHENTICATED */}
         {activeTab === 'admin' && (
-          <AdminDashboard />
+          isAdminAuthenticated ? (
+            <AdminDashboard />
+          ) : (
+            <div className="max-w-md mx-auto my-16 p-8 bg-white rounded-3xl border border-slate-200 shadow-xl text-center space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto">
+                <span className="text-xl">🔒</span>
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">Requiere Acceso de Administrador</h3>
+              <p className="text-xs text-slate-600">
+                Este apartado contiene la gestión exclusiva de canchas, tarifas, caja y agenda.
+              </p>
+              <button
+                onClick={() => setIsAdminLoginOpen(true)}
+                className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer shadow-md"
+              >
+                Ingresar Contraseña de Admin
+              </button>
+            </div>
+          )
         )}
+
       </main>
 
       {/* Footer */}
-      <Footer onOpenGitHubModal={() => setIsGitHubModalOpen(true)} />
+      <Footer onOpenAdminLogin={() => setIsAdminLoginOpen(true)} />
 
-      {/* Modals & Android Simulator */}
-      <AndroidAppSimulator />
-      {isGitHubModalOpen && (
-        <GitHubHostingModal onClose={() => setIsGitHubModalOpen(false)} />
-      )}
+      {/* Admin Login Modal */}
+      <AdminLoginModal
+        isOpen={isAdminLoginOpen}
+        onClose={() => setIsAdminLoginOpen(false)}
+        onLoginSuccess={() => setActiveTab('admin')}
+      />
 
     </div>
   );

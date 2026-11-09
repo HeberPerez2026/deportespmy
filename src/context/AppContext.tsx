@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { 
   Court, 
@@ -20,6 +20,7 @@ import {
   MONTHLY_STATS_DATA, 
   getIsoDate 
 } from '../data/mockData';
+import { fetchCloudData, pushCloudData, CloudPayload } from '../services/centralSync';
 
 interface BookingInput {
   courtId: string;
@@ -45,12 +46,13 @@ interface AppContextType {
   setSelectedDate: (date: string) => void;
   selectedSport: SportType | 'all';
   setSelectedSport: (sport: SportType | 'all') => void;
-  currentRole: 'client' | 'admin';
-  setCurrentRole: (role: 'client' | 'admin') => void;
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  androidViewMode: 'none' | 'player_app' | 'admin_app';
-  setAndroidViewMode: (mode: 'none' | 'player_app' | 'admin_app') => void;
+
+  // Admin Authentication State
+  isAdminAuthenticated: boolean;
+  loginAdmin: (password: string) => boolean;
+  logoutAdmin: () => void;
   
   // User profile storage
   userPhone: string;
@@ -60,9 +62,11 @@ interface AppContextType {
   userEmail: string;
   setUserEmail: (email: string) => void;
 
-  // Real-time synchronization indicator
+  // Cloud synchronization status
   isSyncing: boolean;
   lastSyncTime: Date;
+  cloudConnected: boolean;
+  refreshFromCloud: () => Promise<void>;
 
   // Actions
   createBooking: (input: BookingInput) => Booking;
@@ -91,14 +95,17 @@ interface AppContextType {
 }
 
 const STORAGE_KEYS = {
-  COURTS: 'deportespmy_courts_v1',
-  BOOKINGS: 'deportespmy_bookings_v1',
-  REVIEWS: 'deportespmy_reviews_v1',
-  WHATSAPP: 'deportespmy_whatsapp_v1',
+  COURTS: 'deportespmy_courts_v2',
+  BOOKINGS: 'deportespmy_bookings_v2',
+  REVIEWS: 'deportespmy_reviews_v2',
+  WHATSAPP: 'deportespmy_whatsapp_v2',
   USER_PHONE: 'deportespmy_user_phone',
   USER_NAME: 'deportespmy_user_name',
   USER_EMAIL: 'deportespmy_user_email',
+  ADMIN_AUTH: 'deportespmy_admin_authenticated',
 };
+
+const DEFAULT_ADMIN_PASSWORDS = ['pmy2026', 'admin123', 'admin', 'madryn2026'];
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -146,9 +153,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Navigation and Filter States
   const [selectedDate, setSelectedDate] = useState<string>(getIsoDate(0));
   const [selectedSport, setSelectedSport] = useState<SportType | 'all'>('all');
-  const [currentRole, setCurrentRole] = useState<'client' | 'admin'>('client');
   const [activeTab, setActiveTab] = useState<string>('turnos');
-  const [androidViewMode, setAndroidViewMode] = useState<'none' | 'player_app' | 'admin_app'>('none');
+
+  // Admin Authentication State
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    return localStorage.getItem(STORAGE_KEYS.ADMIN_AUTH) === 'true';
+  });
+
+  const loginAdmin = (password: string): boolean => {
+    if (DEFAULT_ADMIN_PASSWORDS.includes(password.trim().toLowerCase())) {
+      setIsAdminAuthenticated(true);
+      localStorage.setItem(STORAGE_KEYS.ADMIN_AUTH, 'true');
+      return true;
+    }
+    return false;
+  };
+
+  const logoutAdmin = () => {
+    setIsAdminAuthenticated(false);
+    localStorage.removeItem(STORAGE_KEYS.ADMIN_AUTH);
+    setActiveTab('turnos');
+  };
 
   // Customer stored credentials
   const [userPhone, setUserPhoneState] = useState<string>(() => localStorage.getItem(STORAGE_KEYS.USER_PHONE) || '+5492804567890');
@@ -170,43 +195,119 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(STORAGE_KEYS.USER_EMAIL, email);
   };
 
-  // Sync indicator
+  // Cloud Sync Indicators
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [cloudConnected, setCloudConnected] = useState<boolean>(true);
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
 
-  const triggerSyncFlash = useCallback(() => {
+  // Broadcast channel for instantaneous cross-tab sync
+  useEffect(() => {
+    try {
+      broadcastChannelRef.current = new BroadcastChannel('deportespmy_channel');
+      broadcastChannelRef.current.onmessage = (event) => {
+        if (event.data?.type === 'SYNC_BOOKINGS' && Array.isArray(event.data.bookings)) {
+          setBookings(event.data.bookings);
+          setLastSyncTime(new Date());
+        }
+      };
+    } catch {
+      // Ignore in environments without BroadcastChannel
+    }
+    return () => {
+      broadcastChannelRef.current?.close();
+    };
+  }, []);
+
+  // Fetch initial central cloud data and start real-time polling
+  const refreshFromCloud = useCallback(async () => {
+    setIsSyncing(true);
+    const cloud = await fetchCloudData();
+    if (cloud && Array.isArray(cloud.bookings) && cloud.bookings.length > 0) {
+      setBookings(prev => {
+        // Merge cloud bookings with any local ones by ID
+        const map = new Map<string, Booking>();
+        // Add initial
+        prev.forEach(b => map.set(b.id, b));
+        // Overwrite / add from cloud
+        cloud.bookings.forEach(b => map.set(b.id, b));
+        const merged = Array.from(map.values());
+        localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(merged));
+        return merged;
+      });
+      setCloudConnected(true);
+      setLastSyncTime(new Date());
+    } else if (cloud && cloud.bookings.length === 0) {
+      // Initialize cloud with current local bookings
+      const currentBookings = JSON.parse(localStorage.getItem(STORAGE_KEYS.BOOKINGS) || JSON.stringify(INITIAL_BOOKINGS));
+      await pushCloudData({
+        updatedAt: new Date().toISOString(),
+        bookings: currentBookings,
+      });
+      setCloudConnected(true);
+    }
+    setIsSyncing(false);
+  }, []);
+
+  // Initial load and periodic cloud polling every 8 seconds
+  useEffect(() => {
+    refreshFromCloud();
+
+    const interval = setInterval(() => {
+      refreshFromCloud();
+    }, 8000);
+
+    // Also refresh on window focus
+    const onFocus = () => refreshFromCloud();
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [refreshFromCloud]);
+
+  // Sync state changes to cloud and local
+  const syncBookingsToCloud = useCallback((updatedBookings: Booking[]) => {
     setIsSyncing(true);
     setLastSyncTime(new Date());
-    setTimeout(() => setIsSyncing(false), 800);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(updatedBookings));
+      // Notify other tabs
+      broadcastChannelRef.current?.postMessage({
+        type: 'SYNC_BOOKINGS',
+        bookings: updatedBookings
+      });
+    } catch (e) {
+      console.error(e);
+    }
+
+    // Push to central cloud REST API
+    pushCloudData({
+      updatedAt: new Date().toISOString(),
+      bookings: updatedBookings,
+    }).then(success => {
+      setCloudConnected(success);
+      setIsSyncing(false);
+    });
   }, []);
 
   // Save changes to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(courts));
-      triggerSyncFlash();
     } catch (e) {
       console.error(e);
     }
-  }, [courts, triggerSyncFlash]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(bookings));
-      triggerSyncFlash();
-    } catch (e) {
-      console.error(e);
-    }
-  }, [bookings, triggerSyncFlash]);
+  }, [courts]);
 
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(reviews));
-      triggerSyncFlash();
     } catch (e) {
       console.error(e);
     }
-  }, [reviews, triggerSyncFlash]);
+  }, [reviews]);
 
   useEffect(() => {
     try {
@@ -228,7 +329,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Generate WhatsApp Message template
   const generateWhatsAppMessage = useCallback((booking: Booking): string => {
     const isSeña = booking.paymentStatus === 'seña_pagada';
-    const court = courts.find(c => c.id === booking.courtId);
     const sportEmoji = {
       futbol5: '⚽',
       futbol7: '⚽',
@@ -248,10 +348,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (isSeña 
         ? `⚠️ *Saldo restante a abonar en mostrador:* $${booking.balanceDue.toLocaleString('es-AR')}\n\n` 
         : `✅ *Estado del pago:* 100% CANCELADO\n\n`) +
-      `📍 *Ubicación:* Boulevard Brown 1420 (Frente al mar), Puerto Madryn, Chubut.\n` +
-      `📱 *Tu QR de Acceso:* https://deportespmy.com.ar/ticket/${booking.bookingCode}\n\n` +
-      `_Por favor presentate 10 minutos antes del turno. ¡Que disfrutes el partido!_ 🔥`;
-  }, [courts]);
+      `📍 *Ubicación:* Boulevard Brown 1420 (Costanera frente al mar), Puerto Madryn, Chubut.\n` +
+      `📱 *Tu Pase de Acceso:* https://deportespmy.com.ar/#/pase/${booking.bookingCode}\n\n` +
+      `_Por favor presentate 10 minutos antes del inicio. ¡Que disfrutes el partido!_ 🔥`;
+  }, []);
 
   const getWhatsAppShareUrl = useCallback((booking: Booking): string => {
     const cleanPhone = booking.clientPhone.replace(/\D/g, '');
@@ -276,12 +376,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setWhatsappLogs(prev => [newLog, ...prev]);
 
     // Update booking whatsappSent
-    setBookings(prev => prev.map(b => b.id === booking.id ? { ...b, whatsappSent: true, whatsappSentAt: new Date().toISOString() } : b));
+    const updated = bookings.map(b => b.id === booking.id ? { ...b, whatsappSent: true, whatsappSentAt: new Date().toISOString() } : b);
+    setBookings(updated);
+    syncBookingsToCloud(updated);
 
-    // Open WhatsApp Web/App in new tab or popup
+    // Open WhatsApp
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(preview)}`;
     window.open(url, '_blank');
-  }, [generateWhatsAppMessage]);
+  }, [bookings, generateWhatsAppMessage, syncBookingsToCloud]);
 
   // Create booking
   const createBooking = useCallback((input: BookingInput): Booking => {
@@ -295,7 +397,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const endTime = calculateEndTime(input.startTime, input.durationMinutes);
 
     const newBooking: Booking = {
-      id: `bk-${Date.now()}`,
+      id: `bk-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       bookingCode,
       courtId: input.courtId,
       courtName: court.name,
@@ -320,9 +422,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       whatsappSentAt: new Date().toISOString(),
     };
 
-    setBookings(prev => [newBooking, ...prev]);
+    const nextBookings = [newBooking, ...bookings];
+    setBookings(nextBookings);
+    syncBookingsToCloud(nextBookings);
 
-    // Save client info to state for future convenience
+    // Save client info
     setUserPhone(input.clientPhone);
     setUserName(input.clientName);
     setUserEmail(input.clientEmail);
@@ -339,7 +443,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setWhatsappLogs(prev => [log, ...prev]);
 
-    // Trigger celebration confetti
+    // Confetti celebration
     try {
       confetti({
         particleCount: 80,
@@ -347,11 +451,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         origin: { y: 0.6 }
       });
     } catch {
-      // Ignore if in test env
+      // Ignore
     }
 
     return newBooking;
-  }, [courts]);
+  }, [courts, bookings, syncBookingsToCloud]);
 
   // Admin Manual Booking
   const createManualAdminBooking = useCallback((input: BookingInput): Booking => {
@@ -360,34 +464,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Cancel booking
   const cancelBooking = useCallback((bookingId: string) => {
-    setBookings(prev => prev.map(b => {
+    const updated = bookings.map(b => {
       if (b.id === bookingId) {
         return {
           ...b,
-          status: 'cancelled',
-          paymentStatus: 'reembolsado'
+          status: 'cancelled' as const,
+          paymentStatus: 'reembolsado' as const
         };
       }
       return b;
-    }));
-  }, []);
+    });
+    setBookings(updated);
+    syncBookingsToCloud(updated);
+  }, [bookings, syncBookingsToCloud]);
 
   // Collect balance at court
   const collectBalanceAtCourt = useCallback((bookingId: string) => {
-    setBookings(prev => prev.map(b => {
+    const updated = bookings.map(b => {
       if (b.id === bookingId) {
         return {
           ...b,
           amountPaid: b.totalAmount,
           balanceDue: 0,
-          paymentStatus: 'total_pagado'
+          paymentStatus: 'total_pagado' as const
         };
       }
       return b;
-    }));
-  }, []);
+    });
+    setBookings(updated);
+    syncBookingsToCloud(updated);
+  }, [bookings, syncBookingsToCloud]);
 
-  // Block a slot (maintenance, private tournament, school)
+  // Block a slot
   const blockTimeSlot = useCallback((courtId: string, date: string, startTime: string, durationMinutes: number, reason: string) => {
     const court = courts.find(c => c.id === courtId);
     if (!court) return;
@@ -417,13 +525,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       whatsappSent: false,
     };
 
-    setBookings(prev => [blockedBooking, ...prev]);
-  }, [courts]);
+    const nextBookings = [blockedBooking, ...bookings];
+    setBookings(nextBookings);
+    syncBookingsToCloud(nextBookings);
+  }, [courts, bookings, syncBookingsToCloud]);
 
   // Unblock slot
   const unblockTimeSlot = useCallback((bookingId: string) => {
-    setBookings(prev => prev.filter(b => b.id !== bookingId));
-  }, []);
+    const nextBookings = bookings.filter(b => b.id !== bookingId);
+    setBookings(nextBookings);
+    syncBookingsToCloud(nextBookings);
+  }, [bookings, syncBookingsToCloud]);
 
   // Add review
   const addReview = useCallback((newReviewData: Omit<Review, 'id' | 'date'>) => {
@@ -435,7 +547,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setReviews(prev => [newRev, ...prev]);
 
-    // Recalculate court rating
     setCourts(prev => prev.map(c => {
       if (c.id === newReviewData.courtId) {
         const courtReviews = [...reviews.filter(r => r.courtId === c.id), newRev];
@@ -476,8 +587,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const court = courts.find(c => c.id === courtId);
     if (!court) return [];
 
-    // Standard hours from 09:00 to 23:00
-    // Step is 60 or 90 minutes. For padel/tenis standard is 90 mins or 60 mins. Let's provide hourly slots:
     const hours = [
       '09:00', '10:00', '11:00', '12:00', '13:00', '14:00',
       '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'
@@ -527,8 +636,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Compute Dynamic Monthly Stats
   const getMonthlyStats = useCallback((monthKey: string): MonthlyStats => {
     const base = MONTHLY_STATS_DATA[monthKey] || MONTHLY_STATS_DATA['2026-11'];
-    
-    // Filter bookings for this month
     const monthBookings = bookings.filter(b => b.date.startsWith(monthKey) && b.status === 'confirmed' && !b.clientName.startsWith('[BLOQUEADO'));
     
     const extraRevenue = monthBookings.reduce((sum, b) => sum + b.amountPaid, 0);
@@ -545,7 +652,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Export / Import / Reset Database
   const exportDatabaseJson = useCallback((): string => {
     const payload = {
-      version: '1.0',
+      version: '2.0',
       exportedAt: new Date().toISOString(),
       courts,
       bookings,
@@ -559,28 +666,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const data = JSON.parse(jsonString);
       if (Array.isArray(data.courts)) setCourts(data.courts);
-      if (Array.isArray(data.bookings)) setBookings(data.bookings);
+      if (Array.isArray(data.bookings)) {
+        setBookings(data.bookings);
+        syncBookingsToCloud(data.bookings);
+      }
       if (Array.isArray(data.reviews)) setReviews(data.reviews);
       if (Array.isArray(data.whatsappLogs)) setWhatsappLogs(data.whatsappLogs);
-      triggerSyncFlash();
       return true;
     } catch (e) {
       console.error('Import failed', e);
       return false;
     }
-  }, [triggerSyncFlash]);
+  }, [syncBookingsToCloud]);
 
   const resetDatabase = useCallback(() => {
     setCourts(INITIAL_COURTS);
     setBookings(INITIAL_BOOKINGS);
     setReviews(INITIAL_REVIEWS);
     setWhatsappLogs(INITIAL_WHATSAPP_LOGS);
-    localStorage.removeItem(STORAGE_KEYS.COURTS);
-    localStorage.removeItem(STORAGE_KEYS.BOOKINGS);
-    localStorage.removeItem(STORAGE_KEYS.REVIEWS);
-    localStorage.removeItem(STORAGE_KEYS.WHATSAPP);
-    triggerSyncFlash();
-  }, [triggerSyncFlash]);
+    syncBookingsToCloud(INITIAL_BOOKINGS);
+  }, [syncBookingsToCloud]);
 
   const value = useMemo(() => ({
     courts,
@@ -591,12 +696,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSelectedDate,
     selectedSport,
     setSelectedSport,
-    currentRole,
-    setCurrentRole,
     activeTab,
     setActiveTab,
-    androidViewMode,
-    setAndroidViewMode,
+    isAdminAuthenticated,
+    loginAdmin,
+    logoutAdmin,
     userPhone,
     setUserPhone,
     userName,
@@ -605,6 +709,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUserEmail,
     isSyncing,
     lastSyncTime,
+    cloudConnected,
+    refreshFromCloud,
     createBooking,
     cancelBooking,
     collectBalanceAtCourt,
@@ -629,14 +735,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     whatsappLogs,
     selectedDate,
     selectedSport,
-    currentRole,
     activeTab,
-    androidViewMode,
+    isAdminAuthenticated,
     userPhone,
     userName,
     userEmail,
     isSyncing,
     lastSyncTime,
+    cloudConnected,
+    refreshFromCloud,
     createBooking,
     cancelBooking,
     collectBalanceAtCourt,

@@ -3,41 +3,37 @@ import { useApp } from '../context/AppContext';
 import { 
   Calendar, 
   ShieldCheck, 
-  Smartphone, 
-  Github, 
-  MessageCircle, 
-  BarChart3, 
   Star, 
   User, 
   Menu, 
   X, 
   RefreshCw, 
   MapPin, 
-  Layers
+  Layers,
+  Lock,
+  LogOut
 } from 'lucide-react';
 
 interface HeaderProps {
-  onOpenGitHubModal: () => void;
-  onOpenWhatsAppHistory: () => void;
+  onOpenAdminLogin: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenGitHubModal, onOpenWhatsAppHistory }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
   const { 
-    currentRole, 
-    setCurrentRole, 
     activeTab, 
     setActiveTab, 
     isSyncing, 
-    lastSyncTime,
-    androidViewMode,
-    setAndroidViewMode,
+    cloudConnected,
+    isAdminAuthenticated,
+    logoutAdmin,
     bookings,
-    userPhone
+    userPhone,
+    refreshFromCloud
   } = useApp();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Active bookings count for logged in user
+  // Active bookings count for player
   const myActiveBookingsCount = bookings.filter(
     b => b.clientPhone === userPhone && b.status === 'confirmed'
   ).length;
@@ -49,7 +45,8 @@ export const Header: React.FC<HeaderProps> = ({ onOpenGitHubModal, onOpenWhatsAp
 
   return (
     <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white shadow-xl">
-      {/* Top micro-bar with location, domain & live DB sync */}
+      
+      {/* Top micro-bar with location, domain & live cloud sync */}
       <div className="bg-slate-950 px-4 py-1.5 text-xs text-slate-400 border-b border-slate-800/80 flex flex-wrap justify-between items-center">
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1 text-emerald-400 font-medium">
@@ -62,24 +59,18 @@ export const Header: React.FC<HeaderProps> = ({ onOpenGitHubModal, onOpenWhatsAp
           </span>
         </div>
 
-        <div className="flex items-center gap-3 ml-auto">
-          {/* Real-time DB sync badge */}
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-800/90 text-[11px]">
-            <span className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
-            <span className="text-slate-300">
-              {isSyncing ? 'Sincronizando...' : 'DB Central Online'}
-            </span>
-            <RefreshCw className={`w-2.5 h-2.5 text-slate-500 ${isSyncing ? 'animate-spin' : ''}`} />
-          </div>
-
-          {/* GitHub Pages Host Info */}
+        {/* Live Cloud DB Sync Badge */}
+        <div className="flex items-center gap-2 ml-auto">
           <button 
-            onClick={onOpenGitHubModal}
-            className="flex items-center gap-1 text-slate-400 hover:text-white transition-colors cursor-pointer text-[11px]"
-            title="Información de hosting en GitHub y dominio deportespmy.com.ar"
+            onClick={() => refreshFromCloud()}
+            className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800/90 hover:bg-slate-750 text-[11px] cursor-pointer transition-colors"
+            title="Sincronización en tiempo real con la nube"
           >
-            <Github className="w-3 h-3" />
-            <span className="hidden md:inline">Hosting GitHub</span>
+            <span className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-amber-400 animate-ping' : cloudConnected ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+            <span className="text-slate-300">
+              {isSyncing ? 'Sincronizando...' : cloudConnected ? 'Nube en Tiempo Real' : 'Modo Offline'}
+            </span>
+            <RefreshCw className={`w-2.5 h-2.5 text-slate-400 ${isSyncing ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
@@ -92,7 +83,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenGitHubModal, onOpenWhatsAp
           <div className="flex items-center gap-3">
             <button 
               onClick={() => handleNavClick('turnos')}
-              className="flex items-center gap-2.5 text-left group focus:outline-none"
+              className="flex items-center gap-2.5 text-left group focus:outline-none cursor-pointer"
             >
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:scale-105 transition-transform">
                 <span className="text-xl font-black text-white tracking-tighter">PMY</span>
@@ -103,23 +94,23 @@ export const Header: React.FC<HeaderProps> = ({ onOpenGitHubModal, onOpenWhatsAp
                     Deportes<span className="text-emerald-400">PMY</span>
                   </span>
                   <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border border-emerald-500/30">
-                    Online
+                    Turnos
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400 tracking-wide font-medium">
-                  Canchas & Reservas Puerto Madryn
+                  Reserva Online de Canchas
                 </p>
               </div>
             </button>
           </div>
 
-          {/* Desktop Navigation Links */}
+          {/* Player Desktop Navigation Links */}
           <nav className="hidden lg:flex items-center gap-1">
             <button
               onClick={() => handleNavClick('turnos')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'turnos' 
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
               }`}
             >
@@ -129,21 +120,21 @@ export const Header: React.FC<HeaderProps> = ({ onOpenGitHubModal, onOpenWhatsAp
 
             <button
               onClick={() => handleNavClick('canchas')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'canchas' 
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
               }`}
             >
               <Layers className="w-4 h-4" />
-              Espacios & Tarifas
+              Nuestras Canchas
             </button>
 
             <button
               onClick={() => handleNavClick('mis_turnos')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 relative ${
+              className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer relative ${
                 activeTab === 'mis_turnos' 
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
               }`}
             >
@@ -158,83 +149,51 @@ export const Header: React.FC<HeaderProps> = ({ onOpenGitHubModal, onOpenWhatsAp
 
             <button
               onClick={() => handleNavClick('valoraciones')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
                 activeTab === 'valoraciones' 
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
                   : 'text-slate-300 hover:text-white hover:bg-slate-800'
               }`}
             >
               <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
               Opiniones
             </button>
-
-            <button
-              onClick={() => handleNavClick('admin')}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5 ${
-                activeTab === 'admin' 
-                  ? 'bg-blue-600/30 text-blue-300 border border-blue-500/40' 
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4 text-blue-400" />
-              Panel Admin
-            </button>
           </nav>
 
-          {/* Action Tools: Role Switcher & Android App Simulator */}
-          <div className="flex items-center gap-2">
+          {/* Top Right Action: Admin Login Button */}
+          <div className="flex items-center gap-3">
             
-            {/* Android App preview button */}
-            <button
-              onClick={() => {
-                if (androidViewMode === 'none') {
-                  setAndroidViewMode(currentRole === 'admin' ? 'admin_app' : 'player_app');
-                } else {
-                  setAndroidViewMode('none');
-                }
-              }}
-              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer border ${
-                androidViewMode !== 'none'
-                  ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold shadow-md shadow-emerald-500/30'
-                  : 'bg-slate-800 text-emerald-400 border-slate-700 hover:bg-slate-700'
-              }`}
-              title="Simulador de App Móvil Android (Sincronizada)"
-            >
-              <Smartphone className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">
-                {androidViewMode !== 'none' ? 'Cerrar App Android' : 'Ver App Android'}
-              </span>
-            </button>
+            {isAdminAuthenticated ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleNavClick('admin')}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    activeTab === 'admin'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                      : 'bg-slate-800 text-blue-300 hover:bg-slate-750 border border-blue-500/30'
+                  }`}
+                >
+                  <ShieldCheck className="w-4 h-4 text-blue-400" />
+                  <span>Panel Administrador</span>
+                </button>
 
-            {/* Role switch toggle */}
-            <div className="flex items-center bg-slate-800/90 p-0.5 rounded-lg border border-slate-700">
+                <button
+                  onClick={logoutAdmin}
+                  className="p-2 rounded-xl bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-300 border border-slate-700 transition-colors cursor-pointer"
+                  title="Cerrar Sesión Administrador"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
               <button
-                onClick={() => {
-                  setCurrentRole('client');
-                  if (activeTab === 'admin') setActiveTab('turnos');
-                }}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
-                  currentRole === 'client'
-                    ? 'bg-emerald-600 text-white shadow-sm font-bold'
-                    : 'text-slate-400 hover:text-white'
-                }`}
+                onClick={onOpenAdminLogin}
+                className="px-3.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:border-slate-600 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
               >
-                Jugador
+                <Lock className="w-3.5 h-3.5 text-blue-400" />
+                <span>Acceso Administrador</span>
               </button>
-              <button
-                onClick={() => {
-                  setCurrentRole('admin');
-                  setActiveTab('admin');
-                }}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
-                  currentRole === 'admin'
-                    ? 'bg-blue-600 text-white shadow-sm font-bold'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                Admin
-              </button>
-            </div>
+            )}
 
             {/* Mobile Hamburger toggle */}
             <button
@@ -269,7 +228,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenGitHubModal, onOpenWhatsAp
             }`}
           >
             <Layers className="w-4 h-4 text-emerald-400" />
-            Nuestras Canchas & Tarifas
+            Nuestras Canchas
           </button>
 
           <button
@@ -296,33 +255,30 @@ export const Header: React.FC<HeaderProps> = ({ onOpenGitHubModal, onOpenWhatsAp
             }`}
           >
             <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-            Opiniones & Calificaciones
+            Opiniones de Jugadores
           </button>
 
-          <button
-            onClick={() => {
-              setCurrentRole('admin');
-              handleNavClick('admin');
-            }}
-            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2.5 ${
-              activeTab === 'admin' ? 'bg-blue-600/30 text-blue-300' : 'text-slate-200 hover:bg-slate-800'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4 text-blue-400" />
-            Panel de Administración & Estadísticas
-          </button>
-
-          <div className="pt-2 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400">
-            <span>Dominio: deportespmy.com.ar</span>
-            <button 
-              onClick={() => {
-                setMobileMenuOpen(false);
-                onOpenGitHubModal();
-              }}
-              className="text-emerald-400 underline"
-            >
-              Ver GitHub Setup
-            </button>
+          <div className="pt-2 border-t border-slate-800">
+            {isAdminAuthenticated ? (
+              <button
+                onClick={() => handleNavClick('admin')}
+                className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-bold bg-blue-600 text-white flex items-center gap-2.5"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                Panel de Administración
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onOpenAdminLogin();
+                }}
+                className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-blue-300 bg-slate-800 flex items-center gap-2"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                Acceso Administrador
+              </button>
+            )}
           </div>
         </div>
       )}

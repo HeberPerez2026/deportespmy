@@ -20,7 +20,7 @@ export const ReviewsSection: React.FC = () => {
     courts, 
     addReview, 
     replyToReview, 
-    currentRole 
+    isAdminAuthenticated 
   } = useApp();
 
   const [selectedSportFilter, setSelectedSportFilter] = useState<SportType | 'all'>('all');
@@ -284,7 +284,7 @@ export const ReviewsSection: React.FC = () => {
                   {rev.adminReply.text}
                 </p>
               </div>
-            ) : currentRole === 'admin' ? (
+            ) : isAdminAuthenticated ? (
               <div className="pt-2">
                 {adminReplyReviewId === rev.id ? (
                   <div className="p-3 bg-slate-100 rounded-2xl space-y-2 text-xs">
