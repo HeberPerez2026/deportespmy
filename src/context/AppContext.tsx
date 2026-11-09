@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import confetti from 'canvas-confetti';
 import { 
   Court, 
@@ -21,15 +21,16 @@ import {
   getIsoDate 
 } from '../data/mockData';
 import { 
-  fetchCloudBookings, 
-  fetchCloudReviews, 
-  pushCloudBookings, 
-  pushCloudReviews, 
-  publishLiveEvent, 
-  fetchRecentEvents, 
-  subscribeToLiveEvents, 
-  SyncEvent 
+  subscribeToBookings, 
+  subscribeToReviews, 
+  saveBookingToFirestore, 
+  deleteBookingFromFirestore, 
+  saveReviewToFirestore, 
+  saveReviewReplyToFirestore, 
+  fetchAllBookingsOnce, 
+  fetchAllReviewsOnce 
 } from '../services/centralSync';
+import { testFirestoreConnection } from '../firebase';
 
 interface BookingInput {
   courtId: string;
@@ -104,10 +105,10 @@ interface AppContextType {
 }
 
 const STORAGE_KEYS = {
-  COURTS: 'deportespmy_courts_v3',
-  BOOKINGS: 'deportespmy_bookings_v3',
-  REVIEWS: 'deportespmy_reviews_v3',
-  WHATSAPP: 'deportespmy_whatsapp_v3',
+  COURTS: 'deportespmy_courts_v4',
+  BOOKINGS: 'deportespmy_bookings_v4',
+  REVIEWS: 'deportespmy_reviews_v4',
+  WHATSAPP: 'deportespmy_whatsapp_v4',
   USER_PHONE: 'deportespmy_user_phone',
   USER_NAME: 'deportespmy_user_name',
   USER_EMAIL: 'deportespmy_user_email',
@@ -208,7 +209,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [cloudConnected, setCloudConnected] = useState<boolean>(true);
   const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
-  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
 
   // Recalculate court rating helper
   const recalculateCourtsRatings = useCallback((updatedReviews: Review[]) => {
@@ -224,188 +224,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   }, []);
 
-  // Handle incoming live sync events (from SSE or BroadcastChannel)
-  const handleIncomingSyncEvent = useCallback((event: SyncEvent) => {
-    setLastSyncTime(new Date());
-
-    switch (event.type) {
-      case 'BOOKING_CREATED': {
-        setBookings(prev => {
-          if (prev.some(b => b.id === event.booking.id)) return prev;
-          const updated = [event.booking, ...prev];
-          localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(updated));
-          return updated;
-        });
-        break;
-      }
-      case 'BOOKING_CANCELLED': {
-        setBookings(prev => {
-          const updated = prev.map(b => b.id === event.bookingId ? { ...b, status: 'cancelled' as const, paymentStatus: 'reembolsado' as const } : b);
-          localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(updated));
-          return updated;
-        });
-        break;
-      }
-      case 'BALANCE_COLLECTED': {
-        setBookings(prev => {
-          const updated = prev.map(b => b.id === event.bookingId ? { ...b, amountPaid: b.totalAmount, balanceDue: 0, paymentStatus: 'total_pagado' as const } : b);
-          localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(updated));
-          return updated;
-        });
-        break;
-      }
-      case 'SLOT_BLOCKED': {
-        setBookings(prev => {
-          if (prev.some(b => b.id === event.booking.id)) return prev;
-          const updated = [event.booking, ...prev];
-          localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(updated));
-          return updated;
-        });
-        break;
-      }
-      case 'SLOT_UNBLOCKED': {
-        setBookings(prev => {
-          const updated = prev.filter(b => b.id !== event.bookingId);
-          localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(updated));
-          return updated;
-        });
-        break;
-      }
-      case 'REVIEW_CREATED': {
-        setReviews(prev => {
-          if (prev.some(r => r.id === event.review.id)) return prev;
-          const updated = [event.review, ...prev];
-          localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(updated));
-          recalculateCourtsRatings(updated);
-          return updated;
-        });
-        break;
-      }
-      case 'REVIEW_REPLIED': {
-        setReviews(prev => {
-          const updated = prev.map(r => r.id === event.reviewId ? { ...r, adminReply: event.adminReply } : r);
-          localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(updated));
-          return updated;
-        });
-        break;
-      }
-    }
-  }, [recalculateCourtsRatings]);
-
-  // Set up BroadcastChannel for local instant cross-tab sync
+  // Connect Firestore real-time onSnapshot listeners
   useEffect(() => {
-    try {
-      broadcastChannelRef.current = new BroadcastChannel('deportespmy_channel');
-      broadcastChannelRef.current.onmessage = (event) => {
-        if (event.data && event.data.syncEvent) {
-          handleIncomingSyncEvent(event.data.syncEvent);
-        }
-      };
-    } catch {
-      // Ignore in environments without BroadcastChannel
-    }
-    return () => {
-      broadcastChannelRef.current?.close();
-    };
-  }, [handleIncomingSyncEvent]);
+    testFirestoreConnection().then(ok => setCloudConnected(ok));
 
-  // Set up Server-Sent Events (SSE) for instantaneous cross-device real-time sync
-  useEffect(() => {
-    const unsubscribeSSE = subscribeToLiveEvents((event) => {
-      handleIncomingSyncEvent(event);
-    });
-
-    return () => {
-      unsubscribeSSE();
-    };
-  }, [handleIncomingSyncEvent]);
-
-  // Fetch full cloud data and replay missed events
-  const refreshFromCloud = useCallback(async () => {
-    setIsSyncing(true);
-    try {
-      // 1. Fetch Cloud Bookings
-      const cloudBookings = await fetchCloudBookings();
-      if (cloudBookings && Array.isArray(cloudBookings)) {
+    // 1. Subscribe to Bookings in Firestore
+    const unsubBookings = subscribeToBookings((remoteBookings) => {
+      if (remoteBookings.length > 0) {
         setBookings(prev => {
           const map = new Map<string, Booking>();
           prev.forEach(b => map.set(b.id, b));
-          cloudBookings.forEach(b => map.set(b.id, b));
+          remoteBookings.forEach(b => map.set(b.id, b));
           const merged = Array.from(map.values());
           localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(merged));
           return merged;
         });
+        setLastSyncTime(new Date());
+        setCloudConnected(true);
+      } else {
+        // If Firestore bookings collection is empty, seed it with initial bookings
+        INITIAL_BOOKINGS.forEach(b => saveBookingToFirestore(b));
       }
+    });
 
-      // 2. Fetch Cloud Reviews
-      const cloudReviews = await fetchCloudReviews();
-      if (cloudReviews && Array.isArray(cloudReviews)) {
+    // 2. Subscribe to Reviews in Firestore
+    const unsubReviews = subscribeToReviews((remoteReviews) => {
+      if (remoteReviews.length > 0) {
         setReviews(prev => {
           const map = new Map<string, Review>();
           prev.forEach(r => map.set(r.id, r));
-          cloudReviews.forEach(r => map.set(r.id, r));
+          remoteReviews.forEach(r => map.set(r.id, r));
           const merged = Array.from(map.values());
           localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(merged));
           recalculateCourtsRatings(merged);
           return merged;
         });
+        setLastSyncTime(new Date());
+        setCloudConnected(true);
+      } else {
+        // If Firestore reviews collection is empty, seed it with initial reviews
+        INITIAL_REVIEWS.forEach(r => saveReviewToFirestore(r));
+      }
+    });
+
+    return () => {
+      unsubBookings();
+      unsubReviews();
+    };
+  }, [recalculateCourtsRatings]);
+
+  // Fetch full cloud data on demand
+  const refreshFromCloud = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const [remoteBookings, remoteReviews] = await Promise.all([
+        fetchAllBookingsOnce(),
+        fetchAllReviewsOnce()
+      ]);
+
+      if (remoteBookings && remoteBookings.length > 0) {
+        setBookings(remoteBookings);
+        localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(remoteBookings));
       }
 
-      // 3. Catch up missed live events from ntfy.sh
-      const recentEvents = await fetchRecentEvents();
-      if (recentEvents.length > 0) {
-        recentEvents.forEach(evt => handleIncomingSyncEvent(evt));
+      if (remoteReviews && remoteReviews.length > 0) {
+        setReviews(remoteReviews);
+        localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(remoteReviews));
+        recalculateCourtsRatings(remoteReviews);
       }
 
       setCloudConnected(true);
       setLastSyncTime(new Date());
     } catch (err) {
-      console.warn('[Sync] Refresh error:', err);
+      console.warn('[Firestore] Refresh error:', err);
     } finally {
       setIsSyncing(false);
     }
-  }, [handleIncomingSyncEvent, recalculateCourtsRatings]);
+  }, [recalculateCourtsRatings]);
 
-  // Initial load and periodic cloud polling every 10 seconds
-  useEffect(() => {
-    refreshFromCloud();
-
-    const interval = setInterval(() => {
-      refreshFromCloud();
-    }, 10000);
-
-    const onFocus = () => refreshFromCloud();
-    window.addEventListener('focus', onFocus);
-
-    return () => {
-      clearInterval(interval);
-      window.removeEventListener('focus', onFocus);
-    };
-  }, [refreshFromCloud]);
-
-  // Broadcast helper
-  const broadcastAndPersistEvent = useCallback((event: SyncEvent, updatedBookings?: Booking[], updatedReviews?: Review[]) => {
-    // 1. Local broadcast
-    try {
-      broadcastChannelRef.current?.postMessage({ syncEvent: event });
-    } catch {
-      // Ignore
-    }
-
-    // 2. Real-time PubSub to all devices via ntfy
-    publishLiveEvent(event);
-
-    // 3. Persist to cloud objects
-    if (updatedBookings) {
-      pushCloudBookings(updatedBookings).then(ok => setCloudConnected(ok));
-    }
-    if (updatedReviews) {
-      pushCloudReviews(updatedReviews).then(ok => setCloudConnected(ok));
-    }
-    setLastSyncTime(new Date());
-  }, []);
-
-  // Save changes to localStorage
+  // Save changes to localStorage as local cache
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(courts));
@@ -413,22 +310,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.error(e);
     }
   }, [courts]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(bookings));
-    } catch (e) {
-      console.error(e);
-    }
-  }, [bookings]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(reviews));
-    } catch (e) {
-      console.error(e);
-    }
-  }, [reviews]);
 
   useEffect(() => {
     try {
@@ -499,7 +380,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Update booking whatsappSent
     const updated = bookings.map(b => b.id === booking.id ? { ...b, whatsappSent: true, whatsappSentAt: new Date().toISOString() } : b);
     setBookings(updated);
-    pushCloudBookings(updated);
+    saveBookingToFirestore({ ...booking, whatsappSent: true, whatsappSentAt: new Date().toISOString() });
 
     // Open WhatsApp
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(preview)}`;
@@ -546,8 +427,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const nextBookings = [newBooking, ...bookings];
     setBookings(nextBookings);
     
-    // Broadcast live to all devices and persist
-    broadcastAndPersistEvent({ type: 'BOOKING_CREATED', booking: newBooking }, nextBookings);
+    // Save to Google Cloud Firestore database
+    saveBookingToFirestore(newBooking);
 
     // Save client info locally
     setUserPhone(input.clientPhone);
@@ -578,7 +459,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     return newBooking;
-  }, [courts, bookings, broadcastAndPersistEvent]);
+  }, [courts, bookings]);
 
   // Admin Manual Booking
   const createManualAdminBooking = useCallback((input: BookingInput): Booking => {
@@ -587,36 +468,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Cancel booking
   const cancelBooking = useCallback((bookingId: string) => {
+    let targetBooking: Booking | undefined;
     const updated = bookings.map(b => {
       if (b.id === bookingId) {
-        return {
+        targetBooking = {
           ...b,
           status: 'cancelled' as const,
           paymentStatus: 'reembolsado' as const
         };
+        return targetBooking;
       }
       return b;
     });
     setBookings(updated);
-    broadcastAndPersistEvent({ type: 'BOOKING_CANCELLED', bookingId }, updated);
-  }, [bookings, broadcastAndPersistEvent]);
+    if (targetBooking) {
+      saveBookingToFirestore(targetBooking);
+    }
+  }, [bookings]);
 
   // Collect balance at court
   const collectBalanceAtCourt = useCallback((bookingId: string) => {
+    let targetBooking: Booking | undefined;
     const updated = bookings.map(b => {
       if (b.id === bookingId) {
-        return {
+        targetBooking = {
           ...b,
           amountPaid: b.totalAmount,
           balanceDue: 0,
           paymentStatus: 'total_pagado' as const
         };
+        return targetBooking;
       }
       return b;
     });
     setBookings(updated);
-    broadcastAndPersistEvent({ type: 'BALANCE_COLLECTED', bookingId }, updated);
-  }, [bookings, broadcastAndPersistEvent]);
+    if (targetBooking) {
+      saveBookingToFirestore(targetBooking);
+    }
+  }, [bookings]);
 
   // Block a slot
   const blockTimeSlot = useCallback((courtId: string, date: string, startTime: string, durationMinutes: number, reason: string) => {
@@ -650,15 +539,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const nextBookings = [blockedBooking, ...bookings];
     setBookings(nextBookings);
-    broadcastAndPersistEvent({ type: 'SLOT_BLOCKED', booking: blockedBooking }, nextBookings);
-  }, [courts, bookings, broadcastAndPersistEvent]);
+    saveBookingToFirestore(blockedBooking);
+  }, [courts, bookings]);
 
   // Unblock slot
   const unblockTimeSlot = useCallback((bookingId: string) => {
     const nextBookings = bookings.filter(b => b.id !== bookingId);
     setBookings(nextBookings);
-    broadcastAndPersistEvent({ type: 'SLOT_UNBLOCKED', bookingId }, nextBookings);
-  }, [bookings, broadcastAndPersistEvent]);
+    deleteBookingFromFirestore(bookingId);
+  }, [bookings]);
 
   // Add review
   const addReview = useCallback((newReviewData: Omit<Review, 'id' | 'date'>) => {
@@ -672,9 +561,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setReviews(nextReviews);
     recalculateCourtsRatings(nextReviews);
 
-    // Broadcast live to all devices and push to cloud reviews
-    broadcastAndPersistEvent({ type: 'REVIEW_CREATED', review: newRev }, undefined, nextReviews);
-  }, [reviews, recalculateCourtsRatings, broadcastAndPersistEvent]);
+    // Save to Firestore real-time collection
+    saveReviewToFirestore(newRev);
+  }, [reviews, recalculateCourtsRatings]);
 
   // Admin replies to review
   const replyToReview = useCallback((reviewId: string, replyText: string) => {
@@ -693,9 +582,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
     setReviews(nextReviews);
 
-    // Broadcast live and push to cloud
-    broadcastAndPersistEvent({ type: 'REVIEW_REPLIED', reviewId, adminReply }, undefined, nextReviews);
-  }, [reviews, broadcastAndPersistEvent]);
+    // Update in Firestore
+    saveReviewReplyToFirestore(reviewId, adminReply);
+  }, [reviews]);
 
   // Update court settings
   const updateCourt = useCallback((updatedCourt: Court) => {
@@ -772,7 +661,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Export / Import / Reset Database
   const exportDatabaseJson = useCallback((): string => {
     const payload = {
-      version: '3.0',
+      version: '4.0',
       exportedAt: new Date().toISOString(),
       courts,
       bookings,
@@ -788,11 +677,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (Array.isArray(data.courts)) setCourts(data.courts);
       if (Array.isArray(data.bookings)) {
         setBookings(data.bookings);
-        pushCloudBookings(data.bookings);
+        data.bookings.forEach((b: Booking) => saveBookingToFirestore(b));
       }
       if (Array.isArray(data.reviews)) {
         setReviews(data.reviews);
-        pushCloudReviews(data.reviews);
+        data.reviews.forEach((r: Review) => saveReviewToFirestore(r));
       }
       if (Array.isArray(data.whatsappLogs)) setWhatsappLogs(data.whatsappLogs);
       return true;
@@ -807,8 +696,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBookings(INITIAL_BOOKINGS);
     setReviews(INITIAL_REVIEWS);
     setWhatsappLogs(INITIAL_WHATSAPP_LOGS);
-    pushCloudBookings(INITIAL_BOOKINGS);
-    pushCloudReviews(INITIAL_REVIEWS);
+    INITIAL_BOOKINGS.forEach(b => saveBookingToFirestore(b));
+    INITIAL_REVIEWS.forEach(r => saveReviewToFirestore(r));
   }, []);
 
   const value = useMemo(() => ({

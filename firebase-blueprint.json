@@ -1,0 +1,230 @@
+{
+  "entities": {
+    "Booking": {
+      "title": "Booking",
+      "description": "Reservation for a sports court time slot in DeportesPMY",
+      "type": "object",
+      "properties": {
+        "bookingCode": {
+          "type": "string",
+          "description": "Public confirmation reference code",
+          "maxLength": 32
+        },
+        "courtId": {
+          "type": "string",
+          "description": "Target court identifier",
+          "maxLength": 64
+        },
+        "courtName": {
+          "type": "string",
+          "description": "Name of the court",
+          "maxLength": 128
+        },
+        "sport": {
+          "type": "string",
+          "description": "Sport type",
+          "maxLength": 32
+        },
+        "date": {
+          "type": "string",
+          "description": "ISO date YYYY-MM-DD",
+          "maxLength": 16
+        },
+        "startTime": {
+          "type": "string",
+          "description": "Start time HH:mm",
+          "maxLength": 10
+        },
+        "endTime": {
+          "type": "string",
+          "description": "End time HH:mm",
+          "maxLength": 10
+        },
+        "durationMinutes": {
+          "type": "number",
+          "description": "Duration in minutes"
+        },
+        "clientName": {
+          "type": "string",
+          "description": "Player full name",
+          "maxLength": 128
+        },
+        "clientPhone": {
+          "type": "string",
+          "description": "Player phone number",
+          "maxLength": 32
+        },
+        "clientEmail": {
+          "type": "string",
+          "description": "Player email",
+          "maxLength": 128
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional notes or blocked reason",
+          "maxLength": 500
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "Total price in ARS"
+        },
+        "amountPaid": {
+          "type": "number",
+          "description": "Amount paid in ARS"
+        },
+        "balanceDue": {
+          "type": "number",
+          "description": "Remaining balance in ARS"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "Payment gateway or method",
+          "maxLength": 32
+        },
+        "paymentStatus": {
+          "type": "string",
+          "description": "Payment status",
+          "maxLength": 32
+        },
+        "paymentReference": {
+          "type": "string",
+          "description": "Transaction ID or reference",
+          "maxLength": 64
+        },
+        "status": {
+          "type": "string",
+          "description": "Booking status confirmed or cancelled",
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "ISO timestamp",
+          "maxLength": 64
+        },
+        "whatsappSent": {
+          "type": "boolean",
+          "description": "Whether WhatsApp notification was triggered"
+        }
+      },
+      "required": [
+        "bookingCode",
+        "courtId",
+        "sport",
+        "date",
+        "startTime",
+        "clientName",
+        "totalAmount",
+        "status"
+      ]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Customer feedback and ratings for sports facilities",
+      "type": "object",
+      "properties": {
+        "courtId": {
+          "type": "string",
+          "description": "Court reviewed",
+          "maxLength": 64
+        },
+        "courtName": {
+          "type": "string",
+          "description": "Court display name",
+          "maxLength": 128
+        },
+        "sport": {
+          "type": "string",
+          "description": "Sport category",
+          "maxLength": 32
+        },
+        "userName": {
+          "type": "string",
+          "description": "Reviewer name",
+          "maxLength": 128
+        },
+        "userPhone": {
+          "type": "string",
+          "description": "Reviewer phone",
+          "maxLength": 32
+        },
+        "rating": {
+          "type": "number",
+          "description": "Overall score 1 to 5"
+        },
+        "comment": {
+          "type": "string",
+          "description": "Review comment",
+          "maxLength": 1000
+        },
+        "date": {
+          "type": "string",
+          "description": "ISO date YYYY-MM-DD",
+          "maxLength": 16
+        },
+        "verifiedBookingCode": {
+          "type": "string",
+          "description": "Associated booking code",
+          "maxLength": 32
+        }
+      },
+      "required": ["courtId", "userName", "rating", "comment", "date"]
+    },
+    "Court": {
+      "title": "Court",
+      "description": "Sports court configuration and pricing",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Court name",
+          "maxLength": 128
+        },
+        "sport": {
+          "type": "string",
+          "description": "Sport type",
+          "maxLength": 32
+        },
+        "surface": {
+          "type": "string",
+          "description": "Surface type",
+          "maxLength": 64
+        },
+        "isIndoor": {
+          "type": "boolean",
+          "description": "Whether court is indoors"
+        },
+        "hourlyRateDay": {
+          "type": "number",
+          "description": "Day rate"
+        },
+        "hourlyRateNight": {
+          "type": "number",
+          "description": "Night rate"
+        },
+        "rating": {
+          "type": "number",
+          "description": "Average rating"
+        },
+        "reviewCount": {
+          "type": "number",
+          "description": "Total reviews count"
+        }
+      },
+      "required": ["name", "sport", "hourlyRateDay", "hourlyRateNight"]
+    }
+  },
+  "firestore": {
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Sport court bookings and reservations"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Customer reviews and feedback"
+    },
+    "/courts/{courtId}": {
+      "schema": "Court",
+      "description": "Sports court details, surfaces and hourly fees"
+    }
+  }
+}
