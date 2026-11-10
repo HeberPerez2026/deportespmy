@@ -791,6 +791,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const nextBookings = [newBooking, ...bookings];
     setBookings(nextBookings);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(nextBookings));
+    } catch {}
     
     // Save to Firestore
     saveBookingToFirestore(newBooking);
@@ -826,7 +829,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     return newBooking;
-  }, [courts, businessProfile.complexName, bookings]);
+  }, [courts, businessProfile.complexName, bookings, currentAdminUser]);
 
   // Confirm booking payment (e.g. from Mercado Pago return, Webhook, or Admin Manual Verification)
   const confirmBookingPayment = useCallback((bookingCodeOrId: string, paymentReference: string, paidAmount?: number): Booking | undefined => {
@@ -862,6 +865,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       nextBookings.unshift(confirmed);
     }
     setBookings(nextBookings);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(nextBookings));
+    } catch {}
     saveBookingToFirestore(confirmed);
 
     // Confetti celebration

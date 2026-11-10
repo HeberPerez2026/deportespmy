@@ -18,7 +18,6 @@ import {
   ShieldCheck, 
   LogOut, 
   RefreshCw, 
-  ArrowLeft,
   Building2,
   Crown
 } from 'lucide-react';
@@ -84,15 +83,6 @@ export const AdminDashboard: React.FC = () => {
           {/* SuperAdmin Actions */}
           <div className="flex flex-col items-end gap-3">
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setActiveTab('turnos')}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-slate-700 transition-colors"
-                title="Ver el catálogo de canchas como un jugador"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Ver Web como Jugador</span>
-              </button>
-
               <button
                 onClick={logoutAdmin}
                 className="px-4 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-rose-500/30 transition-colors"
@@ -160,15 +150,6 @@ export const AdminDashboard: React.FC = () => {
         {/* Exit to Player View / Logout Actions */}
         <div className="flex flex-col items-end gap-3">
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setActiveTab('turnos')}
-              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-slate-700 transition-colors"
-              title="Previsualizar el catálogo de canchas como un jugador"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Ver Web como Jugador</span>
-            </button>
-
             <button
               onClick={logoutAdmin}
               className="px-4 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer border border-rose-500/30 transition-colors"

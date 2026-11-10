@@ -12,7 +12,6 @@ import {
   Lock, 
   LogOut, 
   Crown,
-  Eye,
   Settings
 } from 'lucide-react';
 
@@ -118,28 +117,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
           {/* Desktop Navigation Links */}
           <nav className="hidden lg:flex items-center gap-1.5">
             {isAdminAuthenticated ? (
-              /* ADMIN MODE: Hide player booking links as requested */
+              /* ADMIN MODE: Exclusively in admin mode, player navigation is blocked */
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleNavClick('admin')}
-                  className={`px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    activeTab === 'admin'
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                  }`}
-                >
+                <span className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-blue-900/40 text-blue-300 border border-blue-500/30 flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-blue-400" />
-                  <span>Panel de Control</span>
-                </button>
-
-                <button
-                  onClick={() => handleNavClick('turnos')}
-                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-slate-200 hover:bg-slate-800 flex items-center gap-1.5 transition-colors cursor-pointer"
-                  title="Previsualizar la web tal como la ven los jugadores"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>Ver Web como Jugador</span>
-                </button>
+                  <span>Panel Administrador</span>
+                </span>
               </div>
             ) : (
               /* PLAYER MODE: Standard navigation */
@@ -230,14 +213,6 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
               >
                 <ShieldCheck className="w-4 h-4" />
                 Panel de Administración
-              </button>
-
-              <button
-                onClick={() => handleNavClick('turnos')}
-                className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-slate-300 hover:bg-slate-800 flex items-center gap-2"
-              >
-                <Eye className="w-4 h-4 text-emerald-400" />
-                Ver Vista del Jugador
               </button>
 
               <button
