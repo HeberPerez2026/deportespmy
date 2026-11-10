@@ -19,7 +19,10 @@ import {
   Info,
   Copy,
   Check,
-  ExternalLink
+  ExternalLink,
+  Upload,
+  Image as ImageIcon,
+  FileCheck
 } from 'lucide-react';
 
 interface BookingModalProps {
@@ -38,6 +41,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     getWhatsAppShareUrl,
     triggerWhatsAppSend,
     confirmBookingPayment,
+    submitPaymentReceipt,
     userPhone,
     userName,
     userEmail,
@@ -71,6 +75,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const [copiedCbu, setCopiedCbu] = useState(false);
 
   const [isWaitingForConfirmation, setIsWaitingForConfirmation] = useState(false);
+  const [receiptImage, setReceiptImage] = useState<string | null>(null);
+  const [isSubmittingReceipt, setIsSubmittingReceipt] = useState(false);
 
   // Available slots for selected date
   const slots = getSlotsForCourtAndDate(court.id, selectedDate);
@@ -942,39 +948,106 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 </div>
               </div>
 
-              {/* Instant Confirmation Action for Player after transferring */}
-              {(isWaitingForConfirmation || confirmedBooking.status !== 'confirmed') && (
-                <div className="p-4 rounded-2xl max-w-md mx-auto bg-emerald-950/40 border border-emerald-500/50 space-y-3">
-                  <div className="flex items-center justify-center gap-2 font-bold text-sm text-emerald-300">
-                    <CheckCircle className="w-5 h-5 text-emerald-400" />
-                    <span>¿Ya transferiste por Mercado Pago o Banco?</span>
+              {/* Receipt Attachment Section for Manual/Pending Payments */}
+              {(isWaitingForConfirmation || confirmedBooking.status === 'pending_payment' || confirmedBooking.status === 'awaiting_approval') && (
+                <div className="p-5 rounded-2xl max-w-md mx-auto bg-slate-800/50 border border-slate-700 space-y-4 shadow-xl">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                      <Upload className="w-5 h-5" />
+                    </div>
+                    <div className="text-left">
+                      <h4 className="text-sm font-bold text-white leading-tight">Adjuntar Comprobante de Pago</h4>
+                      <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold mt-0.5">Requerido para verificación manual</p>
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    Hacé clic aquí para confirmar tu turno de inmediato, registrarlo en el sistema y enviar tu comprobante oficial por WhatsApp al club:
-                  </p>
+
+                  {!receiptImage ? (
+                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-700 rounded-xl hover:bg-slate-800 transition-colors cursor-pointer group">
+                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                        <ImageIcon className="w-8 h-8 text-slate-500 mb-2 group-hover:text-emerald-400 transition-colors" />
+                        <p className="text-[11px] text-slate-400 font-bold group-hover:text-slate-300 transition-colors">Hacé clic para subir captura</p>
+                        <p className="text-[10px] text-slate-500 mt-1">JPG, PNG o PDF (Máx 2MB)</p>
+                      </div>
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => setReceiptImage(reader.result as string);
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  ) : (
+                    <div className="relative group">
+                      <img 
+                        src={receiptImage} 
+                        alt="Comprobante" 
+                        className="w-full h-32 object-cover rounded-xl border border-slate-600 shadow-inner"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
+                        <button 
+                          onClick={() => setReceiptImage(null)}
+                          className="px-3 py-1.5 bg-rose-600 text-white text-[10px] font-bold rounded-lg hover:bg-rose-500 transition-colors"
+                        >
+                          Quitar y Cambiar
+                        </button>
+                      </div>
+                      <div className="absolute top-2 right-2 bg-emerald-500 text-slate-950 p-1 rounded-full shadow-lg">
+                        <Check className="w-3 h-3" />
+                      </div>
+                    </div>
+                  )}
+
                   <button
                     type="button"
+                    disabled={!receiptImage || isSubmittingReceipt}
                     onClick={() => {
-                      const paidAmount = confirmedBooking.totalAmount * (confirmedBooking.isDepositOnly ? 0.5 : 1);
-                      const refCode = `PAGO-${confirmedBooking.paymentMethod.toUpperCase()}-${Date.now().toString().slice(-4)}`;
-                      const confirmed = confirmBookingPayment(confirmedBooking.bookingCode, refCode, paidAmount);
-                      const target = confirmed || {
-                        ...confirmedBooking,
-                        status: 'confirmed' as const,
-                        paymentStatus: (confirmedBooking.isDepositOnly ? 'seña_pagada' : 'total_pagado') as any,
-                        amountPaid: paidAmount,
-                        balanceDue: confirmedBooking.totalAmount - paidAmount,
-                        paymentReference: refCode
-                      };
-                      setConfirmedBooking(target);
-                      setIsWaitingForConfirmation(false);
-                      triggerWhatsAppSend(target);
+                      if (!receiptImage) return;
+                      setIsSubmittingReceipt(true);
+                      
+                      // Transition to awaiting_approval
+                      const updated = submitPaymentReceipt(
+                        confirmedBooking.bookingCode, 
+                        receiptImage,
+                        `REF-${confirmedBooking.paymentMethod.toUpperCase()}-${Date.now().toString().slice(-4)}`
+                      );
+
+                      if (updated) {
+                        setConfirmedBooking(updated);
+                        setIsWaitingForConfirmation(false);
+                      }
+                      
+                      setTimeout(() => {
+                        setIsSubmittingReceipt(false);
+                        triggerWhatsAppSend(updated || confirmedBooking);
+                      }, 800);
                     }}
-                    className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                    className="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
                   >
-                    <CheckCircle className="w-4 h-4 fill-slate-950 text-emerald-400" />
-                    <span>✓ Ya realicé el pago • Confirmar y Notificar WhatsApp</span>
+                    {isSubmittingReceipt ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                        <span>Enviando Comprobante...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FileCheck className="w-4 h-4" />
+                        <span>Confirmar y Enviar a Verificación</span>
+                      </>
+                    )}
                   </button>
+                  
+                  {confirmedBooking.status === 'awaiting_approval' && (
+                    <div className="flex items-center justify-center gap-2 text-emerald-400 font-bold text-[11px] animate-pulse">
+                      <CheckCircle className="w-3 h-3" />
+                      <span>Comprobante enviado con éxito. Pendiente de aprobación.</span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -988,9 +1061,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   <MessageCircle className="w-5 h-5" />
                   <span>{confirmedBooking.status === 'confirmed' ? 'Notificación por WhatsApp Generada' : 'Avisar al Club por WhatsApp'}</span>
                 </div>
-                <p className="text-xs text-slate-300 leading-relaxed">
+                <p className="text-xs text-slate-300 leading-relaxed text-center">
                   {confirmedBooking.status === 'confirmed' 
-                    ? 'Enviá el comprobante oficial a tu WhatsApp o compartilo con tu grupo de amigos del partido:'
+                    ? '¡Turno confirmado! Podés enviar el ticket oficial a tu WhatsApp o compartirlo con tus amigos:'
+                    : confirmedBooking.status === 'awaiting_approval'
+                    ? 'El club ha recibido tu comprobante. Podés apurar la verificación enviándolo también por WhatsApp:'
                     : 'Para que el club verifique tu transferencia CBU/Alias más rápido, podés enviar el comprobante de pago por WhatsApp ahora mismo:'}
                 </p>
 

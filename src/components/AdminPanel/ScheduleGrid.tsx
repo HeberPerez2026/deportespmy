@@ -189,12 +189,13 @@ export const ScheduleGrid: React.FC = () => {
                     : bookings.find(b => b.courtId === court.id && b.date === selectedDate && b.startTime === hour);
 
                   const isBlocked = slot.status === 'blocked' || booking?.clientName?.startsWith('[BLOQUEADO');
-                  const isPending = slot.status === 'pending' || booking?.status === 'pending_payment';
+                  const isPending = slot.status === 'pending' || booking?.status === 'pending_payment' || booking?.status === 'awaiting_approval';
                   const isConfirmed = (slot.status === 'booked' || booking?.status === 'confirmed') && !isBlocked && !isPending;
                   
                   // Status evaluation: "Pagado" if 100% paid; "Reservado" if deposit paid or pending
                   const isFullyPaid = isConfirmed && booking && (booking.paymentStatus === 'total_pagado' || booking.balanceDue === 0);
                   const isReserved = (isConfirmed && booking && !isFullyPaid) || (isPending && booking);
+                  const needsApproval = booking?.status === 'awaiting_approval';
 
                   return (
                     <td key={court.id} className="p-1 border-l border-slate-100 w-28 min-w-[105px] max-w-[125px]">
@@ -225,14 +226,18 @@ export const ScheduleGrid: React.FC = () => {
                       ) : isReserved && booking ? (
                         <button
                           onClick={() => handleSlotClick(court, slot)}
-                          className="w-full h-15 px-1 py-1 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center border-2 border-amber-500"
-                          title={`RESERVADO: ${booking.clientName} (#${booking.bookingCode}) - Saldo: $${booking.balanceDue.toLocaleString('es-AR')}`}
+                          className={`w-full h-15 px-1 py-1 rounded-xl transition-all cursor-pointer shadow-sm flex flex-col items-center justify-center border-2 ${
+                            needsApproval 
+                              ? 'bg-amber-400 hover:bg-amber-300 border-rose-500 animate-pulse' 
+                              : 'bg-amber-400 hover:bg-amber-300 border-amber-500'
+                          }`}
+                          title={needsApproval ? `POR APROBAR: ${booking.clientName} - Comprobante enviado` : `RESERVADO: ${booking.clientName} (#${booking.bookingCode}) - Saldo: $${booking.balanceDue.toLocaleString('es-AR')}`}
                         >
                           <span className="font-bold text-[11px] text-amber-950 truncate max-w-[95%] leading-tight text-center">
                             {booking.clientName}
                           </span>
                           <span className="text-xs font-black uppercase tracking-wider text-amber-950 mt-0.5">
-                            Reservado
+                            {needsApproval ? 'A Aprobar' : 'Reservado'}
                           </span>
                         </button>
                       ) : (
@@ -459,15 +464,37 @@ export const ScheduleGrid: React.FC = () => {
                 </div>
 
                 {/* Financial details */}
-                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
                   <div className="flex justify-between">
                     <span className="text-slate-500">Total Cancha:</span>
                     <span className="font-bold">${activeBookingDetails.totalAmount.toLocaleString('es-AR')}</span>
                   </div>
                   <div className="flex justify-between text-emerald-700">
-                    <span>Abonado ({activeBookingDetails.paymentMethod}):</span>
+                    <span>Abonado ({activeBookingDetails.paymentMethod.toUpperCase()}):</span>
                     <span className="font-extrabold">${activeBookingDetails.amountPaid.toLocaleString('es-AR')}</span>
                   </div>
+                  
+                  {activeBookingDetails.receiptUrl && (
+                    <div className="pt-2 border-t border-slate-200">
+                      <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Comprobante Adjunto:</p>
+                      <a 
+                        href={activeBookingDetails.receiptUrl} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="block relative group overflow-hidden rounded-xl border border-slate-300"
+                      >
+                        <img 
+                          src={activeBookingDetails.receiptUrl} 
+                          alt="Recibo" 
+                          className="w-full h-24 object-cover group-hover:scale-105 transition-transform"
+                        />
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="text-[10px] text-white font-bold bg-slate-900/80 px-2 py-1 rounded-lg">Ver pantalla completa</span>
+                        </div>
+                      </a>
+                    </div>
+                  )}
+
                   {activeBookingDetails.balanceDue > 0 ? (
                     <div className="flex justify-between text-amber-700 font-bold pt-1 border-t border-slate-200">
                       <span>Saldo Pendiente en Cancha:</span>
@@ -482,16 +509,21 @@ export const ScheduleGrid: React.FC = () => {
 
                 {/* Action buttons */}
                 <div className="space-y-2 pt-1">
-                  {activeBookingDetails.status === 'pending_payment' && (
+                  {(activeBookingDetails.status === 'pending_payment' || activeBookingDetails.status === 'awaiting_approval') && (
                     <button
                       onClick={() => {
-                        const confirmed = confirmBookingPayment(activeBookingDetails.id, `VERIFIED-ADMIN-${Date.now().toString().slice(-4)}`, activeBookingDetails.totalAmount * (activeBookingDetails.isDepositOnly ? 0.5 : 1));
+                        const paidAmount = activeBookingDetails.totalAmount * (activeBookingDetails.isDepositOnly ? 0.5 : 1);
+                        const confirmed = confirmBookingPayment(
+                          activeBookingDetails.id, 
+                          `VERIFIED-ADMIN-${Date.now().toString().slice(-4)}`, 
+                          paidAmount
+                        );
                         if (confirmed) setActiveBookingDetails(confirmed);
                       }}
-                      className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                      className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md"
                     >
                       <CheckCircle className="w-4 h-4" />
-                      <span>✓ Confirmar Pago y Notificar al Jugador</span>
+                      <span>✓ Aprobar Pago y Confirmar Turno</span>
                     </button>
                   )}
 

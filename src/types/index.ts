@@ -65,13 +65,14 @@ export interface Booking {
   paymentReference?: string;
   
   // Status
-  status: 'confirmed' | 'cancelled' | 'completed' | 'pending_payment';
+  status: 'confirmed' | 'cancelled' | 'completed' | 'pending_payment' | 'awaiting_approval';
   createdAt: string;
   
   // WhatsApp notification
   whatsappSent: boolean;
   whatsappSentAt?: string;
   adminId?: string;
+  receiptUrl?: string; // Base64 or Image URL of the payment receipt
 }
 
 export interface Review {

@@ -6,7 +6,7 @@ export const TransactionsView: React.FC = () => {
   const { bookings, collectBalanceAtCourt } = useApp();
   const [filterMethod, setFilterMethod] = useState<string>('all');
 
-  const confirmedBookings = bookings.filter(b => b.status === 'confirmed' && !b.clientName.startsWith('[BLOQUEADO'));
+  const confirmedBookings = bookings.filter(b => (b.status === 'confirmed' || b.status === 'awaiting_approval') && !b.clientName.startsWith('[BLOQUEADO'));
 
   // Aggregations
   const totalCollected = confirmedBookings.reduce((sum, b) => sum + b.amountPaid, 0);
@@ -128,8 +128,17 @@ export const TransactionsView: React.FC = () => {
                         {b.paymentMethod}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-right font-bold text-emerald-600">
-                      ${b.amountPaid.toLocaleString('es-AR')}
+                    <td className="py-3 px-4 text-right font-bold">
+                      <div className="flex flex-col items-end">
+                        <span className={b.status === 'awaiting_approval' ? 'text-rose-500' : 'text-emerald-600'}>
+                          ${b.amountPaid.toLocaleString('es-AR')}
+                        </span>
+                        {b.status === 'awaiting_approval' && (
+                          <span className="text-[9px] bg-rose-500 text-white px-1 rounded font-black uppercase mt-0.5 animate-pulse">
+                            Por Aprobar
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3 px-4 text-right font-bold">
                       {b.balanceDue > 0 ? (

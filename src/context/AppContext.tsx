@@ -126,6 +126,7 @@ interface AppContextType {
 
   // Bookings & Reviews Actions
   createBooking: (input: BookingInput) => Booking;
+  submitPaymentReceipt: (bookingCodeOrId: string, receiptUrl: string, paymentReference?: string) => Booking | undefined;
   confirmBookingPayment: (bookingCodeOrId: string, paymentReference: string, paidAmount?: number) => Booking | undefined;
   cancelBooking: (bookingId: string) => void;
   collectBalanceAtCourt: (bookingId: string) => void;
@@ -831,6 +832,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newBooking;
   }, [courts, businessProfile.complexName, bookings, currentAdminUser]);
 
+  // Submit payment receipt (for manual Mercado Pago Alias/Link or CBU)
+  const submitPaymentReceipt = useCallback((bookingCodeOrId: string, receiptUrl: string, paymentReference?: string): Booking | undefined => {
+    let targetBooking = bookings.find(b => b.bookingCode === bookingCodeOrId || b.id === bookingCodeOrId);
+    if (!targetBooking) return undefined;
+
+    const updated: Booking = {
+      ...targetBooking,
+      status: 'awaiting_approval',
+      receiptUrl,
+      paymentReference: paymentReference || targetBooking.paymentReference,
+    };
+
+    const nextBookings = bookings.map(b => (b.id === targetBooking!.id || b.bookingCode === targetBooking!.bookingCode) ? updated : b);
+    setBookings(nextBookings);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(nextBookings));
+    } catch {}
+    saveBookingToFirestore(updated);
+    
+    return updated;
+  }, [bookings]);
+
   // Confirm booking payment (e.g. from Mercado Pago return, Webhook, or Admin Manual Verification)
   const confirmBookingPayment = useCallback((bookingCodeOrId: string, paymentReference: string, paidAmount?: number): Booking | undefined => {
     let targetBooking = bookings.find(b => b.bookingCode === bookingCodeOrId || b.id === bookingCodeOrId);
@@ -1032,7 +1055,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const activeBookings = bookings.filter(b => {
       if (b.courtId !== courtId || b.date !== date) return false;
-      if (b.status === 'confirmed' || b.status === 'pending_payment') return true;
+      if (b.status === 'confirmed' || b.status === 'pending_payment' || b.status === 'awaiting_approval') return true;
       return false;
     });
 
@@ -1056,7 +1079,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (matchingBooking.clientName.startsWith('[BLOQUEADO')) {
           status = 'blocked';
           blockedReason = matchingBooking.notes;
-        } else if (matchingBooking.status === 'pending_payment') {
+        } else if (matchingBooking.status === 'pending_payment' || matchingBooking.status === 'awaiting_approval') {
           status = 'pending';
         } else {
           status = 'booked';
@@ -1187,6 +1210,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteAdminUser,
     toggleAdminUserStatus,
     createBooking,
+    submitPaymentReceipt,
     confirmBookingPayment,
     cancelBooking,
     collectBalanceAtCourt,
@@ -1237,6 +1261,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteAdminUser,
     toggleAdminUserStatus,
     createBooking,
+    submitPaymentReceipt,
     confirmBookingPayment,
     cancelBooking,
     collectBalanceAtCourt,
