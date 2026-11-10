@@ -45,7 +45,13 @@ const MainContent: React.FC = () => {
     const bookingDate = params.get('booking_date') || '';
     const bookingTime = params.get('booking_time') || '';
 
-    if (payment === 'success' || status === 'success' || collectionStatus === 'approved') {
+    const isApproved = payment === 'success' || 
+                       status === 'success' || 
+                       status === 'approved' || 
+                       collectionStatus === 'approved' || 
+                       collectionStatus === 'success';
+
+    if (isApproved) {
       if (bookingCode) {
         confirmBookingPayment(bookingCode, `MP-${paymentId}`);
       }
@@ -58,7 +64,7 @@ const MainContent: React.FC = () => {
       });
       // Clean query params so refreshing the page doesn't re-trigger
       window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (payment === 'failure' || status === 'failure' || collectionStatus === 'rejected') {
+    } else if (payment === 'failure' || status === 'failure' || status === 'rejected' || collectionStatus === 'rejected') {
       setPaymentFailureModal(bookingCode || 'Tu reserva');
       window.history.replaceState({}, document.title, window.location.pathname);
     }
@@ -200,18 +206,20 @@ const MainContent: React.FC = () => {
                 const matchedCourt = courts.find(c => c.name.toLowerCase() === paymentSuccessModal.courtName.toLowerCase());
                 const modalProfile = getBusinessProfileForCourt(matchedCourt);
                 const targetPhone = (modalProfile.whatsappNumber || businessProfile.whatsappNumber || '').replace(/\D/g, '');
+                const shareText = `¡Hola! Acabo de abonar mi turno #${paymentSuccessModal.bookingCode} en ${paymentSuccessModal.courtName} para el ${paymentSuccessModal.date || 'día programado'} por Mercado Pago. Ref: ${paymentSuccessModal.paymentId}`;
+                const waUrl = targetPhone ? `https://wa.me/${targetPhone}?text=${encodeURIComponent(shareText)}` : `https://wa.me/?text=${encodeURIComponent(shareText)}`;
                 
-                return targetPhone ? (
+                return (
                   <a
-                    href={`https://wa.me/${targetPhone}?text=${encodeURIComponent(`¡Hola! Acabo de abonar mi turno #${paymentSuccessModal.bookingCode} en ${paymentSuccessModal.courtName} por Mercado Pago. Ref: ${paymentSuccessModal.paymentId}`)}`}
+                    href={waUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
                   >
-                    <MessageCircle className="w-4 h-4" />
-                    <span>Avisar al Club por WhatsApp</span>
+                    <MessageCircle className="w-4 h-4 fill-slate-950" />
+                    <span>{targetPhone ? 'Avisar al Club por WhatsApp' : 'Compartir Comprobante por WhatsApp'}</span>
                   </a>
-                ) : null;
+                );
               })()}
 
               <button

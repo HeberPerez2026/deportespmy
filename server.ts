@@ -44,9 +44,12 @@ async function startServer() {
       } = req.body;
 
       const client = getMercadoPagoClient(accessToken);
-      const appUrl = (process.env.APP_URL && process.env.APP_URL !== 'MY_APP_URL')
-        ? process.env.APP_URL.replace(/\/$/, '')
-        : `http://localhost:${port}`;
+      // Resolve the actual public web app URL (from client origin, headers, or environment)
+      const clientOrigin = req.body.origin 
+        || req.headers.origin 
+        || (req.headers['x-forwarded-proto'] && req.headers['x-forwarded-host'] ? `${req.headers['x-forwarded-proto']}://${req.headers['x-forwarded-host']}` : null);
+      
+      const appUrl = (clientOrigin || (process.env.APP_URL && process.env.APP_URL !== 'MY_APP_URL' ? process.env.APP_URL : null) || `http://localhost:${port}`).replace(/\/$/, '');
 
       const referenceCode = bookingCode || bookingId || `PMY-${Date.now()}`;
       const itemTitle = title || `Reserva ${courtName || 'Cancha'} - ${date || ''} (${startTime || ''} hs)`;
@@ -57,17 +60,17 @@ async function startServer() {
         console.warn('⚠️ AVISO: No se ha configurado MP_ACCESS_TOKEN en el archivo .env. Modo Simulación activo.');
         return res.json({
           id: 'pref-mock-' + Date.now(),
-          init_point: `${appUrl}/?payment=success&booking_code=${encodeURIComponent(referenceCode)}&court_name=${encodeURIComponent(courtName || 'Cancha')}&booking_date=${encodeURIComponent(date || '')}&booking_time=${encodeURIComponent(startTime || '')}&simulated=true`,
-          sandbox_init_point: `${appUrl}/?payment=success&booking_code=${encodeURIComponent(referenceCode)}&court_name=${encodeURIComponent(courtName || 'Cancha')}&booking_date=${encodeURIComponent(date || '')}&booking_time=${encodeURIComponent(startTime || '')}&simulated=true`,
+          init_point: `${appUrl}/?payment=success&status=approved&collection_status=approved&booking_code=${encodeURIComponent(referenceCode)}&court_name=${encodeURIComponent(courtName || 'Cancha')}&booking_date=${encodeURIComponent(date || '')}&booking_time=${encodeURIComponent(startTime || '')}&simulated=true`,
+          sandbox_init_point: `${appUrl}/?payment=success&status=approved&collection_status=approved&booking_code=${encodeURIComponent(referenceCode)}&court_name=${encodeURIComponent(courtName || 'Cancha')}&booking_date=${encodeURIComponent(date || '')}&booking_time=${encodeURIComponent(startTime || '')}&simulated=true`,
           isSimulated: true
         });
       }
 
       const preference = new Preference(client);
 
-      const backUrlSuccess = `${appUrl}/?payment=success&booking_code=${encodeURIComponent(referenceCode)}&court_name=${encodeURIComponent(courtName || 'Cancha')}&booking_date=${encodeURIComponent(date || '')}&booking_time=${encodeURIComponent(startTime || '')}`;
-      const backUrlFailure = `${appUrl}/?payment=failure&booking_code=${encodeURIComponent(referenceCode)}`;
-      const backUrlPending = `${appUrl}/?payment=pending&booking_code=${encodeURIComponent(referenceCode)}`;
+      const backUrlSuccess = `${appUrl}/?payment=success&status=approved&collection_status=approved&booking_code=${encodeURIComponent(referenceCode)}&court_name=${encodeURIComponent(courtName || 'Cancha')}&booking_date=${encodeURIComponent(date || '')}&booking_time=${encodeURIComponent(startTime || '')}`;
+      const backUrlFailure = `${appUrl}/?payment=failure&status=rejected&collection_status=rejected&booking_code=${encodeURIComponent(referenceCode)}`;
+      const backUrlPending = `${appUrl}/?payment=pending&status=pending&collection_status=pending&booking_code=${encodeURIComponent(referenceCode)}`;
 
       const preferenceBody: any = {
         items: [

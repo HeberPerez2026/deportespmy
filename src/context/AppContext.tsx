@@ -786,6 +786,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
       whatsappSent: bookingStatus === 'confirmed',
       whatsappSentAt: bookingStatus === 'confirmed' ? new Date().toISOString() : undefined,
+      adminId: court.adminId || (currentAdminUser?.username || 'admin'),
     };
 
     const nextBookings = [newBooking, ...bookings];
@@ -1025,11 +1026,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const activeBookings = bookings.filter(b => {
       if (b.courtId !== courtId || b.date !== date) return false;
-      if (b.status === 'confirmed') return true;
-      if (b.status === 'pending_payment') {
-        const createdAt = new Date(b.createdAt).getTime();
-        return (Date.now() - createdAt) < 15 * 60 * 1000;
-      }
+      if (b.status === 'confirmed' || b.status === 'pending_payment') return true;
       return false;
     });
 
@@ -1053,6 +1050,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (matchingBooking.clientName.startsWith('[BLOQUEADO')) {
           status = 'blocked';
           blockedReason = matchingBooking.notes;
+        } else if (matchingBooking.status === 'pending_payment') {
+          status = 'pending';
         } else {
           status = 'booked';
         }

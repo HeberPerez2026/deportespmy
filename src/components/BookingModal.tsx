@@ -37,6 +37,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     generateWhatsAppMessage,
     getWhatsAppShareUrl,
     triggerWhatsAppSend,
+    confirmBookingPayment,
     userPhone,
     userName,
     userEmail,
@@ -130,7 +131,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
               clientName: name,
               clientEmail: email,
               clientPhone: phone,
-              accessToken: effectiveProfile.mpAccessToken
+              accessToken: effectiveProfile.mpAccessToken,
+              origin: window.location.origin
             })
           });
 
@@ -929,6 +931,42 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 </div>
               </div>
 
+              {/* Instant Confirmation Action for Player after transferring */}
+              {(isWaitingForConfirmation || confirmedBooking.status !== 'confirmed') && (
+                <div className="p-4 rounded-2xl max-w-md mx-auto bg-emerald-950/40 border border-emerald-500/50 space-y-3">
+                  <div className="flex items-center justify-center gap-2 font-bold text-sm text-emerald-300">
+                    <CheckCircle className="w-5 h-5 text-emerald-400" />
+                    <span>¿Ya transferiste por Mercado Pago o Banco?</span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Hacé clic aquí para confirmar tu turno de inmediato, registrarlo en el sistema y enviar tu comprobante oficial por WhatsApp al club:
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const paidAmount = confirmedBooking.totalAmount * (confirmedBooking.isDepositOnly ? 0.5 : 1);
+                      const refCode = `PAGO-${confirmedBooking.paymentMethod.toUpperCase()}-${Date.now().toString().slice(-4)}`;
+                      const confirmed = confirmBookingPayment(confirmedBooking.bookingCode, refCode, paidAmount);
+                      const target = confirmed || {
+                        ...confirmedBooking,
+                        status: 'confirmed' as const,
+                        paymentStatus: (confirmedBooking.isDepositOnly ? 'seña_pagada' : 'total_pagado') as any,
+                        amountPaid: paidAmount,
+                        balanceDue: confirmedBooking.totalAmount - paidAmount,
+                        paymentReference: refCode
+                      };
+                      setConfirmedBooking(target);
+                      setIsWaitingForConfirmation(false);
+                      triggerWhatsAppSend(target);
+                    }}
+                    className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                  >
+                    <CheckCircle className="w-4 h-4 fill-slate-950 text-emerald-400" />
+                    <span>✓ Ya realicé el pago • Confirmar y Notificar WhatsApp</span>
+                  </button>
+                </div>
+              )}
+
               {/* Automatic WhatsApp Action Box */}
               <div className={`p-4 rounded-2xl max-w-md mx-auto space-y-3 ${
                 confirmedBooking.status === 'confirmed' ? 'bg-emerald-950/40 border border-emerald-500/40' : 'bg-amber-950/40 border border-amber-500/40'
@@ -953,12 +991,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                         triggerWhatsAppSend(confirmedBooking);
                       } else {
                         const cleanPhone = (effectiveProfile.whatsappNumber || '').replace(/\D/g, '');
-                        if (cleanPhone) {
-                          const text = `¡Hola! Acabo de reservar el turno #${confirmedBooking.bookingCode} para el ${confirmedBooking.date} a las ${confirmedBooking.startTime} hs. Aquí adjunto el comprobante de mi transferencia por ${confirmedBooking.paymentMethod.toUpperCase()}.`;
-                          window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
-                        } else {
-                          alert('El complejo deportivo aún no ha configurado un teléfono de WhatsApp en su perfil.');
-                        }
+                        const shareText = `¡Hola! Acabo de reservar el turno #${confirmedBooking.bookingCode} en ${confirmedBooking.courtName} para el ${confirmedBooking.date} a las ${confirmedBooking.startTime} hs. Adjunto mi comprobante de pago por ${confirmedBooking.paymentMethod.toUpperCase()}.`;
+                        const url = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(shareText)}` : `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+                        window.open(url, '_blank');
                       }
                     }}
                     className={`w-full sm:w-auto px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer ${
@@ -971,16 +1006,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                     <span>{confirmedBooking.status === 'confirmed' ? 'Abrir en WhatsApp' : 'Enviar Comprobante'}</span>
                   </button>
 
-                  {confirmedBooking.status === 'confirmed' && (
-                    <button
-                      type="button"
-                      onClick={copyWhatsAppText}
-                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      {copiedMessage ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                      <span>{copiedMessage ? '¡Mensaje Copiado!' : 'Copiar Texto'}</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={copyWhatsAppText}
+                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    {copiedMessage ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                    <span>{copiedMessage ? '¡Mensaje Copiado!' : 'Copiar Texto'}</span>
+                  </button>
                 </div>
               </div>
 

@@ -47,16 +47,31 @@ export const ScheduleGrid: React.FC = () => {
   const [blockReason, setBlockReason] = useState('Mantenimiento de césped y pintura');
   const [isBlockingMode, setIsBlockingMode] = useState(false);
 
-  const hours = [
+  // Time range quick filter to compact the view
+  const [timeRangeFilter, setTimeRangeFilter] = useState<'all' | 'evening' | 'morning'>('all');
+
+  const allHours = [
     '09:00', '10:00', '11:00', '12:00', '13:00', '14:00',
     '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'
   ];
 
+  const displayedHours = timeRangeFilter === 'evening'
+    ? allHours.filter(h => parseInt(h.split(':')[0], 10) >= 17)
+    : timeRangeFilter === 'morning'
+    ? allHours.filter(h => parseInt(h.split(':')[0], 10) < 17)
+    : allHours;
+
+  const pendingBookingsForDate = bookings.filter(b => b.date === selectedDate && b.status === 'pending_payment');
+
   const handleSlotClick = (court: Court, slot: TimeSlot) => {
-    if (slot.status === 'booked' || slot.status === 'blocked') {
-      const b = bookings.find(item => item.id === slot.bookingId);
-      if (b) {
-        setActiveBookingDetails(b);
+    // Check if slot has an existing booking (confirmed, pending, or blocked)
+    const booking = slot.bookingId 
+      ? bookings.find(item => item.id === slot.bookingId || item.bookingCode === slot.bookingId)
+      : bookings.find(item => item.courtId === court.id && item.date === slot.date && item.startTime === slot.startTime);
+
+    if (slot.status === 'booked' || slot.status === 'blocked' || slot.status === 'pending' || booking) {
+      if (booking) {
+        setActiveBookingDetails(booking);
         return;
       }
     }
@@ -98,115 +113,183 @@ export const ScheduleGrid: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       
-      {/* Date Switcher & Action Topbar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-        <div className="flex items-center gap-3">
-          <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-            <Calendar className="w-4 h-4 text-blue-600" />
-            Fecha de la Agenda:
-          </label>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+      {/* Date Switcher & Compact Time Range Filters */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-blue-600" />
+              Fecha:
+            </label>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Quick Time Range Filter Tabs */}
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setTimeRangeFilter('all')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                timeRangeFilter === 'all'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Todo el Día (09-23)
+            </button>
+            <button
+              type="button"
+              onClick={() => setTimeRangeFilter('evening')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                timeRangeFilter === 'evening'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>🔥 Tarde / Noche (17-23)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTimeRangeFilter('morning')}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                timeRangeFilter === 'morning'
+                  ? 'bg-amber-500 text-slate-950 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <span>☀️ Mañana (09-16)</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-4 text-xs font-medium text-slate-600">
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-emerald-100 border border-emerald-400" /> Libre (Click para agendar)
+        {/* Legend */}
+        <div className="flex flex-wrap items-center gap-3 text-[11px] font-medium text-slate-600">
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded bg-emerald-100 border border-emerald-400" /> Libre
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-blue-600" /> Reservado
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded bg-amber-400 border border-amber-500" /> Pendiente Pago
           </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-amber-500" /> Bloqueado / Mantenimiento
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded bg-blue-600" /> Confirmado
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded bg-slate-300" /> Bloqueado
           </span>
         </div>
       </div>
 
-      {/* Interactive Time Slot Matrix Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-x-auto">
+      {/* Pending Bookings Alert Banner */}
+      {pendingBookingsForDate.length > 0 && (
+        <div className="bg-amber-50 border border-amber-300/80 rounded-2xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs shadow-xs">
+          <div className="flex items-center gap-2 text-amber-950 font-bold">
+            <Clock className="w-4 h-4 text-amber-600 animate-pulse shrink-0" />
+            <span>Hay {pendingBookingsForDate.length} {pendingBookingsForDate.length === 1 ? 'turno con pago pendiente' : 'turnos con pago pendiente'} para el {selectedDate}.</span>
+          </div>
+          <span className="text-[11px] text-amber-800 font-medium">
+            Hacé clic en los casilleros amarillos para verificar el pago y confirmar el turno.
+          </span>
+        </div>
+      )}
+
+      {/* Interactive Compact Matrix Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
         <table className="w-auto min-w-full border-collapse text-xs text-left">
           <thead>
             <tr className="bg-slate-900 text-white border-b border-slate-800">
-              <th className="py-3.5 px-4 font-bold sticky left-0 bg-slate-900 z-10 w-24 text-center">
-                Horario
+              <th className="py-2 px-2 font-mono font-bold sticky left-0 bg-slate-900 z-10 w-16 min-w-[64px] max-w-[64px] text-center text-[11px]">
+                Hora
               </th>
               {courts.map((court) => (
-                <th key={court.id} className="py-3.5 px-4 font-bold border-l border-slate-800 w-48 min-w-[160px] max-w-[200px] text-center">
-                  <div className="truncate">{court.name.split('-')[0].trim()}</div>
-                  <div className="text-[10px] text-slate-400 font-normal truncate">
-                    {court.sport.toUpperCase()} • {court.isIndoor ? 'Techada' : 'Aire Libre'}
+                <th key={court.id} className="py-2 px-2 font-bold border-l border-slate-800 w-36 min-w-[125px] max-w-[155px] text-center">
+                  <div className="truncate text-xs">{court.name.split('-')[0].trim()}</div>
+                  <div className="text-[9px] text-slate-400 font-normal truncate">
+                    {court.sport.toUpperCase()} • {court.isIndoor ? 'Techada' : 'Aire'}
                   </div>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {hours.map((hour) => (
+            {displayedHours.map((hour) => (
               <tr key={hour} className="hover:bg-slate-50/70 transition-colors">
                 
                 {/* Hour Header Column */}
-                <td className="py-2.5 px-4 font-mono font-bold text-slate-700 bg-slate-50/90 sticky left-0 z-10 border-r border-slate-200 text-center w-24">
-                  {hour} hs
+                <td className="py-1 px-1 font-mono text-[11px] font-bold text-slate-700 bg-slate-50/90 sticky left-0 z-10 border-r border-slate-200 text-center w-16 min-w-[64px] max-w-[64px]">
+                  {hour}
                 </td>
 
                 {/* Courts Columns */}
                 {courts.map((court) => {
                   const slots = getSlotsForCourtAndDate(court.id, selectedDate);
                   const slot = slots.find(s => s.startTime === hour);
-                  if (!slot) return <td key={court.id} className="p-1.5 border-l border-slate-100 w-48 min-w-[160px] max-w-[200px] text-center">-</td>;
+                  if (!slot) return <td key={court.id} className="p-1 border-l border-slate-100 w-36 min-w-[125px] max-w-[155px] text-center text-slate-300">-</td>;
 
-                  const booking = slot.bookingId ? bookings.find(b => b.id === slot.bookingId) : null;
-                  const isBlocked = slot.status === 'blocked';
-                  const isBooked = slot.status === 'booked';
+                  const booking = slot.bookingId 
+                    ? bookings.find(b => b.id === slot.bookingId || b.bookingCode === slot.bookingId) 
+                    : bookings.find(b => b.courtId === court.id && b.date === selectedDate && b.startTime === hour);
+
+                  const isBlocked = slot.status === 'blocked' || booking?.clientName?.startsWith('[BLOQUEADO');
+                  const isPending = slot.status === 'pending' || booking?.status === 'pending_payment';
+                  const isBooked = (slot.status === 'booked' || booking?.status === 'confirmed') && !isBlocked && !isPending;
 
                   return (
-                    <td key={court.id} className="p-1.5 border-l border-slate-100 w-48 min-w-[160px] max-w-[200px]">
+                    <td key={court.id} className="p-1 border-l border-slate-100 w-36 min-w-[125px] max-w-[155px]">
                       {isBlocked ? (
                         <button
                           onClick={() => handleSlotClick(court, slot)}
-                          className="w-full h-11 px-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 hover:bg-amber-100 transition-colors cursor-pointer flex flex-col justify-center"
+                          className="w-full h-8 px-2 rounded-lg bg-slate-100 border border-slate-300 text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer flex items-center justify-between text-[10px] font-bold"
+                          title={slot.blockedReason || booking?.notes || 'Mantenimiento'}
                         >
-                          <div className="flex items-center gap-1 font-bold text-[11px] justify-center">
-                            <Lock className="w-3 h-3 text-amber-700" />
-                            <span>BLOQUEADO</span>
+                          <span className="flex items-center gap-1 truncate">
+                            <Lock className="w-2.5 h-2.5 text-slate-500 shrink-0" />
+                            <span className="truncate">Bloqueado</span>
+                          </span>
+                          <span className="text-[9px] text-slate-400 font-mono">60m</span>
+                        </button>
+                      ) : isPending && booking ? (
+                        <button
+                          onClick={() => handleSlotClick(court, slot)}
+                          className="w-full h-8 px-2 rounded-lg bg-amber-400 border border-amber-500 text-amber-950 hover:bg-amber-300 transition-colors cursor-pointer flex items-center justify-between text-[10px] font-black shadow-xs"
+                          title={`Pago pendiente: ${booking.clientName} (${booking.paymentMethod.toUpperCase()}) - Clic para confirmar`}
+                        >
+                          <div className="flex items-center gap-1 truncate">
+                            <Clock className="w-2.5 h-2.5 text-amber-900 animate-pulse shrink-0" />
+                            <span className="truncate">{booking.clientName}</span>
                           </div>
-                          <div className="text-[10px] text-amber-700 truncate text-center">
-                            {slot.blockedReason || 'Mantenimiento'}
-                          </div>
+                          <span className="text-[9px] bg-amber-500/60 text-amber-950 px-1 py-0.5 rounded font-bold shrink-0">
+                            Pendiente
+                          </span>
                         </button>
                       ) : isBooked && booking ? (
                         <button
                           onClick={() => handleSlotClick(court, slot)}
-                          className={`w-full h-11 px-2.5 rounded-xl transition-all cursor-pointer shadow-xs flex flex-col justify-center ${
+                          className={`w-full h-8 px-2 rounded-lg transition-all cursor-pointer shadow-xs flex items-center justify-between text-[10px] font-bold ${
                             booking.paymentStatus === 'seña_pagada'
-                              ? 'bg-blue-50 border border-blue-300 text-blue-900 hover:bg-blue-100'
-                              : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                              ? 'bg-sky-600 text-white hover:bg-sky-500'
+                              : 'bg-blue-600 text-white hover:bg-blue-500'
                           }`}
+                          title={`${booking.clientName} - #${booking.bookingCode}`}
                         >
-                          <div className="flex items-center justify-between font-bold text-[11px]">
-                            <span className="truncate">{booking.clientName}</span>
-                            <span className="text-[9px] opacity-80 shrink-0">#{booking.bookingCode}</span>
-                          </div>
-                          <div className="text-[10px] flex items-center justify-between mt-0.5 opacity-90">
-                            <span>{booking.durationMinutes}m</span>
-                            <span>
-                              {booking.paymentStatus === 'seña_pagada' ? 'Resta cobrar' : 'Pago OK'}
-                            </span>
-                          </div>
+                          <span className="truncate">{booking.clientName}</span>
+                          <span className="text-[9px] opacity-90 shrink-0 ml-1 font-mono">
+                            {booking.paymentStatus === 'seña_pagada' ? 'Seña' : '✓ OK'}
+                          </span>
                         </button>
                       ) : (
                         <button
                           onClick={() => handleSlotClick(court, slot)}
-                          className="w-full h-11 px-2 rounded-xl bg-emerald-50/60 hover:bg-emerald-500 hover:text-slate-950 border border-dashed border-emerald-300/80 text-emerald-800 transition-all font-semibold cursor-pointer flex flex-col justify-center items-center group"
+                          className="w-full h-8 px-2 rounded-lg bg-emerald-50/70 hover:bg-emerald-500 hover:text-slate-950 border border-dashed border-emerald-300 text-emerald-800 transition-all font-semibold cursor-pointer flex items-center justify-between text-[10px] group"
                         >
-                          <span className="text-[11px] block font-mono font-bold">${slot.price.toLocaleString('es-AR')}</span>
-                          <span className="text-[9px] opacity-75 group-hover:opacity-100">+ Reservar</span>
+                          <span className="font-mono font-bold">${slot.price.toLocaleString('es-AR')}</span>
+                          <span className="text-[9px] opacity-60 group-hover:opacity-100 font-bold">+ Libre</span>
                         </button>
                       )}
                     </td>
