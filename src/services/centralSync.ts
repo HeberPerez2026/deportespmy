@@ -248,7 +248,37 @@ export const subscribeToBusinessProfile = (
   }
 };
 
-// Save Business Profile
+// Real-time listener for all admin business profiles
+export const subscribeToAllProfiles = (
+  onUpdate: (profiles: Record<string, BusinessProfile>) => void
+): (() => void) => {
+  try {
+    return onSnapshot(
+      collection(db, 'settings'),
+      (snapshot) => {
+        const map: Record<string, BusinessProfile> = {};
+        snapshot.forEach((docSnap) => {
+          const id = docSnap.id;
+          if (id.startsWith('profile_')) {
+            const key = id.replace('profile_', '').toLowerCase();
+            map[key] = docSnap.data() as BusinessProfile;
+          } else if (id === 'businessProfile') {
+            map['default'] = docSnap.data() as BusinessProfile;
+          }
+        });
+        onUpdate(map);
+      },
+      (error) => {
+        console.warn('[Firestore] All profiles subscription error:', error);
+      }
+    );
+  } catch (err) {
+    console.warn('[Firestore] Error attaching all profiles listener:', err);
+    return () => {};
+  }
+};
+
+// Save Business Profile (per-admin profile strictly isolated)
 export const saveBusinessProfileToFirestore = async (
   profile: BusinessProfile,
   profileKey?: string
@@ -256,10 +286,6 @@ export const saveBusinessProfileToFirestore = async (
   const docId = profileKey ? `profile_${profileKey.toLowerCase().replace(/[^a-z0-9_-]/g, '')}` : 'businessProfile';
   try {
     await setDoc(doc(db, 'settings', docId), profile);
-    // Mirror to public businessProfile only if it contains active venue data
-    if (!profileKey || profileKey === 'heberperez1984' || (profile.alias && profile.complexName)) {
-      await setDoc(doc(db, 'settings', 'businessProfile'), profile, { merge: true });
-    }
     return true;
   } catch (err) {
     console.warn('[Firestore] Save business profile error:', err);

@@ -49,7 +49,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1 text-emerald-400 font-medium">
             <MapPin className="w-3.5 h-3.5" />
-            {businessProfile.address || 'Puerto Madryn, Chubut • Blvd. Brown 1420'}
+            {businessProfile.address || 'Puerto Madryn, Chubut'}
           </span>
           <span className="hidden sm:inline-block text-slate-600">|</span>
           <span className="hidden sm:inline-block text-slate-400 font-mono">

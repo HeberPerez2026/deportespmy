@@ -38,6 +38,7 @@ import {
   saveReviewToFirestore, 
   saveReviewReplyToFirestore, 
   subscribeToBusinessProfile,
+  subscribeToAllProfiles,
   saveBusinessProfileToFirestore,
   subscribeToDeveloperContact,
   saveDeveloperContactToFirestore,
@@ -70,6 +71,8 @@ interface AppContextType {
   reviews: Review[];
   whatsappLogs: WhatsAppNotificationLog[];
   businessProfile: BusinessProfile;
+  profilesByAdmin: Record<string, BusinessProfile>;
+  getBusinessProfileForCourt: (court?: Court | null) => BusinessProfile;
   developerContact: DeveloperContact;
   admins: AdminUser[];
   
@@ -323,10 +326,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveTab('turnos');
   };
 
-  // Player stored credentials
-  const [userPhone, setUserPhoneState] = useState<string>(() => localStorage.getItem(STORAGE_KEYS.USER_PHONE) || '+5492804567890');
-  const [userName, setUserNameState] = useState<string>(() => localStorage.getItem(STORAGE_KEYS.USER_NAME) || 'Jugador PMY');
-  const [userEmail, setUserEmailState] = useState<string>(() => localStorage.getItem(STORAGE_KEYS.USER_EMAIL) || 'jugador@deportespmy.com.ar');
+  // Store all complex profiles keyed by admin username for multi-tenant isolation
+  const [profilesByAdmin, setProfilesByAdmin] = useState<Record<string, BusinessProfile>>({});
+
+  // Player stored credentials (clean defaults, no mock placeholders)
+  const [userPhone, setUserPhoneState] = useState<string>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.USER_PHONE);
+    return (saved && saved !== '+5492804567890') ? saved : '';
+  });
+  const [userName, setUserNameState] = useState<string>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.USER_NAME);
+    return (saved && saved !== 'Jugador PMY') ? saved : '';
+  });
+  const [userEmail, setUserEmailState] = useState<string>(() => {
+    const saved = localStorage.getItem(STORAGE_KEYS.USER_EMAIL);
+    return (saved && saved !== 'jugador@deportespmy.com.ar') ? saved : '';
+  });
 
   const setUserPhone = (phone: string) => {
     setUserPhoneState(phone);
@@ -382,14 +397,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setLastSyncTime(new Date());
     }, adminKey);
 
-    // 5. Subscribe to Developer Contact (for footer)
+    // 5. Subscribe to all admin profiles for multi-tenant isolation across courts
+    const unsubAllProfiles = subscribeToAllProfiles((allProfiles) => {
+      setProfilesByAdmin(allProfiles);
+    });
+
+    // 6. Subscribe to Developer Contact (for footer)
     const unsubDevContact = subscribeToDeveloperContact((remoteDev) => {
       setDeveloperContact(remoteDev);
       localStorage.setItem(STORAGE_KEYS.DEVELOPER_CONTACT, JSON.stringify(remoteDev));
       setLastSyncTime(new Date());
     });
 
-    // 6. Subscribe to Admins
+    // 7. Subscribe to Admins
     const unsubAdmins = subscribeToAdmins((remoteAdmins) => {
       if (remoteAdmins.length > 0) {
         setAdmins(remoteAdmins);
@@ -406,6 +426,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubBookings();
       unsubReviews();
       unsubProfile();
+      unsubAllProfiles();
       unsubDevContact();
       unsubAdmins();
     };
@@ -497,6 +518,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const adminKey = currentAdminUser ? currentAdminUser.username : undefined;
     const storageKey = adminKey ? `deportespmy_profile_${adminKey}` : STORAGE_KEYS.PROFILE;
     localStorage.setItem(storageKey, JSON.stringify(nextProfile));
+    if (adminKey) {
+      setProfilesByAdmin(prev => ({ ...prev, [adminKey.toLowerCase()]: nextProfile }));
+    }
     await saveBusinessProfileToFirestore(nextProfile, adminKey);
   }, [businessProfile, currentAdminUser]);
 
@@ -526,6 +550,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Initialize the new admin's profile completely empty in Firestore and localStorage
     await saveBusinessProfileToFirestore(EMPTY_BUSINESS_PROFILE, newAdmin.username);
     localStorage.setItem(`deportespmy_profile_${newAdmin.username}`, JSON.stringify(EMPTY_BUSINESS_PROFILE));
+    setProfilesByAdmin(prev => ({ ...prev, [newAdmin.username.toLowerCase()]: EMPTY_BUSINESS_PROFILE }));
   }, [admins]);
 
   // Update/Modify Admin User Action (SuperAdmin only)
@@ -589,6 +614,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
   };
 
+  // Multi-tenant profile resolver per court / establishment
+  const getBusinessProfileForCourt = useCallback((court?: Court | null): BusinessProfile => {
+    if (court) {
+      if (court.adminId) {
+        const cleanKey = court.adminId.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        if (profilesByAdmin[cleanKey]) {
+          return profilesByAdmin[cleanKey];
+        }
+        // Check if adminId matches an admin's id
+        const matched = admins.find(a => a.id === court.adminId || a.username.toLowerCase() === cleanKey);
+        if (matched) {
+          const matchKey = matched.username.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+          if (profilesByAdmin[matchKey]) {
+            return profilesByAdmin[matchKey];
+          }
+        }
+      }
+
+      if (court.establishment) {
+        const estClean = court.establishment.trim().toLowerCase();
+        const matched = admins.find(a => a.assignedComplex && a.assignedComplex.trim().toLowerCase() === estClean);
+        if (matched) {
+          const matchKey = matched.username.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+          if (profilesByAdmin[matchKey]) {
+            return profilesByAdmin[matchKey];
+          }
+        }
+      }
+
+      // No profile found for this specific court/admin: return empty profile (NEVER leak another admin's details)
+      return EMPTY_BUSINESS_PROFILE;
+    }
+
+    if (currentAdminUser?.username) {
+      const cleanKey = currentAdminUser.username.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      if (profilesByAdmin[cleanKey]) {
+        return profilesByAdmin[cleanKey];
+      }
+      return businessProfile;
+    }
+
+    return businessProfile.alias ? businessProfile : EMPTY_BUSINESS_PROFILE;
+  }, [profilesByAdmin, admins, currentAdminUser, businessProfile]);
+
   // Generate WhatsApp Message template with real Admin Business Profile details & custom template support
   const generateWhatsAppMessage = useCallback((booking: Booking): string => {
     const isSeña = booking.paymentStatus === 'seña_pagada';
@@ -600,10 +669,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       basquet: '🏀'
     }[booking.sport] || '🏆';
 
-    const establishmentName = booking.establishment || businessProfile.complexName || 'DeportesPMY';
+    const court = courts.find(c => c.id === booking.courtId);
+    const courtProfile = getBusinessProfileForCourt(court);
+    const establishmentName = booking.establishment || courtProfile.complexName || court?.establishment || 'Complejo Deportivo';
 
-    if (businessProfile.whatsappTemplate && businessProfile.whatsappTemplate.trim().length > 0) {
-      let tpl = businessProfile.whatsappTemplate;
+    if (courtProfile.whatsappTemplate && courtProfile.whatsappTemplate.trim().length > 0) {
+      let tpl = courtProfile.whatsappTemplate;
       tpl = tpl.replace(/\{nombre\}/g, booking.clientName);
       tpl = tpl.replace(/\{complejo\}/g, establishmentName);
       tpl = tpl.replace(/\{cancha\}/g, booking.courtName);
@@ -615,12 +686,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       tpl = tpl.replace(/\{abonado\}/g, `$${booking.amountPaid.toLocaleString('es-AR')}`);
       tpl = tpl.replace(/\{saldo\}/g, `$${booking.balanceDue.toLocaleString('es-AR')}`);
       tpl = tpl.replace(/\{metodo\}/g, booking.paymentMethod.toUpperCase());
-      tpl = tpl.replace(/\{alias\}/g, businessProfile.alias || 'N/A');
-      tpl = tpl.replace(/\{direccion\}/g, businessProfile.address || 'N/A');
-      tpl = tpl.replace(/\{whatsapp\}/g, businessProfile.whatsappNumber || 'N/A');
+      tpl = tpl.replace(/\{alias\}/g, courtProfile.alias || 'N/A');
+      tpl = tpl.replace(/\{direccion\}/g, courtProfile.address || 'N/A');
+      tpl = tpl.replace(/\{whatsapp\}/g, courtProfile.whatsappNumber || 'N/A');
       tpl = tpl.replace(/\{deporte\}/g, booking.sport);
       tpl = tpl.replace(/\{emoji\}/g, sportEmoji);
-      tpl = tpl.replace(/\{notas\}/g, businessProfile.welcomeNotes || '');
+      tpl = tpl.replace(/\{notas\}/g, courtProfile.welcomeNotes || '');
       return tpl;
     }
 
@@ -635,11 +706,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       (isSeña 
         ? `⚠️ *Saldo restante a abonar en mostrador:* $${booking.balanceDue.toLocaleString('es-AR')}\n\n` 
         : `✅ *Estado del pago:* 100% CANCELADO\n\n`) +
-      `📍 *Dirección:* ${businessProfile.address}\n` +
-      (businessProfile.alias ? `💳 *Alias para transferir:* ${businessProfile.alias} (${businessProfile.accountHolder})\n` : '') +
-      `📱 *Contacto:* ${businessProfile.whatsappNumber}\n\n` +
-      `_${businessProfile.welcomeNotes || 'Presentate 10 minutos antes del inicio. ¡Que disfrutes el partido!'} 🔥_`;
-  }, [businessProfile]);
+      (courtProfile.address ? `📍 *Dirección:* ${courtProfile.address}\n` : '') +
+      (courtProfile.alias ? `💳 *Alias para transferir:* ${courtProfile.alias}${courtProfile.accountHolder ? ` (${courtProfile.accountHolder})` : ''}\n` : '') +
+      (courtProfile.whatsappNumber ? `📱 *Contacto:* ${courtProfile.whatsappNumber}\n\n` : '\n') +
+      `_${courtProfile.welcomeNotes || 'Presentate 10 minutos antes del inicio. ¡Que disfrutes el partido!'} 🔥_`;
+  }, [courts, getBusinessProfileForCourt]);
 
   const getWhatsAppShareUrl = useCallback((booking: Booking): string => {
     const cleanPhone = (booking.clientPhone || businessProfile.whatsappNumber).replace(/\D/g, '');
@@ -709,6 +780,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       balanceDue,
       paymentMethod: input.paymentMethod,
       paymentStatus,
+      isDepositOnly: input.isDepositOnly,
       paymentReference: input.paymentReference || (bookingStatus === 'pending_payment' ? undefined : `TR-${Math.floor(1000000000 + Math.random() * 9000000000)}`),
       status: bookingStatus,
       createdAt: new Date().toISOString(),
@@ -755,7 +827,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return newBooking;
   }, [courts, businessProfile.complexName, bookings]);
 
-  // Confirm booking payment (e.g. from Mercado Pago return or Webhook)
+  // Confirm booking payment (e.g. from Mercado Pago return, Webhook, or Admin Manual Verification)
   const confirmBookingPayment = useCallback((bookingCodeOrId: string, paymentReference: string, paidAmount?: number): Booking | undefined => {
     let targetBooking = bookings.find(b => b.bookingCode === bookingCodeOrId || b.id === bookingCodeOrId);
     if (!targetBooking) {
@@ -776,7 +848,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const confirmed: Booking = {
       ...targetBooking,
       status: 'confirmed',
-      paymentMethod: 'mercadopago',
       paymentStatus,
       amountPaid,
       balanceDue,
@@ -797,20 +868,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       confetti({ particleCount: 90, spread: 80, origin: { y: 0.6 } });
     } catch {}
 
-    // Auto record WhatsApp log
+    // Auto record WhatsApp log and open message
+    const preview = generateWhatsAppMessage(confirmed);
     const log: WhatsAppNotificationLog = {
       id: `wa-${Date.now()}`,
       bookingCode: confirmed.bookingCode,
       recipientName: confirmed.clientName,
       recipientPhone: confirmed.clientPhone,
-      messagePreview: `¡Hola ${confirmed.clientName}! Tu pago con Mercado Pago para ${confirmed.courtName} fue ACREDITADO. Turno CONFIRMADO para el ${confirmed.date} a las ${confirmed.startTime} hs. Ref: ${paymentReference}.`,
+      messagePreview: preview.slice(0, 160) + '...',
       sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
       status: 'delivered',
     };
     setWhatsappLogs(prev => [log, ...prev]);
 
+    // If it's the admin confirming a pending payment, we trigger the WhatsApp send
+    if (isAdminAuthenticated) {
+      const cleanPhone = confirmed.clientPhone.replace(/\D/g, '');
+      const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(preview)}`;
+      window.open(url, '_blank');
+    }
+
     return confirmed;
-  }, [bookings]);
+  }, [bookings, isAdminAuthenticated, generateWhatsAppMessage]);
 
   // Admin Manual Booking
   const createManualAdminBooking = useCallback((input: BookingInput): Booking => {
@@ -884,6 +963,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       balanceDue: 0,
       paymentMethod: 'efectivo_mostrador',
       paymentStatus: 'total_pagado',
+      isDepositOnly: false,
       status: 'confirmed',
       createdAt: new Date().toISOString(),
       whatsappSent: false,
@@ -1065,6 +1145,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     reviews,
     whatsappLogs,
     businessProfile,
+    profilesByAdmin,
+    getBusinessProfileForCourt,
     developerContact,
     admins,
     selectedDate,
@@ -1122,6 +1204,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     reviews,
     whatsappLogs,
     businessProfile,
+    profilesByAdmin,
+    getBusinessProfileForCourt,
     developerContact,
     admins,
     selectedDate,

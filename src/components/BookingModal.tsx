@@ -40,19 +40,21 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     userPhone,
     userName,
     userEmail,
-    businessProfile,
+    getBusinessProfileForCourt,
     setActiveTab
   } = useApp();
+
+  const effectiveProfile = getBusinessProfileForCourt(court);
 
   // Multi-step state: 1 (Turno) -> 2 (Datos) -> 3 (Pago Online) -> 4 (Confirmado)
   const [step, setStep] = useState<number>(initialSlotTime ? 2 : 1);
   const [selectedSlotTime, setSelectedSlotTime] = useState<string>(initialSlotTime || '19:00');
   const [durationMinutes, setDurationMinutes] = useState<number>(court.sport === 'padel' || court.sport === 'tenis' ? 90 : 60);
   
-  // Client input states
+  // Client input states (clean from 0, no mock hardcoded values)
   const [name, setName] = useState(userName || '');
-  const [phone, setPhone] = useState(userPhone || '+5492804567890');
-  const [email, setEmail] = useState(userEmail || 'jugador@gmail.com');
+  const [phone, setPhone] = useState(userPhone || '');
+  const [email, setEmail] = useState(userEmail || '');
   const [notes, setNotes] = useState('');
 
   // Payment states: ONLY Mercado Pago or CBU
@@ -67,6 +69,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const [copiedAlias, setCopiedAlias] = useState(false);
   const [copiedCbu, setCopiedCbu] = useState(false);
 
+  const [isWaitingForConfirmation, setIsWaitingForConfirmation] = useState(false);
+
   // Available slots for selected date
   const slots = getSlotsForCourtAndDate(court.id, selectedDate);
   const hourNum = parseInt(selectedSlotTime.split(':')[0], 10);
@@ -77,12 +81,21 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const amountToPayNow = paymentOption === 'deposit' ? depositAmount : totalPrice;
   const balanceDue = totalPrice - amountToPayNow;
 
+  const targetAlias = (effectiveProfile.alias || '').trim();
+  const hasDirectLink = !!(effectiveProfile.mpLink && effectiveProfile.mpLink.trim().startsWith('http'));
+
   // Handle Checkout Pro preference creation & CBU transfer reservation
   const handleConfirmAndPay = async () => {
     setIsProcessing(true);
-    const targetAlias = (businessProfile.alias || 'DEPORTES.PMY.MP').trim();
 
     if (paymentMethod === 'mercadopago') {
+      // Validate that the court's establishment has configured payment data
+      if (!targetAlias && !hasDirectLink && !effectiveProfile.mpAccessToken) {
+        alert('Este complejo deportivo aún no ha configurado sus datos de cobro por Mercado Pago (Alias o Link). Por favor comunicate con el complejo o seleccioná Transferencia Bancaria (CBU).');
+        setIsProcessing(false);
+        return;
+      }
+
       try {
         // 1. Create booking in pending_payment status first
         const newBooking = createBooking({
@@ -101,44 +114,74 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
           status: 'pending_payment'
         });
 
-        // 2. Call backend preference API for Checkout Pro
-        const res = await fetch('/api/mercadopago/preference', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            bookingId: newBooking.id,
-            bookingCode: newBooking.bookingCode,
-            courtName: court.name,
-            date: selectedDate,
-            startTime: selectedSlotTime,
-            unit_price: amountToPayNow,
-            quantity: 1,
-            clientName: name,
-            clientEmail: email,
-            clientPhone: phone,
-            accessToken: businessProfile.mpAccessToken
-          })
-        });
+        // 2. If token is present, try official Checkout Pro
+        if (effectiveProfile.mpAccessToken) {
+          const res = await fetch('/api/mercadopago/preference', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              bookingId: newBooking.id,
+              bookingCode: newBooking.bookingCode,
+              courtName: court.name,
+              date: selectedDate,
+              startTime: selectedSlotTime,
+              unit_price: amountToPayNow,
+              quantity: 1,
+              clientName: name,
+              clientEmail: email,
+              clientPhone: phone,
+              accessToken: effectiveProfile.mpAccessToken
+            })
+          });
 
-        const data = await res.json();
+          const data = await res.json();
+          if (data.init_point) {
+            window.location.href = data.init_point;
+            return;
+          }
+        }
 
-        if (data.init_point) {
-          // Open Mercado Pago Checkout Pro payment link
-          window.location.href = data.init_point;
+        // 3. Direct Link Flow (if complex configured their own Mercado Pago link, e.g. https://link.mercadopago.com.ar/...)
+        if (hasDirectLink) {
+          const cleanLink = effectiveProfile.mpLink!.trim();
+          try {
+            window.open(cleanLink, '_blank');
+          } catch {
+            window.location.href = cleanLink;
+          }
+
+          setConfirmedBooking(newBooking);
+          setIsWaitingForConfirmation(true);
+          setStep(4);
           return;
         }
 
-        // Fallback if preference API couldn't be created
-        setConfirmedBooking(newBooking);
-        setStep(4);
+        // 4. Zero-Config Alias Flow: copy alias to clipboard and safely open Mercado Pago
+        if (targetAlias) {
+          try {
+            await navigator.clipboard.writeText(targetAlias);
+            setCopiedAlias(true);
+            setTimeout(() => setCopiedAlias(false), 3000);
+          } catch {}
+
+          const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+          const mpUrl = isMobile ? 'mercadopago://' : 'https://www.mercadopago.com.ar';
+
+          try {
+            window.open(mpUrl, '_blank');
+          } catch {
+            window.location.href = mpUrl;
+          }
+
+          // Show "Waiting for confirmation" screen
+          setConfirmedBooking(newBooking);
+          setIsWaitingForConfirmation(true);
+          setStep(4);
+        }
+
       } catch (err: any) {
-        console.error('Error al generar preferencia de Mercado Pago:', err);
-        // Fallback alias open
-        try {
-          navigator.clipboard.writeText(targetAlias);
-        } catch {}
-        const fallbackUrl = `https://link.mercadopago.com.ar/${encodeURIComponent(targetAlias)}/${amountToPayNow}`;
-        window.open(fallbackUrl, '_blank');
+        console.error('Error al procesar Mercado Pago:', err);
+        alert('Error al registrar la reserva. Por favor intenta nuevamente.');
       } finally {
         setIsProcessing(false);
       }
@@ -160,7 +203,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
             isDepositOnly: paymentOption === 'deposit',
             paymentMethod: 'transferencia',
             paymentReference: transferRef.trim() ? `CBU-${transferRef.trim()}` : `CBU-${Date.now().toString().slice(-6)}`,
-            status: 'confirmed'
+            status: 'pending_payment' // ALWAYS pending for CBU
           });
 
           setConfirmedBooking(newBooking);
@@ -170,7 +213,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
         } finally {
           setIsProcessing(false);
         }
-      }, 500);
+      }, 700);
     }
   };
 
@@ -551,50 +594,72 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 <div className="p-4 bg-sky-950/30 border border-sky-800/60 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
-                      <span>💙</span> Transferencia a Cuenta Mercado Pago
+                      <span>💙</span> Cobro Online con Mercado Pago
                     </span>
                     <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full font-bold">
                       Acreditación Directa
                     </span>
                   </div>
 
-                  <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-xs text-slate-300">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Alias de Mercado Pago del Complejo:</span>
-                        <strong className="font-mono text-emerald-400 text-sm font-black tracking-wide">
-                          {businessProfile.alias || 'DEPORTES.PMY.MP'}
-                        </strong>
+                  {targetAlias ? (
+                    <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-xs text-slate-300">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block">Alias de Mercado Pago del Complejo:</span>
+                          <strong className="font-mono text-emerald-400 text-sm font-black tracking-wide">
+                            {targetAlias}
+                          </strong>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(targetAlias);
+                            setCopiedAlias(true);
+                            setTimeout(() => setCopiedAlias(false), 2500);
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                        >
+                          {copiedAlias ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                          <span>{copiedAlias ? '¡Copiado!' : 'Copiar Alias'}</span>
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(businessProfile.alias || 'DEPORTES.PMY.MP');
-                          setCopiedAlias(true);
-                          setTimeout(() => setCopiedAlias(false), 2500);
-                        }}
-                        className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
-                      >
-                        {copiedAlias ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
-                        <span>{copiedAlias ? '¡Copiado!' : 'Copiar Alias'}</span>
-                      </button>
-                    </div>
 
-                    {(businessProfile.accountHolder || businessProfile.ownerName) && (
-                      <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex justify-between">
-                        <span>Titular:</span>
-                        <strong className="text-slate-200">{businessProfile.accountHolder || businessProfile.ownerName}</strong>
+                      {(effectiveProfile.accountHolder || effectiveProfile.ownerName) && (
+                        <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex justify-between">
+                          <span>Titular:</span>
+                          <strong className="text-slate-200">{effectiveProfile.accountHolder || effectiveProfile.ownerName}</strong>
+                        </div>
+                      )}
+
+                      <div className="pt-1 border-t border-slate-800 flex justify-between items-center">
+                        <span className="font-bold text-slate-200">Importe a transferir:</span>
+                        <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
                       </div>
-                    )}
-
-                    <div className="pt-1 border-t border-slate-800 flex justify-between items-center">
-                      <span className="font-bold text-slate-200">Importe a transferir:</span>
-                      <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
                     </div>
-                  </div>
+                  ) : hasDirectLink ? (
+                    <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-xs text-slate-300">
+                      <span className="text-slate-300 block">
+                        Este complejo cuenta con <strong>Link Oficial de Pago</strong> para abonar de forma directa.
+                      </span>
+                      <div className="pt-1 border-t border-slate-800 flex justify-between items-center">
+                        <span className="font-bold text-slate-200">Monto:</span>
+                        <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3.5 bg-amber-950/40 border border-amber-600/30 rounded-xl text-xs text-amber-200 space-y-1">
+                      <div className="flex items-center gap-1.5 font-bold text-amber-300">
+                        <Info className="w-4 h-4 text-amber-400" />
+                        <span>Configuración de Mercado Pago pendiente</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        El administrador de este complejo aún no ha ingresado su Alias o Link de cobro en el sistema. Podés elegir <strong>Transferencia Bancaria</strong> o coordinar directamente con el club.
+                      </p>
+                    </div>
+                  )}
 
                   <p className="text-xs text-slate-300">
-                    Al hacer clic en el botón de abajo, se <strong>abrirá la app de Mercado Pago</strong> con el monto listo para transferir y se copiará automáticamente el Alias en tu portapapeles.
+                    Al presionar el botón de abajo, {targetAlias ? 'se copiará el Alias y se abrirá Mercado Pago para que transfieras el importe exacto.' : 'se registrará tu reserva y podrás coordinar el pago.'}
                   </p>
                 </div>
               )}
@@ -610,63 +675,73 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                     </span>
                   </div>
 
-                  <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-slate-300">
-                    {businessProfile.cbu && (
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <span className="text-[10px] text-slate-400 block">CBU / CVU (22 dígitos):</span>
-                          <strong className="font-mono text-slate-100 text-xs font-bold tracking-wider">
-                            {businessProfile.cbu}
-                          </strong>
+                  {effectiveProfile.cbu || targetAlias ? (
+                    <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-slate-300">
+                      {effectiveProfile.cbu && (
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <span className="text-[10px] text-slate-400 block">CBU / CVU (22 dígitos):</span>
+                            <strong className="font-mono text-slate-100 text-xs font-bold tracking-wider">
+                              {effectiveProfile.cbu}
+                            </strong>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(effectiveProfile.cbu);
+                              setCopiedCbu(true);
+                              setTimeout(() => setCopiedCbu(false), 2500);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                          >
+                            {copiedCbu ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                            <span>{copiedCbu ? '¡Copiado!' : 'Copiar CBU'}</span>
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(businessProfile.cbu);
-                            setCopiedCbu(true);
-                            setTimeout(() => setCopiedCbu(false), 2500);
-                          }}
-                          className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
-                        >
-                          {copiedCbu ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
-                          <span>{copiedCbu ? '¡Copiado!' : 'Copiar CBU'}</span>
-                        </button>
-                      </div>
-                    )}
+                      )}
 
-                    <div className="flex justify-between items-center pt-1 border-t border-slate-800">
-                      <div>
-                        <span className="text-[10px] text-slate-400 block">Alias Bancario:</span>
-                        <strong className="font-mono text-emerald-400 text-xs font-bold">
-                          {businessProfile.alias || 'DEPORTES.PMY.MP'}
-                        </strong>
+                      {targetAlias && (
+                        <div className="flex justify-between items-center pt-1 border-t border-slate-800">
+                          <div>
+                            <span className="text-[10px] text-slate-400 block">Alias Bancario:</span>
+                            <strong className="font-mono text-emerald-400 text-xs font-bold">
+                              {targetAlias}
+                            </strong>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(targetAlias);
+                              setCopiedAlias(true);
+                              setTimeout(() => setCopiedAlias(false), 2500);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                          >
+                            {copiedAlias ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+                            <span>{copiedAlias ? '¡Copiado!' : 'Copiar Alias'}</span>
+                          </button>
+                        </div>
+                      )}
+
+                      {(effectiveProfile.accountHolder || effectiveProfile.ownerName) && (
+                        <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex justify-between">
+                          <span>Titular:</span>
+                          <strong className="text-slate-200">{effectiveProfile.accountHolder || effectiveProfile.ownerName}</strong>
+                        </div>
+                      )}
+
+                      <div className="pt-1 border-t border-slate-800 flex justify-between items-center">
+                        <span className="font-bold text-slate-200">Monto a transferir:</span>
+                        <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(businessProfile.alias || 'DEPORTES.PMY.MP');
-                          setCopiedAlias(true);
-                          setTimeout(() => setCopiedAlias(false), 2500);
-                        }}
-                        className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
-                      >
-                        {copiedAlias ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
-                        <span>{copiedAlias ? '¡Copiado!' : 'Copiar Alias'}</span>
-                      </button>
                     </div>
-
-                    {(businessProfile.accountHolder || businessProfile.ownerName) && (
-                      <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex justify-between">
-                        <span>Titular:</span>
-                        <strong className="text-slate-200">{businessProfile.accountHolder || businessProfile.ownerName}</strong>
-                      </div>
-                    )}
-
-                    <div className="pt-1 border-t border-slate-800 flex justify-between items-center">
-                      <span className="font-bold text-slate-200">Monto a transferir:</span>
-                      <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
+                  ) : (
+                    <div className="p-3 bg-amber-950/40 border border-amber-600/30 rounded-xl text-xs text-amber-200 space-y-1">
+                      <p className="text-[11px] text-slate-300">
+                        El complejo aún no ha ingresado CBU ni Alias en su panel. Podés confirmar la reserva y coordinar el pago por mostrador o WhatsApp.
+                      </p>
                     </div>
-                  </div>
+                  )}
 
                   <div>
                     <label className="block text-slate-400 mb-1">Nº de Operación o Comprobante (Opcional)</label>
@@ -716,7 +791,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
 
                 <button
                   type="button"
-                  disabled={isProcessing}
+                  disabled={isProcessing || (paymentMethod === 'mercadopago' && !targetAlias && !hasDirectLink && !effectiveProfile.mpAccessToken)}
                   onClick={handleConfirmAndPay}
                   className={`px-6 py-3 rounded-xl disabled:opacity-50 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-xl ${
                     paymentMethod === 'mercadopago'
@@ -731,7 +806,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                     </>
                   ) : paymentMethod === 'mercadopago' ? (
                     <>
-                      <span>Abrir Mercado Pago y Transferir ${amountToPayNow.toLocaleString('es-AR')}</span>
+                      <span>{targetAlias || hasDirectLink ? `Abrir Mercado Pago y Transferir $${amountToPayNow.toLocaleString('es-AR')}` : 'Mercado Pago No Configurado'}</span>
                       <ExternalLink className="w-4 h-4" />
                     </>
                   ) : (
@@ -746,23 +821,52 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
             </div>
           )}
 
-          {/* STEP 4: Success & Automated WhatsApp Confirmation */}
+          {/* STEP 4: Success / Waiting / Pending Verification */}
           {step === 4 && confirmedBooking && (
             <div className="space-y-6 text-center py-2">
               
-              <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
-                <CheckCircle className="w-10 h-10" />
+              <div className="flex flex-col items-center justify-center">
+                {isWaitingForConfirmation ? (
+                  <div className="relative">
+                    <div className="w-20 h-20 border-4 border-sky-500/20 rounded-full animate-pulse" />
+                    <div className="absolute inset-0 w-20 h-20 border-4 border-sky-500 border-t-transparent rounded-full animate-spin" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <QrCode className="w-8 h-8 text-sky-400" />
+                    </div>
+                  </div>
+                ) : confirmedBooking.status === 'confirmed' ? (
+                  <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+                    <CheckCircle className="w-10 h-10" />
+                  </div>
+                ) : (
+                  <div className="w-16 h-16 bg-amber-500/20 text-amber-400 border border-amber-500/40 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20">
+                    <Clock className="w-10 h-10 animate-pulse" />
+                  </div>
+                )}
               </div>
 
-              <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                  ¡Reserva Exitosa y Pago Acreditado!
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <span className={`text-xs font-bold uppercase tracking-wider ${
+                  isWaitingForConfirmation ? 'text-sky-400' : 
+                  confirmedBooking.status === 'confirmed' ? 'text-emerald-400' : 'text-amber-400'
+                }`}>
+                  {isWaitingForConfirmation ? '⏳ Esperando Confirmación de Pago...' : 
+                   confirmedBooking.status === 'confirmed' ? '¡Reserva Exitosa y Pago Acreditado!' : '📋 Reserva Pendiente de Verificación'}
                 </span>
+                
                 <h3 className="text-2xl font-black text-white font-heading mt-1">
-                  Turno Confirmado #{confirmedBooking.bookingCode}
+                  {isWaitingForConfirmation ? 'Procesando en Mercado Pago' : 
+                   confirmedBooking.status === 'confirmed' ? `Turno Confirmado #${confirmedBooking.bookingCode}` : `Turno Reservado #${confirmedBooking.bookingCode}`}
                 </h3>
-                <p className="text-xs text-slate-300 mt-1 max-w-md mx-auto">
-                  Tu turno en {confirmedBooking.courtName} quedó reservado para el {confirmedBooking.date} de {confirmedBooking.startTime} a {confirmedBooking.endTime} hs.
+                
+                <p className="text-xs text-slate-300 mt-2 max-w-md mx-auto leading-relaxed">
+                  {isWaitingForConfirmation ? (
+                    'Estamos esperando a que realices la transferencia en la app de Mercado Pago. Una vez confirmada por el club, recibirás el aviso oficial.'
+                  ) : confirmedBooking.status === 'confirmed' ? (
+                    `Tu turno en ${confirmedBooking.courtName} quedó reservado para el ${confirmedBooking.date} de ${confirmedBooking.startTime} a ${confirmedBooking.endTime} hs.`
+                  ) : (
+                    'Tu reserva ha sido registrada con éxito. El club verificará el depósito y confirmará el turno a la brevedad. Recibirás un mensaje automático por WhatsApp.'
+                  )}
                 </p>
               </div>
 
@@ -819,40 +923,64 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   <span>{confirmedBooking.paymentMethod === 'mercadopago' ? 'Alias de destino:' : 'CBU / Alias:'}</span>
                   <strong className="font-mono text-emerald-400 font-bold">
                     {confirmedBooking.paymentMethod === 'mercadopago' 
-                      ? (businessProfile.alias || 'DEPORTES.PMY.MP')
-                      : (businessProfile.cbu || businessProfile.alias || 'DEPORTES.PMY.MP')}
+                      ? (targetAlias || effectiveProfile.mpLink || 'Mercado Pago del Complejo')
+                      : (effectiveProfile.cbu || targetAlias || 'Cuenta Bancaria del Complejo')}
                   </strong>
                 </div>
               </div>
 
               {/* Automatic WhatsApp Action Box */}
-              <div className="p-4 bg-emerald-950/40 border border-emerald-500/40 rounded-2xl max-w-md mx-auto space-y-3">
-                <div className="flex items-center justify-center gap-2 text-emerald-300 font-bold text-sm">
-                  <MessageCircle className="w-5 h-5 text-emerald-400" />
-                  <span>Notificación por WhatsApp Generada</span>
+              <div className={`p-4 rounded-2xl max-w-md mx-auto space-y-3 ${
+                confirmedBooking.status === 'confirmed' ? 'bg-emerald-950/40 border border-emerald-500/40' : 'bg-amber-950/40 border border-amber-500/40'
+              }`}>
+                <div className={`flex items-center justify-center gap-2 font-bold text-sm ${
+                  confirmedBooking.status === 'confirmed' ? 'text-emerald-300' : 'text-amber-300'
+                }`}>
+                  <MessageCircle className="w-5 h-5" />
+                  <span>{confirmedBooking.status === 'confirmed' ? 'Notificación por WhatsApp Generada' : 'Avisar al Club por WhatsApp'}</span>
                 </div>
-                <p className="text-xs text-slate-300">
-                  Enviá el comprobante oficial a tu WhatsApp o compartilo con tu grupo de amigos del partido:
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  {confirmedBooking.status === 'confirmed' 
+                    ? 'Enviá el comprobante oficial a tu WhatsApp o compartilo con tu grupo de amigos del partido:'
+                    : 'Para que el club verifique tu transferencia CBU/Alias más rápido, podés enviar el comprobante de pago por WhatsApp ahora mismo:'}
                 </p>
 
                 <div className="flex flex-col sm:flex-row gap-2 justify-center">
                   <button
                     type="button"
-                    onClick={() => triggerWhatsAppSend(confirmedBooking)}
-                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/30 transition-all cursor-pointer"
+                    onClick={() => {
+                      if (confirmedBooking.status === 'confirmed') {
+                        triggerWhatsAppSend(confirmedBooking);
+                      } else {
+                        const cleanPhone = (effectiveProfile.whatsappNumber || '').replace(/\D/g, '');
+                        if (cleanPhone) {
+                          const text = `¡Hola! Acabo de reservar el turno #${confirmedBooking.bookingCode} para el ${confirmedBooking.date} a las ${confirmedBooking.startTime} hs. Aquí adjunto el comprobante de mi transferencia por ${confirmedBooking.paymentMethod.toUpperCase()}.`;
+                          window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`, '_blank');
+                        } else {
+                          alert('El complejo deportivo aún no ha configurado un teléfono de WhatsApp en su perfil.');
+                        }
+                      }
+                    }}
+                    className={`w-full sm:w-auto px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer ${
+                      confirmedBooking.status === 'confirmed' 
+                        ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/30' 
+                        : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/30'
+                    }`}
                   >
                     <MessageCircle className="w-4 h-4 fill-slate-950" />
-                    <span>Abrir en WhatsApp</span>
+                    <span>{confirmedBooking.status === 'confirmed' ? 'Abrir en WhatsApp' : 'Enviar Comprobante'}</span>
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={copyWhatsAppText}
-                    className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                  >
-                    {copiedMessage ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    <span>{copiedMessage ? '¡Mensaje Copiado!' : 'Copiar Texto'}</span>
-                  </button>
+                  {confirmedBooking.status === 'confirmed' && (
+                    <button
+                      type="button"
+                      onClick={copyWhatsAppText}
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      {copiedMessage ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      <span>{copiedMessage ? '¡Mensaje Copiado!' : 'Copiar Texto'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
 

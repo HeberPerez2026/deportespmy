@@ -29,7 +29,8 @@ export const ScheduleGrid: React.FC = () => {
     collectBalanceAtCourt,
     blockTimeSlot,
     unblockTimeSlot,
-    triggerWhatsAppSend
+    triggerWhatsAppSend,
+    confirmBookingPayment
   } = useApp();
 
   // Selected item modal states
@@ -441,7 +442,20 @@ export const ScheduleGrid: React.FC = () => {
 
                 {/* Action buttons */}
                 <div className="space-y-2 pt-1">
-                  {activeBookingDetails.balanceDue > 0 && (
+                  {activeBookingDetails.status === 'pending_payment' && (
+                    <button
+                      onClick={() => {
+                        const confirmed = confirmBookingPayment(activeBookingDetails.id, `VERIFIED-ADMIN-${Date.now().toString().slice(-4)}`, activeBookingDetails.totalAmount * (activeBookingDetails.isDepositOnly ? 0.5 : 1));
+                        if (confirmed) setActiveBookingDetails(confirmed);
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      <span>✓ Confirmar Pago y Notificar al Jugador</span>
+                    </button>
+                  )}
+
+                  {activeBookingDetails.balanceDue > 0 && activeBookingDetails.status === 'confirmed' && (
                     <button
                       onClick={() => {
                         collectBalanceAtCourt(activeBookingDetails.id);

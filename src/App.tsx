@@ -10,7 +10,16 @@ import { Footer } from './components/Footer';
 import { CheckCircle, AlertCircle, MessageCircle, X, ShieldCheck } from 'lucide-react';
 
 const MainContent: React.FC = () => {
-  const { activeTab, setActiveTab, isAdminAuthenticated, reviews, confirmBookingPayment, businessProfile } = useApp();
+  const { 
+    activeTab, 
+    setActiveTab, 
+    isAdminAuthenticated, 
+    reviews, 
+    confirmBookingPayment, 
+    businessProfile,
+    courts,
+    getBusinessProfileForCourt
+  } = useApp();
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
 
   // Mercado Pago Return state
@@ -187,15 +196,23 @@ const MainContent: React.FC = () => {
             </div>
 
             <div className="space-y-2 pt-2">
-              <a
-                href={`https://wa.me/${(businessProfile.whatsappNumber || '+5492804567890').replace(/\D/g, '')}?text=${encodeURIComponent(`¡Hola! Acabo de abonar mi turno #${paymentSuccessModal.bookingCode} en ${paymentSuccessModal.courtName} por Mercado Pago. Ref: ${paymentSuccessModal.paymentId}`)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
-              >
-                <MessageCircle className="w-4 h-4" />
-                <span>Avisar al Club por WhatsApp</span>
-              </a>
+              {(() => {
+                const matchedCourt = courts.find(c => c.name.toLowerCase() === paymentSuccessModal.courtName.toLowerCase());
+                const modalProfile = getBusinessProfileForCourt(matchedCourt);
+                const targetPhone = (modalProfile.whatsappNumber || businessProfile.whatsappNumber || '').replace(/\D/g, '');
+                
+                return targetPhone ? (
+                  <a
+                    href={`https://wa.me/${targetPhone}?text=${encodeURIComponent(`¡Hola! Acabo de abonar mi turno #${paymentSuccessModal.bookingCode} en ${paymentSuccessModal.courtName} por Mercado Pago. Ref: ${paymentSuccessModal.paymentId}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Avisar al Club por WhatsApp</span>
+                  </a>
+                ) : null;
+              })()}
 
               <button
                 type="button"

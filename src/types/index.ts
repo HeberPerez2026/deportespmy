@@ -61,6 +61,7 @@ export interface Booking {
   balanceDue: number;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
+  isDepositOnly: boolean;
   paymentReference?: string;
   
   // Status
