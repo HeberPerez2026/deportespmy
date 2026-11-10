@@ -142,8 +142,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
           }
         }
 
-        // 2. Direct Link / Alias Flow: create confirmed booking directly so it impacts admin panel immediately
-        const confirmedBookingObj = createBooking({
+        // 2. Direct Link / Alias Flow: create PENDING booking (like CBU)
+        const pendingBookingObj = createBooking({
           courtId: court.id,
           date: selectedDate,
           startTime: selectedSlotTime,
@@ -156,10 +156,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
           isDepositOnly: paymentOption === 'deposit',
           paymentMethod: 'mercadopago',
           paymentReference: hasDirectLink ? `MP-LINK-${Date.now().toString().slice(-4)}` : `MP-ALIAS-${Date.now().toString().slice(-4)}`,
-          status: 'confirmed'
+          status: 'pending_payment'
         });
 
-        // Open external Mercado Pago in a separate tab without navigating away from the app
+        // Open external Mercado Pago
         if (hasDirectLink) {
           const cleanLink = effectiveProfile.mpLink!.trim();
           try {
@@ -174,15 +174,21 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
 
           const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
           const mpUrl = isMobile ? 'mercadopago://' : 'https://www.mercadopago.com.ar';
+          
           try {
-            window.open(mpUrl, '_blank', 'noopener,noreferrer');
+            // Avoid _blank for custom protocols on mobile to prevent empty tabs
+            if (isMobile) {
+              window.location.href = mpUrl;
+            } else {
+              window.open(mpUrl, '_blank', 'noopener,noreferrer');
+            }
           } catch {}
         }
 
-        setConfirmedBooking(confirmedBookingObj);
-        setIsWaitingForConfirmation(false);
+        setConfirmedBooking(pendingBookingObj);
+        setIsWaitingForConfirmation(true);
         setStep(4);
-        triggerWhatsAppSend(confirmedBookingObj);
+        // Do not trigger WhatsApp yet; wait for user to confirm payment in Step 4
 
       } catch (err: any) {
         console.error('Error al procesar Mercado Pago:', err);
@@ -866,11 +872,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 
                 <p className="text-xs text-slate-300 mt-2 max-w-md mx-auto leading-relaxed">
                   {isWaitingForConfirmation ? (
-                    'Estamos esperando a que realices la transferencia en la app de Mercado Pago. Una vez confirmada por el club, recibirás el aviso oficial.'
+                    confirmedBooking.paymentMethod === 'mercadopago' && !effectiveProfile.mpAccessToken
+                      ? 'Copiamos el Alias a tu portapapeles. Abrí Mercado Pago, realizá la transferencia y luego presioná el botón verde de abajo para confirmar.'
+                      : 'Estamos esperando a que realices la transferencia. Una vez verificado el depósito, el club confirmará tu turno oficialmente.'
                   ) : confirmedBooking.status === 'confirmed' ? (
                     `Tu turno en ${confirmedBooking.courtName} quedó reservado para el ${confirmedBooking.date} de ${confirmedBooking.startTime} a ${confirmedBooking.endTime} hs.`
                   ) : (
-                    'Tu reserva ha sido registrada con éxito. El club verificará el depósito y confirmará el turno a la brevedad. Recibirás un mensaje automático por WhatsApp.'
+                    'Tu reserva ha sido registrada como pendiente. El club verificará el depósito y confirmará el turno a la brevedad. Recibirás un mensaje por WhatsApp.'
                   )}
                 </p>
               </div>
