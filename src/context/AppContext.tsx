@@ -24,7 +24,6 @@ import {
   EMPTY_BUSINESS_PROFILE,
   DEFAULT_DEVELOPER_CONTACT,
   INITIAL_ADMINS,
-  MONTHLY_STATS_DATA, 
   getIsoDate 
 } from '../data/mockData';
 import { 
@@ -68,10 +67,14 @@ interface BookingInput {
 interface AppContextType {
   courts: Court[];
   bookings: Booking[];
+  adminCourts: Court[];
+  adminBookings: Booking[];
+  adminWhatsappLogs: WhatsAppNotificationLog[];
   reviews: Review[];
   whatsappLogs: WhatsAppNotificationLog[];
   businessProfile: BusinessProfile;
   profilesByAdmin: Record<string, BusinessProfile>;
+  getAdminIdForCourt: (court?: Court | null) => string;
   getBusinessProfileForCourt: (court?: Court | null) => BusinessProfile;
   developerContact: DeveloperContact;
   admins: AdminUser[];
@@ -164,6 +167,9 @@ const STORAGE_KEYS = {
   USER_EMAIL: 'deportespmy_user_email',
   CURRENT_ADMIN: 'deportespmy_current_admin_v6',
 };
+
+const normalizeAdminKey = (val?: string | null): string =>
+  (val || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -615,18 +621,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return `${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
   };
 
+  // Resolve normalized adminId owner of a court
+  const getAdminIdForCourt = useCallback((court?: Court | null): string => {
+    if (!court) return '';
+    if (court.adminId) {
+      return normalizeAdminKey(court.adminId);
+    }
+    if (court.establishment) {
+      const estClean = court.establishment.trim().toLowerCase();
+      const matched = admins.find(a => a.assignedComplex && a.assignedComplex.trim().toLowerCase() === estClean);
+      if (matched) return normalizeAdminKey(matched.username);
+    }
+    return '';
+  }, [admins]);
+
+  // Multi-tenant isolated datasets for complex admins
+  const adminCourts = useMemo(() => {
+    if (!currentAdminUser || isSuperAdmin) return courts;
+    const myKey = normalizeAdminKey(currentAdminUser.username);
+    return courts.filter(c => getAdminIdForCourt(c) === myKey);
+  }, [courts, currentAdminUser, isSuperAdmin, getAdminIdForCourt]);
+
+  const adminBookings = useMemo(() => {
+    if (!currentAdminUser || isSuperAdmin) return bookings;
+    const myKey = normalizeAdminKey(currentAdminUser.username);
+    const myCourtIds = new Set(adminCourts.map(c => c.id));
+    return bookings.filter(b => normalizeAdminKey(b.adminId) === myKey || myCourtIds.has(b.courtId));
+  }, [bookings, adminCourts, currentAdminUser, isSuperAdmin]);
+
+  const adminWhatsappLogs = useMemo(() => {
+    if (!currentAdminUser || isSuperAdmin) return whatsappLogs;
+    const myKey = normalizeAdminKey(currentAdminUser.username);
+    const myBookingCodes = new Set(adminBookings.map(b => b.bookingCode));
+    return whatsappLogs.filter(w => normalizeAdminKey(w.adminId) === myKey || myBookingCodes.has(w.bookingCode));
+  }, [whatsappLogs, adminBookings, currentAdminUser, isSuperAdmin]);
+
   // Multi-tenant profile resolver per court / establishment
   const getBusinessProfileForCourt = useCallback((court?: Court | null): BusinessProfile => {
     if (court) {
       if (court.adminId) {
-        const cleanKey = court.adminId.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        const cleanKey = normalizeAdminKey(court.adminId);
         if (profilesByAdmin[cleanKey]) {
           return profilesByAdmin[cleanKey];
         }
         // Check if adminId matches an admin's id
-        const matched = admins.find(a => a.id === court.adminId || a.username.toLowerCase() === cleanKey);
+        const matched = admins.find(a => a.id === court.adminId || normalizeAdminKey(a.username) === cleanKey);
         if (matched) {
-          const matchKey = matched.username.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+          const matchKey = normalizeAdminKey(matched.username);
           if (profilesByAdmin[matchKey]) {
             return profilesByAdmin[matchKey];
           }
@@ -637,7 +678,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const estClean = court.establishment.trim().toLowerCase();
         const matched = admins.find(a => a.assignedComplex && a.assignedComplex.trim().toLowerCase() === estClean);
         if (matched) {
-          const matchKey = matched.username.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+          const matchKey = normalizeAdminKey(matched.username);
           if (profilesByAdmin[matchKey]) {
             return profilesByAdmin[matchKey];
           }
@@ -649,7 +690,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (currentAdminUser?.username) {
-      const cleanKey = currentAdminUser.username.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      const cleanKey = normalizeAdminKey(currentAdminUser.username);
       if (profilesByAdmin[cleanKey]) {
         return profilesByAdmin[cleanKey];
       }
@@ -714,14 +755,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [courts, getBusinessProfileForCourt]);
 
   const getWhatsAppShareUrl = useCallback((booking: Booking): string => {
-    const cleanPhone = (booking.clientPhone || businessProfile.whatsappNumber).replace(/\D/g, '');
+    const court = courts.find(c => c.id === booking.courtId);
+    const courtProfile = getBusinessProfileForCourt(court);
+    const cleanPhone = (booking.clientPhone || courtProfile.whatsappNumber || businessProfile.whatsappNumber).replace(/\D/g, '');
     const message = generateWhatsAppMessage(booking);
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-  }, [businessProfile.whatsappNumber, generateWhatsAppMessage]);
+  }, [courts, getBusinessProfileForCourt, businessProfile.whatsappNumber, generateWhatsAppMessage]);
 
   const triggerWhatsAppSend = useCallback((booking: Booking) => {
-    const cleanPhone = (booking.clientPhone || businessProfile.whatsappNumber).replace(/\D/g, '');
+    const court = courts.find(c => c.id === booking.courtId);
+    const courtProfile = getBusinessProfileForCourt(court);
+    const cleanPhone = (booking.clientPhone || courtProfile.whatsappNumber || businessProfile.whatsappNumber).replace(/\D/g, '');
     const preview = generateWhatsAppMessage(booking);
+    const ownerAdminId = normalizeAdminKey(booking.adminId) || getAdminIdForCourt(court);
     
     // Add to WhatsApp notifications log
     const newLog: WhatsAppNotificationLog = {
@@ -731,9 +777,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       recipientPhone: booking.clientPhone,
       messagePreview: preview.slice(0, 160) + '...',
       sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
-      status: 'delivered'
+      status: 'delivered',
+      adminId: ownerAdminId,
+      courtId: booking.courtId
     };
-    setWhatsappLogs(prev => [newLog, ...prev]);
+    setWhatsappLogs(prev => {
+      const next = [newLog, ...prev];
+      try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
+      return next;
+    });
 
     // Update booking whatsappSent
     const updated = bookings.map(b => b.id === booking.id ? { ...b, whatsappSent: true, whatsappSentAt: new Date().toISOString() } : b);
@@ -743,13 +795,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Open WhatsApp
     const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(preview)}`;
     window.open(url, '_blank');
-  }, [bookings, businessProfile.whatsappNumber, generateWhatsAppMessage]);
+  }, [courts, getBusinessProfileForCourt, getAdminIdForCourt, bookings, businessProfile.whatsappNumber, generateWhatsAppMessage]);
 
   // Create booking
   const createBooking = useCallback((input: BookingInput): Booking => {
     const court = courts.find(c => c.id === input.courtId);
     if (!court) throw new Error('Cancha no encontrada');
 
+    const courtProfile = getBusinessProfileForCourt(court);
+    const ownerAdminId = getAdminIdForCourt(court) || normalizeAdminKey(currentAdminUser?.username) || 'admin';
     const bookingStatus = input.status || 'confirmed';
     const amountPaid = bookingStatus === 'pending_payment'
       ? 0
@@ -766,7 +820,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       bookingCode,
       courtId: input.courtId,
       courtName: court.name,
-      establishment: court.establishment || businessProfile.complexName,
+      establishment: court.establishment || courtProfile.complexName || '',
       sport: court.sport,
       date: input.date,
       startTime: input.startTime,
@@ -787,7 +841,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: new Date().toISOString(),
       whatsappSent: bookingStatus === 'confirmed',
       whatsappSentAt: bookingStatus === 'confirmed' ? new Date().toISOString() : undefined,
-      adminId: court.adminId || (currentAdminUser?.username || 'admin'),
+      adminId: ownerAdminId,
     };
 
     const nextBookings = [newBooking, ...bookings];
@@ -814,8 +868,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         messagePreview: `¡Hola ${input.clientName}! Tu turno en ${court.name} está CONFIRMADO para el ${input.date} a las ${input.startTime} hs. Total: $${input.totalAmount.toLocaleString('es-AR')}.`,
         sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
         status: 'delivered',
+        adminId: ownerAdminId,
+        courtId: court.id
       };
-      setWhatsappLogs(prev => [log, ...prev]);
+      setWhatsappLogs(prev => {
+        const next = [log, ...prev];
+        try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
+        return next;
+      });
 
       // Confetti celebration
       try {
@@ -830,7 +890,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     return newBooking;
-  }, [courts, businessProfile.complexName, bookings, currentAdminUser]);
+  }, [courts, getBusinessProfileForCourt, getAdminIdForCourt, bookings, currentAdminUser]);
 
   // Submit payment receipt (for manual Mercado Pago Alias/Link or CBU)
   const submitPaymentReceipt = useCallback((bookingCodeOrId: string, receiptUrl: string, paymentReference?: string): Booking | undefined => {
@@ -868,9 +928,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     if (!targetBooking) return undefined;
 
-    const amountPaid = paidAmount !== undefined ? paidAmount : (targetBooking.totalAmount * 0.5);
+    // Avoid duplicate confirmations if already confirmed with the same reference
+    if (targetBooking.status === 'confirmed' && targetBooking.paymentReference === paymentReference) {
+      return targetBooking;
+    }
+
+    const defaultPaid = targetBooking.isDepositOnly ? Math.round(targetBooking.totalAmount * 0.5) : targetBooking.totalAmount;
+    const amountPaid = paidAmount !== undefined && paidAmount > 0 ? paidAmount : defaultPaid;
     const balanceDue = Math.max(0, targetBooking.totalAmount - amountPaid);
     const paymentStatus: PaymentStatus = balanceDue === 0 ? 'total_pagado' : 'seña_pagada';
+    const court = courts.find(c => c.id === targetBooking!.courtId);
+    const ownerAdminId = normalizeAdminKey(targetBooking.adminId) || getAdminIdForCourt(court);
 
     const confirmed: Booking = {
       ...targetBooking,
@@ -879,6 +947,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       amountPaid,
       balanceDue,
       paymentReference,
+      adminId: ownerAdminId || targetBooking.adminId,
       whatsappSent: true,
       whatsappSentAt: new Date().toISOString()
     };
@@ -908,10 +977,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       messagePreview: preview.slice(0, 160) + '...',
       sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
       status: 'delivered',
+      adminId: ownerAdminId,
+      courtId: confirmed.courtId
     };
-    setWhatsappLogs(prev => [log, ...prev]);
+    setWhatsappLogs(prev => {
+      if (prev.some(l => l.bookingCode === confirmed.bookingCode)) return prev;
+      const next = [log, ...prev];
+      try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
+      return next;
+    });
 
-    // If it's the admin confirming a pending payment, we trigger the WhatsApp send
+    // If it's the admin confirming a pending payment, trigger the WhatsApp send
     if (isAdminAuthenticated) {
       const cleanPhone = confirmed.clientPhone.replace(/\D/g, '');
       const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(preview)}`;
@@ -919,7 +995,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     return confirmed;
-  }, [bookings, isAdminAuthenticated, generateWhatsAppMessage]);
+  }, [bookings, courts, getAdminIdForCourt, isAdminAuthenticated, generateWhatsAppMessage]);
 
   // Admin Manual Booking
   const createManualAdminBooking = useCallback((input: BookingInput): Booking => {
@@ -997,12 +1073,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'confirmed',
       createdAt: new Date().toISOString(),
       whatsappSent: false,
+      adminId: getAdminIdForCourt(court) || normalizeAdminKey(currentAdminUser?.username) || 'admin',
     };
 
     const nextBookings = [blockedBooking, ...bookings];
     setBookings(nextBookings);
     saveBookingToFirestore(blockedBooking);
-  }, [courts, businessProfile, bookings]);
+  }, [courts, businessProfile, bookings, getAdminIdForCourt, currentAdminUser]);
 
   // Unblock slot
   const unblockTimeSlot = useCallback((bookingId: string) => {
@@ -1100,35 +1177,98 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [courts, bookings]);
 
-  // Compute Dynamic Monthly Stats
+  // Compute Dynamic Monthly Stats (strictly scoped by adminId for complex admins)
   const getMonthlyStats = useCallback((monthKey: string): MonthlyStats => {
-    const base = MONTHLY_STATS_DATA[monthKey] || MONTHLY_STATS_DATA['2026-11'];
-    const monthBookings = bookings.filter(b => b.date.startsWith(monthKey) && b.status === 'confirmed' && !b.clientName.startsWith('[BLOQUEADO'));
-    
-    const extraRevenue = monthBookings.reduce((sum, b) => sum + b.amountPaid, 0);
-    const totalBookingsCount = monthBookings.length;
-    const totalRev = extraRevenue;
+    const sourceBookings = (currentAdminUser && !isSuperAdmin) ? adminBookings : bookings;
+    const sourceCourts = (currentAdminUser && !isSuperAdmin) ? adminCourts : courts;
+
+    const monthBookings = sourceBookings.filter(
+      b => b.date.startsWith(monthKey) && b.status === 'confirmed' && !b.clientName.startsWith('[BLOQUEADO')
+    );
+
+    const totalRevenue = monthBookings.reduce((sum, b) => sum + b.amountPaid, 0);
+    const totalBookings = monthBookings.length;
+    const totalHoursPlayed = Math.round(monthBookings.reduce((sum, b) => sum + (b.durationMinutes || 60) / 60, 0) * 10) / 10;
+
+    // Average occupancy rate across days in month & complex courts (15 slots/day)
+    const maxSlotsPerMonth = Math.max(1, sourceCourts.length * 15 * 30);
+    const averageOccupancyRate = totalBookings > 0
+      ? Math.min(100, Math.round((totalBookings / maxSlotsPerMonth) * 100))
+      : 0;
+
+    const sportNames: Record<SportType, string> = {
+      futbol5: 'Fútbol 5',
+      padel: 'Pádel',
+      futbol7: 'Fútbol 7',
+      tenis: 'Tenis',
+      basquet: 'Básquetbol',
+    };
+
+    const sportBreakdown = (['futbol5', 'padel', 'futbol7', 'tenis', 'basquet'] as SportType[]).map(sp => {
+      const list = monthBookings.filter(b => b.sport === sp);
+      const rev = list.reduce((s, b) => s + b.amountPaid, 0);
+      return {
+        sport: sp,
+        sportName: sportNames[sp],
+        bookingsCount: list.length,
+        revenue: rev,
+        percentage: totalRevenue > 0 ? Math.round((rev / totalRevenue) * 100) : 0,
+      };
+    });
+
+    const hourMap = new Map<string, number>();
+    monthBookings.forEach(b => {
+      const hr = `${b.startTime} hs`;
+      hourMap.set(hr, (hourMap.get(hr) || 0) + 1);
+    });
+    const peakHours = Array.from(hourMap.entries())
+      .map(([hour, bookingsCount]) => ({ hour, bookingsCount }))
+      .sort((a, b) => b.bookingsCount - a.bookingsCount)
+      .slice(0, 6);
+
+    const clientMap = new Map<string, { name: string; phone: string; bookingsCount: number; totalSpent: number }>();
+    monthBookings.forEach(b => {
+      const key = (b.clientPhone || b.clientName).trim().toLowerCase();
+      const prev = clientMap.get(key) || { name: b.clientName, phone: b.clientPhone, bookingsCount: 0, totalSpent: 0 };
+      prev.bookingsCount += 1;
+      prev.totalSpent += b.amountPaid;
+      clientMap.set(key, prev);
+    });
+    const topClients = Array.from(clientMap.values())
+      .sort((a, b) => b.totalSpent - a.totalSpent)
+      .slice(0, 8);
 
     return {
-      ...base,
-      totalRevenue: totalRev,
-      totalBookings: totalBookingsCount,
+      month: monthKey,
+      monthLabel: monthKey,
+      totalRevenue,
+      totalBookings,
+      totalHoursPlayed,
+      averageOccupancyRate,
+      sportBreakdown,
+      peakHours,
+      dailyRevenue: [],
+      topClients,
     };
-  }, [bookings]);
+  }, [currentAdminUser, isSuperAdmin, adminBookings, adminCourts, bookings, courts]);
 
   // Export / Import / Reset Database
   const exportDatabaseJson = useCallback((): string => {
+    const isScoped = Boolean(currentAdminUser && !isSuperAdmin);
+    const scopedCourts = isScoped ? adminCourts : courts;
+    const scopedCourtIds = new Set(scopedCourts.map(c => c.id));
     const payload = {
       version: '5.0',
       exportedAt: new Date().toISOString(),
+      adminId: currentAdminUser?.username || 'global',
       businessProfile,
-      courts,
-      bookings,
-      reviews,
-      whatsappLogs,
+      courts: scopedCourts,
+      bookings: isScoped ? adminBookings : bookings,
+      reviews: isScoped ? reviews.filter(r => scopedCourtIds.has(r.courtId)) : reviews,
+      whatsappLogs: isScoped ? adminWhatsappLogs : whatsappLogs,
     };
     return JSON.stringify(payload, null, 2);
-  }, [businessProfile, courts, bookings, reviews, whatsappLogs]);
+  }, [currentAdminUser, isSuperAdmin, businessProfile, adminCourts, adminBookings, adminWhatsappLogs, courts, bookings, reviews, whatsappLogs]);
 
   const importDatabaseJson = useCallback((jsonString: string): boolean => {
     try {
@@ -1170,10 +1310,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const value = useMemo(() => ({
     courts,
     bookings,
+    adminCourts,
+    adminBookings,
+    adminWhatsappLogs,
     reviews,
     whatsappLogs,
     businessProfile,
     profilesByAdmin,
+    getAdminIdForCourt,
     getBusinessProfileForCourt,
     developerContact,
     admins,
@@ -1230,10 +1374,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }), [
     courts,
     bookings,
+    adminCourts,
+    adminBookings,
+    adminWhatsappLogs,
     reviews,
     whatsappLogs,
     businessProfile,
     profilesByAdmin,
+    getAdminIdForCourt,
     getBusinessProfileForCourt,
     developerContact,
     admins,

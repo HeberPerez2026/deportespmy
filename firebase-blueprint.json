@@ -23,10 +23,14 @@
         "balanceDue": { "type": "number" },
         "paymentMethod": { "type": "string", "maxLength": 32 },
         "paymentStatus": { "type": "string", "maxLength": 32 },
+        "isDepositOnly": { "type": "boolean" },
         "paymentReference": { "type": "string", "maxLength": 64 },
         "status": { "type": "string", "maxLength": 32 },
         "createdAt": { "type": "string", "maxLength": 64 },
-        "whatsappSent": { "type": "boolean" }
+        "whatsappSent": { "type": "boolean" },
+        "whatsappSentAt": { "type": "string", "maxLength": 64 },
+        "adminId": { "type": "string", "maxLength": 64 },
+        "receiptUrl": { "type": "string", "maxLength": 500000 }
       },
       "required": [
         "bookingCode",
@@ -51,7 +55,8 @@
         "userPhone": { "type": "string", "maxLength": 32 },
         "rating": { "type": "number" },
         "comment": { "type": "string", "maxLength": 1000 },
-        "date": { "type": "string", "maxLength": 16 }
+        "date": { "type": "string", "maxLength": 16 },
+        "adminId": { "type": "string", "maxLength": 64 }
       },
       "required": ["courtId", "userName", "rating", "comment", "date"]
     },
@@ -73,13 +78,14 @@
         "description": { "type": "string", "maxLength": 1000 },
         "status": { "type": "string", "maxLength": 32 },
         "rating": { "type": "number" },
-        "reviewCount": { "type": "number" }
+        "reviewCount": { "type": "number" },
+        "adminId": { "type": "string", "maxLength": 64 }
       },
       "required": ["name", "sport", "hourlyRateDay", "hourlyRateNight"]
     },
     "BusinessProfile": {
       "title": "BusinessProfile",
-      "description": "Administrator business contact, CBU/Alias and address details",
+      "description": "Administrator business contact, CBU/Alias, Mercado Pago OAuth and address details",
       "type": "object",
       "properties": {
         "ownerName": { "type": "string", "maxLength": 128 },
@@ -90,7 +96,18 @@
         "whatsappNumber": { "type": "string", "maxLength": 32 },
         "address": { "type": "string", "maxLength": 256 },
         "email": { "type": "string", "maxLength": 128 },
-        "welcomeNotes": { "type": "string", "maxLength": 500 }
+        "welcomeNotes": { "type": "string", "maxLength": 500 },
+        "mpLink": { "type": "string", "maxLength": 256 },
+        "whatsappTemplate": { "type": "string", "maxLength": 2000 },
+        "mpOAuthConnected": { "type": "boolean" },
+        "mpUserId": { "type": "string", "maxLength": 64 },
+        "mpAccountEmail": { "type": "string", "maxLength": 128 },
+        "mpAccountNickname": { "type": "string", "maxLength": 128 },
+        "mpAccessToken": { "type": "string", "maxLength": 512 },
+        "mpRefreshToken": { "type": "string", "maxLength": 512 },
+        "mpPublicKey": { "type": "string", "maxLength": 256 },
+        "mpTokenExpiresAt": { "type": "string", "maxLength": 64 },
+        "mpConnectedAt": { "type": "string", "maxLength": 64 }
       }
     },
     "DeveloperContact": {

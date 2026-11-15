@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { DollarSign, CreditCard, CheckCircle, Clock, AlertCircle, ArrowUpRight, Search } from 'lucide-react';
 
 export const TransactionsView: React.FC = () => {
-  const { bookings, collectBalanceAtCourt } = useApp();
+  const { adminBookings: bookings, collectBalanceAtCourt } = useApp();
   const [filterMethod, setFilterMethod] = useState<string>('all');
 
   const confirmedBookings = bookings.filter(b => (b.status === 'confirmed' || b.status === 'awaiting_approval') && !b.clientName.startsWith('[BLOQUEADO'));
@@ -78,7 +78,7 @@ export const TransactionsView: React.FC = () => {
           <div className="text-2xl font-black text-sky-600 font-heading mt-1">
             ${mpCollected.toLocaleString('es-AR')}
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">CVU Mercado Pago DeportesPMY</span>
+          <span className="text-[11px] text-slate-400 mt-1 block">Acreditado en tu cuenta Mercado Pago</span>
         </div>
 
         <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">

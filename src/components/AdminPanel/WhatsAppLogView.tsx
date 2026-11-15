@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { MessageCircle, CheckCheck, Clock, Send, Search, Phone, ExternalLink, Copy, Check } from 'lucide-react';
 
 export const WhatsAppLogView: React.FC = () => {
-  const { whatsappLogs, bookings, triggerWhatsAppSend } = useApp();
+  const { adminWhatsappLogs: whatsappLogs, adminBookings: bookings, triggerWhatsAppSend } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 

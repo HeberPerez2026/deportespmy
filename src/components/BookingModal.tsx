@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Court, PaymentMethod, Booking } from '../types';
 import { 
@@ -37,19 +37,22 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     setSelectedDate,
     getSlotsForCourtAndDate, 
     createBooking,
+    bookings,
     generateWhatsAppMessage,
-    getWhatsAppShareUrl,
     triggerWhatsAppSend,
     confirmBookingPayment,
     submitPaymentReceipt,
     userPhone,
     userName,
     userEmail,
+    getAdminIdForCourt,
     getBusinessProfileForCourt,
     setActiveTab
   } = useApp();
 
   const effectiveProfile = getBusinessProfileForCourt(court);
+  const courtAdminId = getAdminIdForCourt(court);
+  const hasAutomaticMP = Boolean(effectiveProfile.mpOAuthConnected || effectiveProfile.mpAccessToken);
 
   // Multi-step state: 1 (Turno) -> 2 (Datos) -> 3 (Pago Online) -> 4 (Confirmado)
   const [step, setStep] = useState<number>(initialSlotTime ? 2 : 1);
@@ -75,6 +78,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const [copiedCbu, setCopiedCbu] = useState(false);
 
   const [isWaitingForConfirmation, setIsWaitingForConfirmation] = useState(false);
+  const [mpCheckoutUrl, setMpCheckoutUrl] = useState<string | null>(null);
+  const [mpFlowError, setMpFlowError] = useState<string | null>(null);
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
   const [isSubmittingReceipt, setIsSubmittingReceipt] = useState(false);
 
@@ -91,21 +96,88 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const targetAlias = (effectiveProfile.alias || '').trim();
   const hasDirectLink = !!(effectiveProfile.mpLink && effectiveProfile.mpLink.trim().startsWith('http'));
 
+  // Real-time automatic verification watcher when waiting for Checkout Pro OAuth confirmation
+  useEffect(() => {
+    if (!isWaitingForConfirmation || !confirmedBooking || !hasAutomaticMP || confirmedBooking.paymentMethod !== 'mercadopago') {
+      return;
+    }
+
+    let cancelled = false;
+
+    const finalizePayment = (paymentRef: string, amount?: number) => {
+      if (cancelled) return;
+      const updated = confirmBookingPayment(confirmedBooking.bookingCode, paymentRef, amount);
+      setConfirmedBooking(updated || { ...confirmedBooking, status: 'confirmed', paymentReference: paymentRef });
+      setIsWaitingForConfirmation(false);
+      setMpCheckoutUrl(null);
+    };
+
+    // 1. Check if Firestore snapshot already updated booking to 'confirmed' (e.g. via server Webhook)
+    const syncedBooking = bookings.find(b => b.bookingCode === confirmedBooking.bookingCode);
+    if (syncedBooking && syncedBooking.status === 'confirmed') {
+      setConfirmedBooking(syncedBooking);
+      setIsWaitingForConfirmation(false);
+      setMpCheckoutUrl(null);
+      return;
+    }
+
+    // 2. Listen for postMessage from Checkout Pro popup return
+    const handleMessage = (event: MessageEvent) => {
+      const origin = event.origin;
+      if (!origin.endsWith('.run.app') && !origin.includes('localhost') && origin !== window.location.origin) {
+        return;
+      }
+      if (event.data?.type === 'MP_PAYMENT_RETURN') {
+        const { bookingCode, paymentId, status, collectionStatus } = event.data;
+        if (bookingCode && bookingCode !== confirmedBooking.bookingCode) return;
+        const ok = status === 'approved' || collectionStatus === 'approved' || status === 'success';
+        if (ok) {
+          finalizePayment(`MP-${paymentId || Date.now()}`, amountToPayNow);
+        } else if (status === 'rejected' || collectionStatus === 'rejected') {
+          setMpFlowError('El pago fue rechazado o cancelado en Mercado Pago. Podés reintentar o elegir otro medio.');
+        }
+      }
+    };
+    window.addEventListener('message', handleMessage);
+
+    // 3. Real-time polling against /api/mercadopago/verify-payment every 2.5 seconds
+    const pollInterval = setInterval(async () => {
+      if (cancelled) return;
+      try {
+        const resp = await fetch(
+          `/api/mercadopago/verify-payment?booking_code=${encodeURIComponent(confirmedBooking.bookingCode)}&admin_id=${encodeURIComponent(courtAdminId)}`
+        );
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data?.verified) {
+          finalizePayment(`MP-${data.paymentId || Date.now()}`, Number(data.amount) || amountToPayNow);
+        }
+      } catch {}
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('message', handleMessage);
+      clearInterval(pollInterval);
+    };
+  }, [isWaitingForConfirmation, confirmedBooking, hasAutomaticMP, bookings, courtAdminId, amountToPayNow, confirmBookingPayment]);
+
   // Handle Checkout Pro preference creation & CBU transfer reservation
   const handleConfirmAndPay = async () => {
     setIsProcessing(true);
+    setMpFlowError(null);
 
     if (paymentMethod === 'mercadopago') {
-      // Validate that the court's establishment has configured payment data
-      if (!targetAlias && !hasDirectLink && !effectiveProfile.mpAccessToken) {
-        alert('Este complejo deportivo aún no ha configurado sus datos de cobro por Mercado Pago (Alias o Link). Por favor comunicate con el complejo o seleccioná Transferencia Bancaria (CBU).');
+      // Validate that the court's establishment has configured OAuth or Alias/Link
+      if (!targetAlias && !hasDirectLink && !hasAutomaticMP) {
+        setMpFlowError('Este complejo aún no conectó Mercado Pago ni configuró su Alias. Podés elegir Transferencia Bancaria (CBU).');
         setIsProcessing(false);
         return;
       }
 
       try {
-        // 1. If official Checkout Pro token is configured, use official preference
-        if (effectiveProfile.mpAccessToken) {
+        // 1. Official Automatic OAuth / Checkout Pro flow
+        if (hasAutomaticMP) {
           const newBooking = createBooking({
             courtId: court.id,
             date: selectedDate,
@@ -136,16 +208,35 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
               clientName: name,
               clientEmail: email,
               clientPhone: phone,
-              accessToken: effectiveProfile.mpAccessToken,
+              adminId: courtAdminId,
+              accessToken: effectiveProfile.mpAccessToken || undefined,
               origin: window.location.origin
             })
           });
 
           const data = await res.json();
-          if (data.init_point) {
-            window.location.href = data.init_point;
+          if (!res.ok || !data.init_point) {
+            setMpFlowError(data?.error || 'No se pudo iniciar el checkout de Mercado Pago.');
+            setIsProcessing(false);
             return;
           }
+
+          setMpCheckoutUrl(data.init_point);
+          setConfirmedBooking(newBooking);
+          setIsWaitingForConfirmation(true);
+          setStep(4);
+
+          // Open Mercado Pago Checkout Pro directly in popup / new tab (avoids iframe X-Frame-Options block)
+          const payWin = window.open(
+            data.init_point,
+            'mp_checkout_popup',
+            'width=640,height=780,scrollbars=yes,resizable=yes'
+          );
+          if (!payWin) {
+            setMpFlowError('Tu navegador bloqueó la ventana de pago. Hacé clic en "Abrir Mercado Pago" abajo para completar el pago.');
+          }
+          setIsProcessing(false);
+          return;
         }
 
         // 2. Direct Link / Alias Flow: create PENDING booking (like CBU)
@@ -611,14 +702,24 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 <div className="p-4 bg-sky-950/30 border border-sky-800/60 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
-                      <span>💙</span> Cobro Online con Mercado Pago
+                      <span>💙</span> {hasAutomaticMP ? 'Mercado Pago Checkout Pro' : 'Cobro Online con Mercado Pago'}
                     </span>
                     <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full font-bold">
-                      Acreditación Directa
+                      {hasAutomaticMP ? 'Confirmación Automática' : 'Acreditación Directa'}
                     </span>
                   </div>
 
-                  {targetAlias ? (
+                  {hasAutomaticMP ? (
+                    <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-xs text-slate-300">
+                      <p className="text-slate-200 leading-relaxed">
+                        Pagás de forma segura con <strong>Tarjetas, Dinero en cuenta o QR</strong> directo a la cuenta oficial del complejo{effectiveProfile.mpAccountNickname ? ` (@${effectiveProfile.mpAccountNickname})` : ''}. Tu turno se confirma <strong>automáticamente</strong> al instante.
+                      </p>
+                      <div className="pt-1 border-t border-slate-800 flex justify-between items-center">
+                        <span className="font-bold text-slate-200">Total a abonar ahora:</span>
+                        <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
+                      </div>
+                    </div>
+                  ) : targetAlias ? (
                     <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-xs text-slate-300">
                       <div className="flex justify-between items-center">
                         <div>
@@ -670,14 +771,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                         <span>Configuración de Mercado Pago pendiente</span>
                       </div>
                       <p className="text-[11px] text-slate-300">
-                        El administrador de este complejo aún no ha ingresado su Alias o Link de cobro en el sistema. Podés elegir <strong>Transferencia Bancaria</strong> o coordinar directamente con el club.
+                        El administrador de este complejo aún no conectó su cuenta ni ingresó su Alias. Podés elegir <strong>Transferencia Bancaria</strong> o coordinar con el club.
                       </p>
                     </div>
                   )}
 
-                  <p className="text-xs text-slate-300">
-                    Al presionar el botón de abajo, {targetAlias ? 'se copiará el Alias y se abrirá Mercado Pago para que transfieras el importe exacto.' : 'se registrará tu reserva y podrás coordinar el pago.'}
-                  </p>
+                  {mpFlowError && (
+                    <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/40 text-xs text-rose-200">
+                      {mpFlowError}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -808,7 +911,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
 
                 <button
                   type="button"
-                  disabled={isProcessing || (paymentMethod === 'mercadopago' && !targetAlias && !hasDirectLink && !effectiveProfile.mpAccessToken)}
+                  disabled={isProcessing || (paymentMethod === 'mercadopago' && !targetAlias && !hasDirectLink && !hasAutomaticMP)}
                   onClick={handleConfirmAndPay}
                   className={`px-6 py-3 rounded-xl disabled:opacity-50 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-xl ${
                     paymentMethod === 'mercadopago'
@@ -819,11 +922,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   {isProcessing ? (
                     <>
                       <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                      <span>{paymentMethod === 'mercadopago' ? 'Abriendo Mercado Pago...' : 'Confirmando Reserva...'}</span>
+                      <span>{paymentMethod === 'mercadopago' ? 'Preparando Mercado Pago...' : 'Confirmando Reserva...'}</span>
                     </>
                   ) : paymentMethod === 'mercadopago' ? (
                     <>
-                      <span>{targetAlias || hasDirectLink ? `Abrir Mercado Pago y Transferir $${amountToPayNow.toLocaleString('es-AR')}` : 'Mercado Pago No Configurado'}</span>
+                      <span>
+                        {hasAutomaticMP
+                          ? `Pagar $${amountToPayNow.toLocaleString('es-AR')} con Mercado Pago`
+                          : targetAlias || hasDirectLink
+                          ? `Abrir Mercado Pago y Transferir $${amountToPayNow.toLocaleString('es-AR')}`
+                          : 'Mercado Pago No Configurado'}
+                      </span>
                       <ExternalLink className="w-4 h-4" />
                     </>
                   ) : (
@@ -878,9 +987,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 
                 <p className="text-xs text-slate-300 mt-2 max-w-md mx-auto leading-relaxed">
                   {isWaitingForConfirmation ? (
-                    confirmedBooking.paymentMethod === 'mercadopago' && !effectiveProfile.mpAccessToken
-                      ? 'Copiamos el Alias a tu portapapeles. Abrí Mercado Pago, realizá la transferencia y luego presioná el botón verde de abajo para confirmar.'
-                      : 'Estamos esperando a que realices la transferencia. Una vez verificado el depósito, el club confirmará tu turno oficialmente.'
+                    confirmedBooking.paymentMethod === 'mercadopago' && hasAutomaticMP
+                      ? 'Estamos verificando tu pago en Mercado Pago en tiempo real. Apenas se apruebe, tu turno quedará confirmado automáticamente.'
+                      : confirmedBooking.paymentMethod === 'mercadopago' && !hasAutomaticMP
+                      ? 'Copiamos el Alias a tu portapapeles. Abrí Mercado Pago, realizá la transferencia y adjuntá el comprobante abajo para que el club lo apruebe.'
+                      : 'Estamos esperando a que realices la transferencia. Adjuntá el comprobante abajo para confirmar tu turno.'
                   ) : confirmedBooking.status === 'confirmed' ? (
                     `Tu turno en ${confirmedBooking.courtName} quedó reservado para el ${confirmedBooking.date} de ${confirmedBooking.startTime} a ${confirmedBooking.endTime} hs.`
                   ) : (
@@ -888,6 +999,53 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   )}
                 </p>
               </div>
+
+              {/* Real-time Skeleton Loader when verifying automatic OAuth Checkout Pro payment */}
+              {isWaitingForConfirmation && hasAutomaticMP && confirmedBooking.paymentMethod === 'mercadopago' && (
+                <div className="max-w-md mx-auto p-4 rounded-2xl bg-sky-950/35 border border-sky-500/35 space-y-3 text-left">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-sky-300 flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-sky-400 animate-ping" />
+                      Verificando transacción en tiempo real...
+                    </span>
+                    <span className="font-mono text-[11px] text-slate-400">#{confirmedBooking.bookingCode}</span>
+                  </div>
+
+                  {/* Skeleton shimmer bars */}
+                  <div className="space-y-2 animate-pulse">
+                    <div className="h-3 bg-slate-800 rounded-lg w-3/4" />
+                    <div className="h-3 bg-slate-800 rounded-lg w-1/2" />
+                  </div>
+
+                  {mpFlowError && (
+                    <p className="text-[11px] text-rose-300 font-semibold">{mpFlowError}</p>
+                  )}
+
+                  {mpCheckoutUrl && (
+                    <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                      <a
+                        href={mpCheckoutUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 py-2.5 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>Abrir Mercado Pago</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsWaitingForConfirmation(false);
+                          setStep(3);
+                        }}
+                        className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
+                      >
+                        Cambiar Medio
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Clean Reservation Details Summary Card */}
               <div className="max-w-md mx-auto bg-slate-950 p-4 rounded-2xl border border-slate-800 text-left space-y-2.5 text-xs text-slate-300">
@@ -932,24 +1090,24 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
               <div className="max-w-md mx-auto p-4 bg-sky-950/30 border border-sky-500/30 rounded-2xl text-left space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-sky-300 uppercase tracking-wider flex items-center gap-1.5">
-                    {confirmedBooking.paymentMethod === 'mercadopago' ? '💙 Transferencia Mercado Pago' : '🏦 Transferencia CBU / Banco'}
+                    {confirmedBooking.paymentMethod === 'mercadopago' ? '💙 Pago Mercado Pago' : '🏦 Transferencia CBU / Banco'}
                   </span>
                   <span className="text-[11px] bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full font-bold">
-                    {confirmedBooking.paymentStatus === 'total_pagado' ? 'Total 100% Pagado' : 'Seña 50% Abonada'}
+                    {confirmedBooking.paymentStatus === 'total_pagado' ? 'Total 100% Pagado' : confirmedBooking.status === 'confirmed' ? 'Seña 50% Abonada' : 'Pago Pendiente'}
                   </span>
                 </div>
                 <div className="text-xs text-slate-300 flex justify-between">
-                  <span>{confirmedBooking.paymentMethod === 'mercadopago' ? 'Alias de destino:' : 'CBU / Alias:'}</span>
+                  <span>{confirmedBooking.paymentMethod === 'mercadopago' ? 'Destino:' : 'CBU / Alias:'}</span>
                   <strong className="font-mono text-emerald-400 font-bold">
                     {confirmedBooking.paymentMethod === 'mercadopago' 
-                      ? (targetAlias || effectiveProfile.mpLink || 'Mercado Pago del Complejo')
+                      ? (hasAutomaticMP ? (effectiveProfile.mpAccountNickname ? `@${effectiveProfile.mpAccountNickname}` : 'Checkout Pro Oficial') : (targetAlias || effectiveProfile.mpLink || 'Mercado Pago del Complejo'))
                       : (effectiveProfile.cbu || targetAlias || 'Cuenta Bancaria del Complejo')}
                   </strong>
                 </div>
               </div>
 
-              {/* Receipt Attachment Section for Manual/Pending Payments */}
-              {(isWaitingForConfirmation || confirmedBooking.status === 'pending_payment' || confirmedBooking.status === 'awaiting_approval') && (
+              {/* Receipt Attachment Section ONLY for Manual/Offline Transfers (Alias/Link/CBU without automatic OAuth) */}
+              {(!hasAutomaticMP || confirmedBooking.paymentMethod !== 'mercadopago') && (isWaitingForConfirmation || confirmedBooking.status === 'pending_payment' || confirmedBooking.status === 'awaiting_approval') && (
                 <div className="p-5 rounded-2xl max-w-md mx-auto bg-slate-800/50 border border-slate-700 space-y-4 shadow-xl">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">

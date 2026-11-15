@@ -16,10 +16,12 @@ import {
 } from 'lucide-react';
 
 export const MonthlyStatsView: React.FC = () => {
-  const { getMonthlyStats, bookings } = useApp();
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-11');
+  const { getMonthlyStats } = useApp();
+  const currentMonthKey = new Date().toISOString().slice(0, 7);
+  const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthKey);
 
   const stats = getMonthlyStats(selectedMonth);
+  const ticketAverage = stats.totalBookings > 0 ? Math.round(stats.totalRevenue / stats.totalBookings) : 0;
 
   // Export CSV
   const handleExportCSV = () => {
@@ -81,8 +83,9 @@ export const MonthlyStatsView: React.FC = () => {
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="bg-transparent focus:outline-none cursor-pointer"
             >
-              <option value="2026-11">Noviembre 2026</option>
-              <option value="2026-10">Octubre 2026</option>
+              <option value={currentMonthKey}>Mes Actual ({currentMonthKey})</option>
+              {currentMonthKey !== '2026-11' && <option value="2026-11">Noviembre 2026</option>}
+              {currentMonthKey !== '2026-10' && <option value="2026-10">Octubre 2026</option>}
             </select>
           </div>
 
@@ -167,10 +170,10 @@ export const MonthlyStatsView: React.FC = () => {
             Ticket Promedio
           </span>
           <div className="text-2xl font-black text-slate-900 font-heading mt-1">
-            ${Math.round(stats.totalRevenue / stats.totalBookings).toLocaleString('es-AR')}
+            ${ticketAverage.toLocaleString('es-AR')}
           </div>
           <span className="text-[11px] text-purple-600 font-semibold mt-1 block">
-            Pádel y F5 son los líderes
+            Promedio por turno confirmado
           </span>
         </div>
 
@@ -227,8 +230,10 @@ export const MonthlyStatsView: React.FC = () => {
           </div>
 
           <div className="space-y-2.5">
-            {stats.peakHours.map((peak, idx) => {
-              const maxVal = Math.max(...stats.peakHours.map(p => p.bookingsCount));
+            {stats.peakHours.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-6">Aún no hay turnos confirmados en este mes.</p>
+            ) : stats.peakHours.map((peak, idx) => {
+              const maxVal = Math.max(1, ...stats.peakHours.map(p => p.bookingsCount));
               const pct = (peak.bookingsCount / maxVal) * 100;
 
               return (

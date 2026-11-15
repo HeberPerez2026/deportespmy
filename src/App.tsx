@@ -7,7 +7,7 @@ import { ReviewsSection } from './components/ReviewsSection';
 import { AdminDashboard } from './components/AdminPanel/AdminDashboard';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { Footer } from './components/Footer';
-import { CheckCircle, AlertCircle, MessageCircle, X, ShieldCheck } from 'lucide-react';
+import { CheckCircle, AlertCircle, MessageCircle, Loader2 } from 'lucide-react';
 
 const MainContent: React.FC = () => {
   const { 
@@ -32,6 +32,7 @@ const MainContent: React.FC = () => {
   } | null>(null);
 
   const [paymentFailureModal, setPaymentFailureModal] = useState<string | null>(null);
+  const [verifyingPayment, setVerifyingPayment] = useState<boolean>(false);
 
   useEffect(() => {
     // Check if user is returning from Mercado Pago Checkout Pro
@@ -40,34 +41,90 @@ const MainContent: React.FC = () => {
     const status = params.get('status');
     const collectionStatus = params.get('collection_status');
     const bookingCode = params.get('booking_code') || params.get('external_reference') || '';
-    const paymentId = params.get('payment_id') || params.get('collection_id') || 'MP-ONLINE';
+    const paymentId = params.get('payment_id') || params.get('collection_id') || '';
+    const adminId = params.get('admin_id') || '';
     const courtName = params.get('court_name') || 'Cancha Reservada';
     const bookingDate = params.get('booking_date') || '';
     const bookingTime = params.get('booking_time') || '';
 
-    const isApproved = payment === 'success' || 
-                       status === 'success' || 
-                       status === 'approved' || 
-                       collectionStatus === 'approved' || 
-                       collectionStatus === 'success';
+    const hasReturnParams = Boolean(payment || status || collectionStatus || bookingCode);
+    if (!hasReturnParams) return;
 
-    if (isApproved) {
-      if (bookingCode) {
-        confirmBookingPayment(bookingCode, `MP-${paymentId}`);
-      }
-      setPaymentSuccessModal({
-        bookingCode: bookingCode || 'PMY-CONFIRMADO',
-        courtName,
-        date: bookingDate,
-        time: bookingTime,
-        paymentId
-      });
-      // Clean query params so refreshing the page doesn't re-trigger
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (payment === 'failure' || status === 'failure' || status === 'rejected' || collectionStatus === 'rejected') {
+    // If opened inside Checkout Pro popup window, notify the parent BookingModal and close automatically
+    if (window.opener && !window.opener.closed) {
+      try {
+        window.opener.postMessage({
+          type: 'MP_PAYMENT_RETURN',
+          payment,
+          status,
+          collectionStatus,
+          bookingCode,
+          paymentId,
+          adminId,
+          courtName,
+          bookingDate,
+          bookingTime
+        }, '*');
+        setTimeout(() => {
+          window.close();
+        }, 400);
+      } catch {}
+    }
+
+    const isRejected = payment === 'failure' || status === 'failure' || status === 'rejected' || collectionStatus === 'rejected';
+    if (isRejected) {
       setPaymentFailureModal(bookingCode || 'Tu reserva');
       window.history.replaceState({}, document.title, window.location.pathname);
+      return;
     }
+
+    // Same-tab / mobile redirect: verify payment cleanly against backend Mercado Pago API
+    let cancelled = false;
+    setVerifyingPayment(true);
+
+    (async () => {
+      try {
+        const query = new URLSearchParams();
+        if (paymentId) query.set('payment_id', paymentId);
+        if (bookingCode) query.set('booking_code', bookingCode);
+        if (adminId) query.set('admin_id', adminId);
+        if (collectionStatus) query.set('collection_status', collectionStatus);
+        if (status) query.set('status', status);
+
+        const resp = await fetch(`/api/mercadopago/verify-payment?${query.toString()}`);
+        const data = await resp.json();
+
+        if (cancelled) return;
+
+        if (data?.verified) {
+          if (bookingCode) {
+            confirmBookingPayment(bookingCode, `MP-${data.paymentId || paymentId || Date.now()}`, Number(data.amount) || undefined);
+          }
+          setPaymentSuccessModal({
+            bookingCode: bookingCode || data.bookingCode || 'PMY-CONFIRMADO',
+            courtName,
+            date: bookingDate,
+            time: bookingTime,
+            paymentId: String(data.paymentId || paymentId || 'MP-APROBADO')
+          });
+        } else {
+          setPaymentFailureModal(bookingCode || 'Tu reserva');
+        }
+      } catch {
+        if (!cancelled) {
+          setPaymentFailureModal(bookingCode || 'Tu reserva');
+        }
+      } finally {
+        if (!cancelled) {
+          setVerifyingPayment(false);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [confirmBookingPayment]);
 
   const avgRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1) : '5.0';
@@ -166,6 +223,33 @@ const MainContent: React.FC = () => {
         onClose={() => setIsAdminLoginOpen(false)}
         onLoginSuccess={() => setActiveTab('admin')}
       />
+
+      {/* Verificando Pago Mercado Pago Overlay */}
+      {verifyingPayment && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-sky-500/40 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-5 text-white">
+            <div className="w-16 h-16 rounded-full bg-sky-500/20 text-sky-400 border border-sky-500/40 flex items-center justify-center mx-auto">
+              <Loader2 className="w-8 h-8 animate-spin" />
+            </div>
+            <div className="space-y-1.5">
+              <span className="text-xs font-bold uppercase tracking-wider text-sky-400 block">
+                Confirmación Automática
+              </span>
+              <h3 className="text-xl font-black font-heading text-white">
+                Verificando tu pago con Mercado Pago...
+              </h3>
+              <p className="text-xs text-slate-300">
+                Estamos validando la transacción en tiempo real para confirmar tu turno automáticamente.
+              </p>
+            </div>
+            <div className="space-y-2.5 p-4 bg-slate-950 rounded-2xl border border-slate-800">
+              <div className="h-3 bg-slate-800 rounded-full animate-pulse w-3/4 mx-auto" />
+              <div className="h-3 bg-slate-800 rounded-full animate-pulse w-1/2 mx-auto" />
+              <div className="h-3 bg-slate-800 rounded-full animate-pulse w-2/3 mx-auto" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Mercado Pago Payment Success Modal */}
       {paymentSuccessModal && (

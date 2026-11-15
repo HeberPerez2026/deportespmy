@@ -22,10 +22,10 @@ export const DatabaseSyncView: React.FC = () => {
     isSyncing,
     cloudConnected,
     refreshFromCloud,
-    courts,
-    bookings,
+    adminCourts: courts,
+    adminBookings: bookings,
     reviews,
-    whatsappLogs 
+    adminWhatsappLogs: whatsappLogs 
   } = useApp();
 
   const [importJsonText, setImportJsonText] = useState('');

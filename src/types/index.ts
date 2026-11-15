@@ -92,6 +92,7 @@ export interface Review {
   comment: string;
   date: string;
   verifiedBookingCode?: string;
+  adminId?: string;
   adminReply?: {
     text: string;
     date: string;
@@ -110,6 +111,14 @@ export interface BusinessProfile {
   welcomeNotes?: string;
   mpLink?: string;
   mpAccessToken?: string;
+  mpRefreshToken?: string;
+  mpPublicKey?: string;
+  mpOAuthConnected?: boolean;
+  mpUserId?: string;
+  mpAccountEmail?: string;
+  mpAccountNickname?: string;
+  mpTokenExpiresAt?: string;
+  mpConnectedAt?: string;
   whatsappTemplate?: string;
 }
 
@@ -173,4 +182,6 @@ export interface WhatsAppNotificationLog {
   messagePreview: string;
   sentAt: string;
   status: 'sent' | 'delivered' | 'read';
+  adminId?: string;
+  courtId?: string;
 }

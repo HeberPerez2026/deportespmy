@@ -24,16 +24,15 @@ import {
 
 export const AdminDashboard: React.FC = () => {
   const { 
-    bookings, 
-    courts,
+    adminBookings: bookings, 
+    adminCourts: courts,
     selectedDate, 
-    whatsappLogs, 
+    adminWhatsappLogs: whatsappLogs, 
     businessProfile,
     admins,
     isSuperAdmin,
     currentAdminUser,
     logoutAdmin,
-    setActiveTab,
     isSyncing,
     cloudConnected,
     refreshFromCloud
@@ -122,10 +121,14 @@ export const AdminDashboard: React.FC = () => {
           </h1>
           <p className="text-slate-300 text-xs sm:text-sm mt-1 max-w-xl">
             {businessProfile.ownerName && <span>Responsable: {businessProfile.ownerName} • </span>}
-            {businessProfile.alias ? (
+            {businessProfile.mpOAuthConnected ? (
+              <span className="text-sky-300 font-semibold">
+                💙 Mercado Pago OAuth Conectado{businessProfile.mpAccountNickname ? ` (@${businessProfile.mpAccountNickname})` : ''}
+              </span>
+            ) : businessProfile.alias ? (
               <span>Alias: <strong className="font-mono text-emerald-400">{businessProfile.alias}</strong></span>
             ) : (
-              <span className="text-amber-300 font-semibold">Configurá tu CBU y Alias en Datos del Complejo</span>
+              <span className="text-amber-300 font-semibold">Conectá tu Mercado Pago en 1 clic en Datos del Complejo</span>
             )}
             {businessProfile.whatsappNumber && (
               <span> • WhatsApp: <span className="font-mono">{businessProfile.whatsappNumber}</span></span>

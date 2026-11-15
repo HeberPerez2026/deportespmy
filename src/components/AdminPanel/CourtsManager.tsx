@@ -50,7 +50,7 @@ const SPORT_OPTIONS: { id: SportType; label: string; defaultSurface: string; def
 ];
 
 export const CourtsManager: React.FC = () => {
-  const { courts, addCourt, deleteCourt, updateCourt, businessProfile } = useApp();
+  const { adminCourts: courts, addCourt, deleteCourt, updateCourt, businessProfile } = useApp();
   
   const [editingCourt, setEditingCourt] = useState<Court | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);

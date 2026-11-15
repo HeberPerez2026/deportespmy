@@ -27,6 +27,15 @@ export const DEFAULT_BUSINESS_PROFILE: BusinessProfile = {
   email: '',
   welcomeNotes: '',
   mpLink: '',
+  mpAccessToken: '',
+  mpRefreshToken: '',
+  mpPublicKey: '',
+  mpOAuthConnected: false,
+  mpUserId: '',
+  mpAccountEmail: '',
+  mpAccountNickname: '',
+  mpTokenExpiresAt: '',
+  mpConnectedAt: '',
   whatsappTemplate: ''
 };
 
@@ -41,6 +50,15 @@ export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
   email: '',
   welcomeNotes: '',
   mpLink: '',
+  mpAccessToken: '',
+  mpRefreshToken: '',
+  mpPublicKey: '',
+  mpOAuthConnected: false,
+  mpUserId: '',
+  mpAccountEmail: '',
+  mpAccountNickname: '',
+  mpTokenExpiresAt: '',
+  mpConnectedAt: '',
   whatsappTemplate: ''
 };
 

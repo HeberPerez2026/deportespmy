@@ -19,8 +19,8 @@ import {
 
 export const ScheduleGrid: React.FC = () => {
   const { 
-    courts, 
-    bookings, 
+    adminCourts: courts, 
+    adminBookings: bookings, 
     selectedDate, 
     setSelectedDate,
     getSlotsForCourtAndDate,

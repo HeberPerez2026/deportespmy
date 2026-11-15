@@ -220,7 +220,17 @@ export const subscribeToBusinessProfile = (
             address: data.address || '',
             email: data.email || '',
             welcomeNotes: data.welcomeNotes || '',
-            mpLink: data.mpLink || ''
+            mpLink: data.mpLink || '',
+            mpAccessToken: data.mpAccessToken || '',
+            mpRefreshToken: data.mpRefreshToken || '',
+            mpPublicKey: data.mpPublicKey || '',
+            mpOAuthConnected: Boolean(data.mpOAuthConnected),
+            mpUserId: data.mpUserId || '',
+            mpAccountEmail: data.mpAccountEmail || '',
+            mpAccountNickname: data.mpAccountNickname || '',
+            mpTokenExpiresAt: data.mpTokenExpiresAt || '',
+            mpConnectedAt: data.mpConnectedAt || '',
+            whatsappTemplate: data.whatsappTemplate || ''
           });
         } else if (profileKey) {
           // If a new admin does not have a profile saved yet, return 100% empty fields
@@ -234,7 +244,17 @@ export const subscribeToBusinessProfile = (
             address: '',
             email: '',
             welcomeNotes: '',
-            mpLink: ''
+            mpLink: '',
+            mpAccessToken: '',
+            mpRefreshToken: '',
+            mpPublicKey: '',
+            mpOAuthConnected: false,
+            mpUserId: '',
+            mpAccountEmail: '',
+            mpAccountNickname: '',
+            mpTokenExpiresAt: '',
+            mpConnectedAt: '',
+            whatsappTemplate: ''
           });
         }
       },
@@ -260,7 +280,7 @@ export const subscribeToAllProfiles = (
         snapshot.forEach((docSnap) => {
           const id = docSnap.id;
           if (id.startsWith('profile_')) {
-            const key = id.replace('profile_', '').toLowerCase();
+            const key = id.replace('profile_', '').toLowerCase().replace(/[^a-z0-9_-]/g, '');
             map[key] = docSnap.data() as BusinessProfile;
           } else if (id === 'businessProfile') {
             map['default'] = docSnap.data() as BusinessProfile;
