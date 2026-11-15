@@ -3,18 +3,21 @@ export const PUBLISHED_BACKEND_URL =
 
 /**
  * Resolves the API base URL.
- * - On Cloud Run (*.run.app) and localhost, requests go same-origin ('').
- * - On static custom domains (e.g. GitHub Pages https://deportespmy.com.ar),
- *   requests are routed to VITE_API_BASE_URL or the published Cloud Run backend.
+ * - Direct `import.meta.env.VITE_API_BASE_URL` and `__IS_VERCEL_BUILD__` are used
+ *   so Vite statically inlines them during `vite build`.
+ * - On Vercel builds (`__IS_VERCEL_BUILD__ === true`), Cloud Run (`*.run.app`),
+ *   Vercel (`*.vercel.app`), Render (`*.onrender.com`), Netlify, Koyeb, and localhost,
+ *   requests go same-origin ('').
+ * - On static custom domains without same-origin API (e.g. GitHub Pages without
+ *   VITE_API_BASE_URL), requests fall back to PUBLISHED_BACKEND_URL.
  */
 export function getApiBaseUrl(): string {
-  const env = (import.meta as unknown as { env?: Record<string, string | boolean | undefined> })?.env;
-  const envBase = env?.VITE_API_BASE_URL;
+  const envBase = import.meta.env.VITE_API_BASE_URL;
   if (typeof envBase === 'string' && envBase.trim().startsWith('http')) {
     return envBase.trim().replace(/\/$/, '');
   }
 
-  if (env?.VITE_HAS_SAME_ORIGIN_API === true || env?.VITE_HAS_SAME_ORIGIN_API === 'true') {
+  if (typeof __IS_VERCEL_BUILD__ !== 'undefined' && __IS_VERCEL_BUILD__) {
     return '';
   }
 
@@ -45,6 +48,27 @@ export function apiUrl(path: string): string {
 export function isStaticCustomDomain(): boolean {
   if (typeof window === 'undefined') return false;
   return getApiBaseUrl() !== '';
+}
+
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const targetUrl = apiUrl(path);
+  try {
+    return await fetch(targetUrl, init);
+  } catch (err: any) {
+    const rawMsg = String(err?.message || err || '');
+    const isNetworkErr =
+      err?.name === 'TypeError' ||
+      /failed to fetch|networkerror|load failed/i.test(rawMsg);
+
+    if (isNetworkErr && isStaticCustomDomain()) {
+      const base = getApiBaseUrl();
+      throw new Error(
+        `No se pudo conectar con el servidor backend (${base}) desde ${window.location.hostname}. ` +
+        `Si tu dominio sigue en GitHub Pages, configurá VITE_API_BASE_URL con la URL de tu backend en Vercel, o apuntá ${window.location.hostname} directamente a Vercel.`
+      );
+    }
+    throw err;
+  }
 }
 
 export async function safeParseJsonResponse(res: Response): Promise<any> {

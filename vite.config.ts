@@ -11,7 +11,7 @@ export default defineConfig(() => {
     base: './',
     plugins: [react(), tailwindcss()],
     define: {
-      'import.meta.env.VITE_HAS_SAME_ORIGIN_API': JSON.stringify(Boolean(process.env.VERCEL)),
+      __IS_VERCEL_BUILD__: JSON.stringify(Boolean(process.env.VERCEL)),
     },
     resolve: {
       alias: {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { apiUrl, getApiBaseUrl, safeParseJsonResponse } from '../../utils/api';
+import { apiFetch, getApiBaseUrl, safeParseJsonResponse } from '../../utils/api';
 import { 
   Building2, 
   CreditCard, 
@@ -50,7 +50,7 @@ export const AdminProfileSettings: React.FC = () => {
 
   // Check if MP OAuth platform credentials are configured on server
   useEffect(() => {
-    fetch(apiUrl(`/api/mercadopago/oauth/status?adminId=${encodeURIComponent(adminIdKey)}`), {
+    apiFetch(`/api/mercadopago/oauth/status?adminId=${encodeURIComponent(adminIdKey)}`, {
       headers: { Accept: 'application/json' },
       cache: 'no-store'
     })
@@ -130,7 +130,7 @@ export const AdminProfileSettings: React.FC = () => {
     setIsConnectingMP(true);
 
     try {
-      const response = await fetch(apiUrl(`/api/mercadopago/oauth/url?adminId=${encodeURIComponent(adminIdKey)}`), {
+      const response = await apiFetch(`/api/mercadopago/oauth/url?adminId=${encodeURIComponent(adminIdKey)}`, {
         headers: { Accept: 'application/json' },
         cache: 'no-store'
       });
@@ -169,7 +169,7 @@ export const AdminProfileSettings: React.FC = () => {
 
   const handleDisconnectMercadoPago = async () => {
     try {
-      await fetch(apiUrl('/api/mercadopago/oauth/disconnect'), {
+      await apiFetch('/api/mercadopago/oauth/disconnect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ adminId: adminIdKey })

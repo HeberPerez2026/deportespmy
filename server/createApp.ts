@@ -420,6 +420,13 @@ async function resolveAdminAccessToken(adminId?: string): Promise<string | null>
 
 export function createApiApp() {
   const app = express();
+  // Guard for serverless runtimes (like Vercel) that pre-parse req.body before Express runs
+  app.use((req, _res, next) => {
+    if (req.body !== undefined && (req as any)._body === undefined) {
+      (req as any)._body = true;
+    }
+    next();
+  });
   app.use(express.json());
 
   // CORS for /api routes so static custom domains (e.g. https://deportespmy.com.ar) can reach the backend

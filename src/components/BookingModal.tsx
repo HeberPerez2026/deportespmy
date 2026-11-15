@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { apiUrl, getApiBaseUrl, safeParseJsonResponse } from '../utils/api';
+import { apiFetch, getApiBaseUrl, safeParseJsonResponse } from '../utils/api';
 import { Court, PaymentMethod, Booking } from '../types';
 import { 
   X, 
@@ -175,8 +175,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     const pollInterval = setInterval(async () => {
       if (cancelled) return;
       try {
-        const resp = await fetch(
-          apiUrl(`/api/mercadopago/verify-payment?booking_code=${encodeURIComponent(confirmedBooking.bookingCode)}&admin_id=${encodeURIComponent(courtAdminId)}`),
+        const resp = await apiFetch(
+          `/api/mercadopago/verify-payment?booking_code=${encodeURIComponent(confirmedBooking.bookingCode)}&admin_id=${encodeURIComponent(courtAdminId)}`,
           { headers: { Accept: 'application/json' }, cache: 'no-store' }
         );
         if (!resp.ok) return;
@@ -230,7 +230,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
             status: 'pending_payment'
           });
 
-          const res = await fetch(apiUrl('/api/mercadopago/preference'), {
+          const res = await apiFetch('/api/mercadopago/preference', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify({
