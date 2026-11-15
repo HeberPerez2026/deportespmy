@@ -105,7 +105,16 @@ function singleHttpsRequest(
             ok: status >= 200 && status < 300,
             status,
             text: async () => rawBody,
-            json: async <T = any>() => JSON.parse(rawBody) as T,
+            json: async <T = any>() => {
+              const trimmed = rawBody.trim();
+              if (!trimmed) {
+                throw new Error(`Respuesta vacía del servidor externo (HTTP ${status})`);
+              }
+              if (trimmed.startsWith('<')) {
+                throw new Error(`El servidor externo devolvió HTML en lugar de JSON (HTTP ${status}).`);
+              }
+              return JSON.parse(trimmed) as T;
+            },
           });
         });
       }
@@ -430,12 +439,25 @@ async function startServer() {
     return `http://localhost:${port}`;
   }
 
-  function getOAuthRedirectUri(): string {
-    // Strictly use APP_URL from environment per AI Studio OAuth rules
+  function getRequestOrigin(req?: express.Request): string | null {
+    if (!req) return null;
+    const forwardedHost = (req.headers['x-forwarded-host'] as string | undefined)?.split(',')[0]?.trim();
+    const host = forwardedHost || req.get('host') || '';
+    if (!host) return null;
+    const protoHeader = (req.headers['x-forwarded-proto'] as string | undefined)?.split(',')[0]?.trim();
+    const proto = protoHeader || (host.includes('localhost') || host.startsWith('127.') ? 'http' : 'https');
+    return `${proto}://${host}`.replace(/\/$/, '');
+  }
+
+  function getOAuthRedirectUri(req?: express.Request): string {
+    const reqOrigin = getRequestOrigin(req);
+    if (reqOrigin && reqOrigin.endsWith('.run.app')) {
+      return `${reqOrigin}/api/mercadopago/oauth/callback`;
+    }
     const envUrl = process.env.APP_URL;
     const base = (envUrl && envUrl !== 'MY_APP_URL' && envUrl.trim().length > 0)
       ? envUrl.trim().replace(/\/$/, '')
-      : `http://localhost:${port}`;
+      : (reqOrigin || `http://localhost:${port}`);
     return `${base}/api/mercadopago/oauth/callback`;
   }
 
@@ -459,7 +481,7 @@ async function startServer() {
 
     res.json({
       configured,
-      callbackUrl: getOAuthRedirectUri(),
+      callbackUrl: getOAuthRedirectUri(req),
       connected: Boolean(connectedRecord?.accessToken),
       userId: connectedRecord?.userId || null,
       nickname: connectedRecord?.nickname || null,
@@ -475,7 +497,7 @@ async function startServer() {
 
     const clientId = process.env.MP_CLIENT_ID;
     const clientSecret = process.env.MP_CLIENT_SECRET;
-    const redirectUri = getOAuthRedirectUri();
+    const redirectUri = getOAuthRedirectUri(req);
 
     if (!clientId || !clientSecret) {
       return res.status(400).json({
@@ -487,6 +509,7 @@ async function startServer() {
 
     const statePayload = Buffer.from(JSON.stringify({
       adminId,
+      redirectUri,
       ts: Date.now()
     })).toString('base64url');
 
@@ -561,10 +584,14 @@ async function startServer() {
     }
 
     let adminId = '';
+    let stateRedirectUri = '';
     try {
       if (state) {
         const decoded = JSON.parse(Buffer.from(state, 'base64url').toString('utf-8'));
         adminId = normalizeAdminId(decoded?.adminId);
+        if (typeof decoded?.redirectUri === 'string' && decoded.redirectUri.startsWith('http')) {
+          stateRedirectUri = decoded.redirectUri;
+        }
       }
     } catch {
       adminId = '';
@@ -591,7 +618,7 @@ async function startServer() {
     }
 
     try {
-      const redirectUri = getOAuthRedirectUri();
+      const redirectUri = stateRedirectUri || getOAuthRedirectUri(req);
       const tokenBody = new URLSearchParams({
         client_secret: clientSecret,
         client_id: clientId,
@@ -609,7 +636,23 @@ async function startServer() {
         body: tokenBody.toString()
       });
 
-      const tokenData: any = await tokenResp.json();
+      const tokenRawText = await tokenResp.text();
+      let tokenData: any = null;
+      try {
+        tokenData = JSON.parse(tokenRawText);
+      } catch {
+        console.error('Mercado Pago OAuth devolvió respuesta no-JSON:', tokenResp.status, tokenRawText.slice(0, 300));
+        return res.send(renderCallbackHtml(
+          {
+            type: 'MP_OAUTH_ERROR',
+            error: `Mercado Pago devolvió una respuesta inesperada (HTTP ${tokenResp.status}). Verificá el Client ID, Client Secret y la Redirect URI (${redirectUri}).`
+          },
+          'Error al vincular cuenta',
+          `Mercado Pago devolvió una respuesta inválida (HTTP ${tokenResp.status}). Verificá las credenciales de tu aplicación en Mercado Pago Developers.`,
+          true
+        ));
+      }
+
       if (!tokenResp.ok || !tokenData?.access_token) {
         console.error('Mercado Pago OAuth token error:', tokenData);
         return res.send(renderCallbackHtml(
@@ -1124,13 +1167,34 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for SPA
-  const vite = await createViteServer({
-    server: { middlewareMode: true },
-    appType: 'spa'
+  // Ensure /api/* routes always respond with JSON (never fall through to SPA HTML)
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'Ruta de API no encontrada.' });
   });
 
-  app.use(vite.middlewares);
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.path.startsWith('/api')) {
+      return res.status(err?.status || 500).json({ error: err?.message || 'Error interno en el servidor.' });
+    }
+    next(err);
+  });
+
+  const distDir = path.resolve(process.cwd(), 'dist');
+  const useProdStatic = process.env.NODE_ENV === 'production' && fs.existsSync(path.join(distDir, 'index.html'));
+
+  if (useProdStatic) {
+    app.use(express.static(distDir));
+    app.get('*', (_req, res) => {
+      res.sendFile(path.join(distDir, 'index.html'));
+    });
+  } else {
+    // Vite middleware for SPA in development
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa'
+    });
+    app.use(vite.middlewares);
+  }
 
   app.listen(port, '0.0.0.0', () => {
     console.log(`🚀 Servidor DeportesPMY iniciado en http://localhost:${port}`);

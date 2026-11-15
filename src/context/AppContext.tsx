@@ -322,9 +322,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem(STORAGE_KEYS.CURRENT_ADMIN, JSON.stringify(foundAdmin));
 
       // Load this specific admin's profile or default to empty
-      const userSaved = localStorage.getItem(`deportespmy_profile_${foundAdmin.username}`);
+      const cleanKey = normalizeAdminKey(foundAdmin.username);
+      const userSaved = localStorage.getItem(`deportespmy_profile_${cleanKey}`) || localStorage.getItem(`deportespmy_profile_${foundAdmin.username}`);
       if (userSaved) {
         setBusinessProfile(JSON.parse(userSaved));
+      } else if (profilesByAdmin[cleanKey]) {
+        setBusinessProfile(profilesByAdmin[cleanKey]);
       } else {
         setBusinessProfile(EMPTY_BUSINESS_PROFILE);
       }
@@ -536,11 +539,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...partialProfile
     };
     setBusinessProfile(nextProfile);
-    const adminKey = currentAdminUser ? currentAdminUser.username : undefined;
+    const adminKey = currentAdminUser ? normalizeAdminKey(currentAdminUser.username) : undefined;
     const storageKey = adminKey ? `deportespmy_profile_${adminKey}` : STORAGE_KEYS.PROFILE;
     localStorage.setItem(storageKey, JSON.stringify(nextProfile));
     if (adminKey) {
-      setProfilesByAdmin(prev => ({ ...prev, [adminKey.toLowerCase()]: nextProfile }));
+      setProfilesByAdmin(prev => ({ ...prev, [adminKey]: nextProfile }));
     }
     await saveBusinessProfileToFirestore(nextProfile, adminKey);
   }, [businessProfile, currentAdminUser]);
@@ -558,8 +561,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Add Admin User Action (SuperAdmin only)
   const addAdminUser = useCallback(async (adminData: Omit<AdminUser, 'id' | 'createdAt'>) => {
+    const cleanUsername = normalizeAdminKey(adminData.username) || adminData.username.trim().toLowerCase();
     const newAdmin: AdminUser = {
       ...adminData,
+      username: cleanUsername,
       id: `admin-${Date.now()}`,
       createdAt: new Date().toISOString()
     };
@@ -569,9 +574,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await saveAdminUserToFirestore(newAdmin);
 
     // Initialize the new admin's profile completely empty in Firestore and localStorage
-    await saveBusinessProfileToFirestore(EMPTY_BUSINESS_PROFILE, newAdmin.username);
-    localStorage.setItem(`deportespmy_profile_${newAdmin.username}`, JSON.stringify(EMPTY_BUSINESS_PROFILE));
-    setProfilesByAdmin(prev => ({ ...prev, [newAdmin.username.toLowerCase()]: EMPTY_BUSINESS_PROFILE }));
+    await saveBusinessProfileToFirestore(EMPTY_BUSINESS_PROFILE, cleanUsername);
+    localStorage.setItem(`deportespmy_profile_${cleanUsername}`, JSON.stringify(EMPTY_BUSINESS_PROFILE));
+    setProfilesByAdmin(prev => ({ ...prev, [cleanUsername]: EMPTY_BUSINESS_PROFILE }));
   }, [admins]);
 
   // Update/Modify Admin User Action (SuperAdmin only)

@@ -41,12 +41,37 @@ export const AdminProfileSettings: React.FC = () => {
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [oauthSuccessNotice, setOauthSuccessNotice] = useState<string | null>(null);
 
-  const adminIdKey = (currentAdminUser?.username || 'admin').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  const rawAdminKey = (currentAdminUser?.username || currentAdminUser?.id || 'admin')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '');
+  const adminIdKey = rawAdminKey || 'admin';
+
+  const safeParseJsonResponse = async (res: Response): Promise<any> => {
+    const rawText = await res.text();
+    const trimmed = rawText.trim();
+    if (!trimmed) {
+      throw new Error(`El servidor respondió vacío (HTTP ${res.status}).`);
+    }
+    if (trimmed.startsWith('<')) {
+      throw new Error(
+        `El servidor devolvió una página HTML en lugar de JSON (HTTP ${res.status}). Recargá la página o verificá que el servidor backend esté activo.`
+      );
+    }
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      throw new Error(`Respuesta inválida del servidor (HTTP ${res.status}).`);
+    }
+  };
 
   // Check if MP OAuth platform credentials are configured on server
   useEffect(() => {
-    fetch(`/api/mercadopago/oauth/status?adminId=${encodeURIComponent(adminIdKey)}`)
-      .then(res => res.json())
+    fetch(`/api/mercadopago/oauth/status?adminId=${encodeURIComponent(adminIdKey)}`, {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store'
+    })
+      .then(safeParseJsonResponse)
       .then(data => {
         setOauthServerConfigured(Boolean(data?.configured));
       })
@@ -115,8 +140,11 @@ export const AdminProfileSettings: React.FC = () => {
     setIsConnectingMP(true);
 
     try {
-      const response = await fetch(`/api/mercadopago/oauth/url?adminId=${encodeURIComponent(adminIdKey)}`);
-      const data = await response.json();
+      const response = await fetch(`/api/mercadopago/oauth/url?adminId=${encodeURIComponent(adminIdKey)}`, {
+        headers: { Accept: 'application/json' },
+        cache: 'no-store'
+      });
+      const data = await safeParseJsonResponse(response);
 
       if (!response.ok || !data?.url) {
         setOauthError(data?.error || 'No se pudo iniciar la conexión con Mercado Pago.');
