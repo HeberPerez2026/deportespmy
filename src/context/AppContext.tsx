@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import confetti from 'canvas-confetti';
+import { apiUrl, safeParseJsonResponse } from '../utils/api';
 import { 
   Court, 
   Booking, 
@@ -1104,9 +1105,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Request real Mercado Pago refund if paid online via Mercado Pago
     if (paidAmount > 0 && booking.paymentMethod === 'mercadopago' && !options?.forceManual) {
       try {
-        const resp = await fetch('/api/mercadopago/refund', {
+        const resp = await fetch(apiUrl('/api/mercadopago/refund'), {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
           body: JSON.stringify({
             bookingCode: booking.bookingCode,
             paymentReference: booking.paymentReference,
@@ -1114,7 +1115,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             adminId: ownerAdminId
           })
         });
-        const data = await resp.json();
+        const data = await safeParseJsonResponse(resp);
         if (!resp.ok || !data?.ok) {
           return {
             success: false,

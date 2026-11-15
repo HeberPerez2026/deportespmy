@@ -423,6 +423,33 @@ async function startServer() {
   const app = express();
   app.use(express.json());
 
+  // CORS for /api routes so static custom domains (e.g. https://deportespmy.com.ar) can reach the Cloud Run backend
+  app.use('/api', (req, res, next) => {
+    const reqOrigin = req.headers.origin;
+    if (reqOrigin) {
+      const lower = reqOrigin.toLowerCase();
+      const isAllowed =
+        lower === 'https://deportespmy.com.ar' ||
+        lower === 'https://www.deportespmy.com.ar' ||
+        lower.endsWith('.run.app') ||
+        lower.startsWith('http://localhost:') ||
+        lower.startsWith('http://127.0.0.1:');
+
+      if (isAllowed) {
+        res.setHeader('Access-Control-Allow-Origin', reqOrigin);
+        res.setHeader('Vary', 'Origin');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
+        res.setHeader('Access-Control-Max-Age', '86400');
+      }
+    }
+
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+    next();
+  });
+
   const port = Number(process.env.PORT) || 3000;
 
   function getAppUrl(fallbackOrigin?: string): string {
@@ -778,7 +805,14 @@ async function startServer() {
       const resolvedToken = await resolveAdminAccessToken(cleanAdminId);
       const client = getMercadoPagoClient(resolvedToken);
 
-      const appUrl = getAppUrl(origin);
+      const reqOrigin = getRequestOrigin(req);
+      const clientOrigin = (typeof origin === 'string' && /^https?:\/\//i.test(origin.trim()))
+        ? origin.trim().replace(/\/$/, '')
+        : getAppUrl(reqOrigin || undefined);
+      const backendWebhookBase = (reqOrigin && reqOrigin.startsWith('https://'))
+        ? reqOrigin
+        : getAppUrl(reqOrigin || undefined);
+
       const referenceCode = bookingCode || bookingId || `PMY-${Date.now()}`;
       const itemTitle = title || `Reserva ${courtName || 'Cancha'} - ${date || ''} (${startTime || ''} hs)`;
       const price = Number(unit_price);
@@ -797,9 +831,9 @@ async function startServer() {
       const preference = new Preference(client);
       const adminQueryParam = cleanAdminId ? `&admin_id=${encodeURIComponent(cleanAdminId)}` : '';
 
-      const backUrlSuccess = `${appUrl}/?payment=success&status=approved&collection_status=approved&booking_code=${encodeURIComponent(referenceCode)}&court_name=${encodeURIComponent(courtName || 'Cancha')}&booking_date=${encodeURIComponent(date || '')}&booking_time=${encodeURIComponent(startTime || '')}${adminQueryParam}`;
-      const backUrlFailure = `${appUrl}/?payment=failure&status=rejected&collection_status=rejected&booking_code=${encodeURIComponent(referenceCode)}${adminQueryParam}`;
-      const backUrlPending = `${appUrl}/?payment=pending&status=pending&collection_status=pending&booking_code=${encodeURIComponent(referenceCode)}${adminQueryParam}`;
+      const backUrlSuccess = `${clientOrigin}/?payment=success&status=approved&collection_status=approved&booking_code=${encodeURIComponent(referenceCode)}&court_name=${encodeURIComponent(courtName || 'Cancha')}&booking_date=${encodeURIComponent(date || '')}&booking_time=${encodeURIComponent(startTime || '')}${adminQueryParam}`;
+      const backUrlFailure = `${clientOrigin}/?payment=failure&status=rejected&collection_status=rejected&booking_code=${encodeURIComponent(referenceCode)}${adminQueryParam}`;
+      const backUrlPending = `${clientOrigin}/?payment=pending&status=pending&collection_status=pending&booking_code=${encodeURIComponent(referenceCode)}${adminQueryParam}`;
 
       const preferenceBody: any = {
         items: [
@@ -826,9 +860,9 @@ async function startServer() {
         statement_descriptor: 'DEPORTES PMY'
       };
 
-      // Attach webhook notification_url scoped to admin_id if HTTPS
-      if (appUrl.startsWith('https://')) {
-        preferenceBody.notification_url = `${appUrl}/api/mercadopago/webhook?booking_code=${encodeURIComponent(referenceCode)}${adminQueryParam}`;
+      // Attach webhook notification_url pointing to the Express backend (not static GitHub Pages)
+      if (backendWebhookBase.startsWith('https://')) {
+        preferenceBody.notification_url = `${backendWebhookBase}/api/mercadopago/webhook?booking_code=${encodeURIComponent(referenceCode)}${adminQueryParam}`;
       }
 
       let result: any;

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { apiUrl, safeParseJsonResponse } from './utils/api';
 import { Header } from './components/Header';
 import { HeroBanner } from './components/HeroBanner';
 import { CourtCatalog } from './components/CourtCatalog';
@@ -92,8 +93,11 @@ const MainContent: React.FC = () => {
         if (collectionStatus) query.set('collection_status', collectionStatus);
         if (status) query.set('status', status);
 
-        const resp = await fetch(`/api/mercadopago/verify-payment?${query.toString()}`);
-        const data = await resp.json();
+        const resp = await fetch(apiUrl(`/api/mercadopago/verify-payment?${query.toString()}`), {
+          headers: { Accept: 'application/json' },
+          cache: 'no-store'
+        });
+        const data = await safeParseJsonResponse(resp);
 
         if (cancelled) return;
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { apiUrl, safeParseJsonResponse } from '../utils/api';
 import { Court, PaymentMethod, Booking } from '../types';
 import { 
   X, 
@@ -143,7 +144,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     // 2. Listen for postMessage from Checkout Pro popup return
     const handleMessage = (event: MessageEvent) => {
       const origin = event.origin;
-      if (!origin.endsWith('.run.app') && !origin.includes('localhost') && origin !== window.location.origin) {
+      if (
+        !origin.endsWith('.run.app') &&
+        !origin.includes('localhost') &&
+        !origin.includes('deportespmy.com.ar') &&
+        origin !== window.location.origin
+      ) {
         return;
       }
       if (event.data?.type === 'MP_PAYMENT_RETURN') {
@@ -164,10 +170,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
       if (cancelled) return;
       try {
         const resp = await fetch(
-          `/api/mercadopago/verify-payment?booking_code=${encodeURIComponent(confirmedBooking.bookingCode)}&admin_id=${encodeURIComponent(courtAdminId)}`
+          apiUrl(`/api/mercadopago/verify-payment?booking_code=${encodeURIComponent(confirmedBooking.bookingCode)}&admin_id=${encodeURIComponent(courtAdminId)}`),
+          { headers: { Accept: 'application/json' }, cache: 'no-store' }
         );
         if (!resp.ok) return;
-        const data = await resp.json();
+        const data = await safeParseJsonResponse(resp);
         if (data?.verified) {
           finalizePayment(`MP-${data.paymentId || Date.now()}`, Number(data.amount) || amountToPayNow);
         }
@@ -217,9 +224,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
             status: 'pending_payment'
           });
 
-          const res = await fetch('/api/mercadopago/preference', {
+          const res = await fetch(apiUrl('/api/mercadopago/preference'), {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify({
               bookingId: newBooking.id,
               bookingCode: newBooking.bookingCode,
@@ -236,7 +243,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
             })
           });
 
-          const data = await res.json();
+          const data = await safeParseJsonResponse(res);
           if (!res.ok || !data.init_point) {
             setMpFlowError(data?.error || 'No se pudo iniciar el checkout de Mercado Pago.');
             setIsProcessing(false);

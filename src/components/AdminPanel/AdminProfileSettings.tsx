@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
+import { apiUrl, safeParseJsonResponse } from '../../utils/api';
 import { 
   Building2, 
   CreditCard, 
@@ -47,27 +48,9 @@ export const AdminProfileSettings: React.FC = () => {
     .replace(/[^a-z0-9_-]/g, '');
   const adminIdKey = rawAdminKey || 'admin';
 
-  const safeParseJsonResponse = async (res: Response): Promise<any> => {
-    const rawText = await res.text();
-    const trimmed = rawText.trim();
-    if (!trimmed) {
-      throw new Error(`El servidor respondió vacío (HTTP ${res.status}).`);
-    }
-    if (trimmed.startsWith('<')) {
-      throw new Error(
-        `El servidor devolvió una página HTML en lugar de JSON (HTTP ${res.status}). Recargá la página o verificá que el servidor backend esté activo.`
-      );
-    }
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      throw new Error(`Respuesta inválida del servidor (HTTP ${res.status}).`);
-    }
-  };
-
   // Check if MP OAuth platform credentials are configured on server
   useEffect(() => {
-    fetch(`/api/mercadopago/oauth/status?adminId=${encodeURIComponent(adminIdKey)}`, {
+    fetch(apiUrl(`/api/mercadopago/oauth/status?adminId=${encodeURIComponent(adminIdKey)}`), {
       headers: { Accept: 'application/json' },
       cache: 'no-store'
     })
@@ -85,6 +68,7 @@ export const AdminProfileSettings: React.FC = () => {
       if (
         !origin.endsWith('.run.app') &&
         !origin.includes('localhost') &&
+        !origin.includes('deportespmy.com.ar') &&
         origin !== window.location.origin
       ) {
         return;
@@ -140,7 +124,7 @@ export const AdminProfileSettings: React.FC = () => {
     setIsConnectingMP(true);
 
     try {
-      const response = await fetch(`/api/mercadopago/oauth/url?adminId=${encodeURIComponent(adminIdKey)}`, {
+      const response = await fetch(apiUrl(`/api/mercadopago/oauth/url?adminId=${encodeURIComponent(adminIdKey)}`), {
         headers: { Accept: 'application/json' },
         cache: 'no-store'
       });
@@ -179,7 +163,7 @@ export const AdminProfileSettings: React.FC = () => {
 
   const handleDisconnectMercadoPago = async () => {
     try {
-      await fetch('/api/mercadopago/oauth/disconnect', {
+      await fetch(apiUrl('/api/mercadopago/oauth/disconnect'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ adminId: adminIdKey })
