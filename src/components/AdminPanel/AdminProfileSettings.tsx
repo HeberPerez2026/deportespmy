@@ -12,7 +12,9 @@ import {
   Unlink,
   AlertCircle,
   Loader2,
-  Sparkles
+  Sparkles,
+  PauseCircle,
+  PlayCircle
 } from 'lucide-react';
 
 export const AdminProfileSettings: React.FC = () => {
@@ -191,6 +193,18 @@ export const AdminProfileSettings: React.FC = () => {
   };
 
   const isMpConnected = Boolean(businessProfile.mpOAuthConnected);
+  const isMpPaused = Boolean(businessProfile.mpPaused);
+  const isTransferPaused = Boolean(businessProfile.transferPaused);
+
+  const handleTogglePause = async (method: 'mp' | 'transfer') => {
+    if (method === 'mp') {
+      await updateBusinessProfile({ mpPaused: !isMpPaused });
+    } else {
+      await updateBusinessProfile({ transferPaused: !isTransferPaused });
+    }
+    setSavedSuccess(true);
+    setTimeout(() => setSavedSuccess(false), 2500);
+  };
 
   return (
     <div className="space-y-6">
@@ -319,6 +333,91 @@ export const AdminProfileSettings: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
+
+      {/* PAYMENT METHODS STATUS & PAUSE CONTROLS */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div>
+            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-indigo-600" />
+              <span>Control de Medios de Pago (Pausar / Activar en Reservas)</span>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Si necesitás suspender temporalmente un medio de cobro, los jugadores verán el método marcado como <strong>Suspendido</strong> y no podrán operar con él.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+          {/* Mercado Pago Pause Card */}
+          <div className={`p-4 rounded-2xl border flex items-center justify-between gap-3 ${
+            isMpPaused ? 'bg-rose-50/70 border-rose-200' : 'bg-emerald-50/50 border-emerald-200'
+          }`}>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-slate-900">💙 Mercado Pago</span>
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                  isMpPaused ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                }`}>
+                  {isMpPaused ? 'Pausado / Suspendido' : 'Activo'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                {isMpPaused
+                  ? 'Los jugadores ven Mercado Pago como suspendido y no pueden pagar por este medio.'
+                  : 'Habilitado en el modal de reserva (según OAuth o Alias/Link configurado).'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleTogglePause('mp')}
+              className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors ${
+                isMpPaused
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  : 'bg-rose-600 hover:bg-rose-500 text-white'
+              }`}
+            >
+              {isMpPaused ? <PlayCircle className="w-4 h-4" /> : <PauseCircle className="w-4 h-4" />}
+              <span>{isMpPaused ? 'Reactivar' : 'Pausar'}</span>
+            </button>
+          </div>
+
+          {/* Bank Transfer / CBU Pause Card */}
+          <div className={`p-4 rounded-2xl border flex items-center justify-between gap-3 ${
+            isTransferPaused ? 'bg-rose-50/70 border-rose-200' : 'bg-emerald-50/50 border-emerald-200'
+          }`}>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-slate-900">🏦 Transferencia CBU / Banco</span>
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                  isTransferPaused ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                }`}>
+                  {isTransferPaused ? 'Pausado / Suspendido' : 'Activo'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                {isTransferPaused
+                  ? 'Las transferencias bancarias están suspendidas y bloqueadas para los jugadores.'
+                  : 'Disponible siempre que hayas cargado tu CBU o Alias abajo.'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => handleTogglePause('transfer')}
+              className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors ${
+                isTransferPaused
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  : 'bg-rose-600 hover:bg-rose-500 text-white'
+              }`}
+            >
+              {isTransferPaused ? <PlayCircle className="w-4 h-4" /> : <PauseCircle className="w-4 h-4" />}
+              <span>{isTransferPaused ? 'Reactivar' : 'Pausar'}</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">

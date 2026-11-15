@@ -8,11 +8,10 @@ import {
   X, 
   RefreshCw, 
   MapPin, 
-  Layers, 
   Lock, 
   LogOut, 
   Crown,
-  Settings
+  Building2
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -30,12 +29,16 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
     currentAdminUser,
     businessProfile,
     logoutAdmin,
-    refreshFromCloud
+    refreshFromCloud,
+    setSelectedEstablishmentKey
   } = useApp();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleNavClick = (tabId: string) => {
+    if (tabId === 'establecimientos') {
+      setSelectedEstablishmentKey(null);
+    }
     setActiveTab(tabId);
     setMobileMenuOpen(false);
   };
@@ -140,15 +143,15 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
                 </button>
 
                 <button
-                  onClick={() => handleNavClick('canchas')}
+                  onClick={() => handleNavClick('establecimientos')}
                   className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    activeTab === 'canchas' 
+                    activeTab === 'establecimientos' 
                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
                       : 'text-slate-300 hover:text-white hover:bg-slate-800'
                   }`}
                 >
-                  <Layers className="w-4 h-4" />
-                  Nuestras Canchas
+                  <Building2 className="w-4 h-4" />
+                  Establecimientos
                 </button>
 
                 <button
@@ -239,13 +242,13 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
               </button>
 
               <button
-                onClick={() => handleNavClick('canchas')}
+                onClick={() => handleNavClick('establecimientos')}
                 className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2.5 ${
-                  activeTab === 'canchas' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-200 hover:bg-slate-800'
+                  activeTab === 'establecimientos' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-200 hover:bg-slate-800'
                 }`}
               >
-                <Layers className="w-4 h-4 text-emerald-400" />
-                Nuestras Canchas
+                <Building2 className="w-4 h-4 text-emerald-400" />
+                Establecimientos
               </button>
 
               <button

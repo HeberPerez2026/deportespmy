@@ -21,7 +21,10 @@ service cloud.firestore {
         && data.date is string && data.date.size() <= 16
         && data.startTime is string && data.startTime.size() <= 10
         && data.clientName is string && data.clientName.size() <= 128
-        && data.totalAmount is number
+        && data.totalAmount is number && data.totalAmount >= 0
+        && (!('amountPaid' in data) || (data.amountPaid is number && data.amountPaid >= 0))
+        && (!('balanceDue' in data) || (data.balanceDue is number && data.balanceDue >= 0))
+        && (!('refundAmount' in data) || (data.refundAmount is number && data.refundAmount >= 0))
         && data.status is string && (
           data.status == 'confirmed' ||
           data.status == 'cancelled' ||
@@ -36,7 +39,32 @@ service cloud.firestore {
         && data.userName is string && data.userName.size() <= 128
         && data.rating is number && data.rating >= 1 && data.rating <= 5
         && data.comment is string && data.comment.size() <= 1000
-        && data.date is string && data.date.size() <= 16;
+        && data.date is string && data.date.size() <= 16
+        && (!('scores' in data) || (
+          data.scores is map
+          && data.scores.surface is number && data.scores.surface >= 1 && data.scores.surface <= 5
+          && data.scores.lighting is number && data.scores.lighting >= 1 && data.scores.lighting <= 5
+          && data.scores.facilities is number && data.scores.facilities >= 1 && data.scores.facilities <= 5
+          && data.scores['service'] is number && data.scores['service'] >= 1 && data.scores['service'] <= 5
+        ))
+        && (!('photos' in data) || (
+          data.photos is list
+          && data.photos.size() <= 3
+          && (data.photos.size() == 0 || (data.photos[0] is string && data.photos[0].size() <= 350000))
+        ));
+    }
+
+    function isValidCourt(data) {
+      return data.name is string && data.name.size() >= 1 && data.name.size() <= 128
+        && data.sport is string && data.sport.size() <= 32
+        && data.hourlyRateDay is number && data.hourlyRateDay >= 0
+        && data.hourlyRateNight is number && data.hourlyRateNight >= 0
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 350000))
+        && (!('images' in data) || (
+          data.images is list
+          && data.images.size() <= 4
+          && (data.images.size() == 0 || (data.images[0] is string && data.images[0].size() <= 350000))
+        ));
     }
 
     // Default deny
@@ -63,7 +91,8 @@ service cloud.firestore {
     // Courts collection
     match /courts/{courtId} {
       allow read: if true;
-      allow write: if isValidId(courtId);
+      allow create: if isValidId(courtId) && isValidCourt(incoming());
+      allow update: if isValidId(courtId) && isValidCourt(incoming());
       allow delete: if isValidId(courtId);
     }
 

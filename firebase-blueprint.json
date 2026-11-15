@@ -30,7 +30,10 @@
         "whatsappSent": { "type": "boolean" },
         "whatsappSentAt": { "type": "string", "maxLength": 64 },
         "adminId": { "type": "string", "maxLength": 64 },
-        "receiptUrl": { "type": "string", "maxLength": 500000 }
+        "receiptUrl": { "type": "string", "maxLength": 500000 },
+        "refundAmount": { "type": "number" },
+        "refundedAt": { "type": "string", "maxLength": 64 },
+        "refundReference": { "type": "string", "maxLength": 64 }
       },
       "required": [
         "bookingCode",
@@ -54,8 +57,10 @@
         "userName": { "type": "string", "maxLength": 128 },
         "userPhone": { "type": "string", "maxLength": 32 },
         "rating": { "type": "number" },
+        "scores": { "type": "object", "description": "Category scores (surface, lighting, facilities, service)" },
         "comment": { "type": "string", "maxLength": 1000 },
         "date": { "type": "string", "maxLength": 16 },
+        "photos": { "type": "array", "description": "Optional photos attached to the review" },
         "adminId": { "type": "string", "maxLength": 64 }
       },
       "required": ["courtId", "userName", "rating", "comment", "date"]
@@ -74,7 +79,8 @@
         "hourlyRateDay": { "type": "number" },
         "hourlyRateNight": { "type": "number" },
         "depositRequired": { "type": "number" },
-        "imageUrl": { "type": "string", "maxLength": 500 },
+        "imageUrl": { "type": "string", "maxLength": 350000 },
+        "images": { "type": "array", "description": "Gallery of attached court photos" },
         "description": { "type": "string", "maxLength": 1000 },
         "status": { "type": "string", "maxLength": 32 },
         "rating": { "type": "number" },
@@ -107,7 +113,9 @@
         "mpRefreshToken": { "type": "string", "maxLength": 512 },
         "mpPublicKey": { "type": "string", "maxLength": 256 },
         "mpTokenExpiresAt": { "type": "string", "maxLength": 64 },
-        "mpConnectedAt": { "type": "string", "maxLength": 64 }
+        "mpConnectedAt": { "type": "string", "maxLength": 64 },
+        "mpPaused": { "type": "boolean" },
+        "transferPaused": { "type": "boolean" }
       }
     },
     "DeveloperContact": {

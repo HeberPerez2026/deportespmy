@@ -36,7 +36,9 @@ export const DEFAULT_BUSINESS_PROFILE: BusinessProfile = {
   mpAccountNickname: '',
   mpTokenExpiresAt: '',
   mpConnectedAt: '',
-  whatsappTemplate: ''
+  whatsappTemplate: '',
+  mpPaused: false,
+  transferPaused: false
 };
 
 export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
@@ -59,7 +61,9 @@ export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
   mpAccountNickname: '',
   mpTokenExpiresAt: '',
   mpConnectedAt: '',
-  whatsappTemplate: ''
+  whatsappTemplate: '',
+  mpPaused: false,
+  transferPaused: false
 };
 
 // Default Developer Contact for footer, editable by SuperAdmin

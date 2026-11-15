@@ -17,7 +17,9 @@ import {
   Code2,
   Check,
   Save,
-  AlertTriangle
+  AlertTriangle,
+  PauseCircle,
+  PlayCircle
 } from 'lucide-react';
 
 export const SuperAdminPanel: React.FC = () => {
@@ -29,7 +31,9 @@ export const SuperAdminPanel: React.FC = () => {
     toggleAdminUserStatus, 
     isSuperAdmin,
     developerContact,
-    updateDeveloperContact
+    updateDeveloperContact,
+    profilesByAdmin,
+    toggleAdminPaymentPause
   } = useApp();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -201,38 +205,71 @@ export const SuperAdminPanel: React.FC = () => {
                 </div>
               </div>
 
-              {/* Action Buttons: Edit, Suspend/Activate, Delete */}
-              {admin.role !== 'superadmin' && (
-                <div className="flex items-center gap-2 self-end sm:self-center">
-                  <button
-                    onClick={() => setEditingAdmin(admin)}
-                    className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer flex items-center gap-1"
-                    title="Modificar datos o clave del administrador"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                    <span>Modificar</span>
-                  </button>
+              {/* Action Buttons: Payment Controls, Edit, Suspend/Activate, Delete */}
+              {admin.role !== 'superadmin' && (() => {
+                const adminKey = admin.username.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                const prof = profilesByAdmin[adminKey];
+                const mpPaused = Boolean(prof?.mpPaused);
+                const transferPaused = Boolean(prof?.transferPaused);
 
-                  <button
-                    onClick={() => toggleAdminUserStatus(admin.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
-                      admin.isActive 
-                        ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
-                        : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
-                    }`}
-                  >
-                    {admin.isActive ? 'Suspender' : 'Reactivar'}
-                  </button>
+                return (
+                  <div className="flex flex-wrap items-center gap-2 self-end sm:self-center">
+                    <button
+                      onClick={() => toggleAdminPaymentPause(admin.username, 'mp')}
+                      className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-colors cursor-pointer flex items-center gap-1 ${
+                        mpPaused
+                          ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                          : 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100'
+                      }`}
+                      title="Pausar o reactivar Mercado Pago de este complejo"
+                    >
+                      {mpPaused ? <PlayCircle className="w-3.5 h-3.5" /> : <PauseCircle className="w-3.5 h-3.5" />}
+                      <span>{mpPaused ? 'MP Pausado' : 'Pausar MP'}</span>
+                    </button>
 
-                  <button
-                    onClick={() => setDeleteConfirmId(admin.id)}
-                    className="p-1.5 rounded-xl text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
-                    title="Eliminar este administrador permanentemente"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
+                    <button
+                      onClick={() => toggleAdminPaymentPause(admin.username, 'transfer')}
+                      className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-colors cursor-pointer flex items-center gap-1 ${
+                        transferPaused
+                          ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                      title="Pausar o reactivar Transferencia CBU de este complejo"
+                    >
+                      {transferPaused ? <PlayCircle className="w-3.5 h-3.5" /> : <PauseCircle className="w-3.5 h-3.5" />}
+                      <span>{transferPaused ? 'CBU Pausado' : 'Pausar CBU'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => setEditingAdmin(admin)}
+                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer flex items-center gap-1"
+                      title="Modificar datos o clave del administrador"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>Modificar</span>
+                    </button>
+
+                    <button
+                      onClick={() => toggleAdminUserStatus(admin.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+                        admin.isActive 
+                          ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
+                          : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                      }`}
+                    >
+                      {admin.isActive ? 'Suspender' : 'Reactivar'}
+                    </button>
+
+                    <button
+                      onClick={() => setDeleteConfirmId(admin.id)}
+                      className="p-1.5 rounded-xl text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
+                      title="Eliminar este administrador permanentemente"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>

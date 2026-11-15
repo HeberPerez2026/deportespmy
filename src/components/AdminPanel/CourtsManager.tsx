@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Court, SportType } from '../../types';
+import { processImageUpload } from '../../utils/imageUpload';
 import { 
   Layers, 
   Edit3, 
@@ -13,7 +14,10 @@ import {
   Building2,
   Image as ImageIcon,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  Upload,
+  Loader2,
+  Camera
 } from 'lucide-react';
 
 const SPORT_OPTIONS: { id: SportType; label: string; defaultSurface: string; defaultImg: string }[] = [
@@ -67,6 +71,13 @@ export const CourtsManager: React.FC = () => {
   const [hourlyRateNight, setHourlyRateNight] = useState(24000);
   const [depositRequired, setDepositRequired] = useState(50);
   const [imageUrl, setImageUrl] = useState(SPORT_OPTIONS[0].defaultImg);
+  const [attachedImages, setAttachedImages] = useState<string[]>([]);
+  const [newImageUrlInput, setNewImageUrlInput] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
+  const [editImageUrlInput, setEditImageUrlInput] = useState('');
+  const [editUploadingImage, setEditUploadingImage] = useState(false);
+  const [editImageError, setEditImageError] = useState<string | null>(null);
   const [description, setDescription] = useState('Cancha acondicionada para alta competencia con excelente iluminación LED y cerramientos de seguridad.');
   const [amenitiesInput, setAmenitiesInput] = useState('Pelotas oficiales, Chalecos limpios, Vestuarios con agua caliente, Marcador digital');
 
@@ -79,11 +90,148 @@ export const CourtsManager: React.FC = () => {
     }
   };
 
+  const handleAttachImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+
+    setImageUploadError(null);
+    const remaining = Math.max(0, 4 - attachedImages.length);
+    if (remaining === 0) {
+      setImageUploadError('Podés adjuntar hasta 4 fotos por cancha.');
+      e.target.value = '';
+      return;
+    }
+
+    const files = Array.from(fileList).slice(0, remaining);
+    setUploadingImage(true);
+    try {
+      const processed: string[] = [];
+      for (const file of files) {
+        const dataUrl = await processImageUpload(file, {
+          maxDimension: 1000,
+          quality: 0.75,
+          maxDataUrlLength: 210000,
+        });
+        processed.push(dataUrl);
+      }
+      setAttachedImages(prev => [...prev, ...processed].slice(0, 4));
+    } catch (err: any) {
+      setImageUploadError(err?.message || 'No se pudo procesar la imagen.');
+    } finally {
+      setUploadingImage(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleAddImageUrl = () => {
+    const url = newImageUrlInput.trim();
+    if (!url) return;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      setImageUploadError('La URL debe comenzar con http:// o https://');
+      return;
+    }
+    if (attachedImages.length >= 4) {
+      setImageUploadError('Podés adjuntar hasta 4 fotos por cancha.');
+      return;
+    }
+    setImageUploadError(null);
+    setAttachedImages(prev => [...prev, url].slice(0, 4));
+    setNewImageUrlInput('');
+  };
+
+  const handleRemoveAttachedImage = (idx: number) => {
+    setAttachedImages(prev => prev.filter((_, i) => i !== idx));
+    setImageUploadError(null);
+  };
+
+  const getEditingGallery = (court: Court): string[] => {
+    if (court.images && court.images.length > 0) return court.images;
+    return court.imageUrl ? [court.imageUrl] : [];
+  };
+
+  const handleEditAttachImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!editingCourt) return;
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+
+    setEditImageError(null);
+    const currentGallery = getEditingGallery(editingCourt);
+    const remaining = Math.max(0, 4 - currentGallery.length);
+    if (remaining === 0) {
+      setEditImageError('Podés adjuntar hasta 4 fotos por cancha.');
+      e.target.value = '';
+      return;
+    }
+
+    const files = Array.from(fileList).slice(0, remaining);
+    setEditUploadingImage(true);
+    try {
+      const processed: string[] = [];
+      for (const file of files) {
+        const dataUrl = await processImageUpload(file, {
+          maxDimension: 1000,
+          quality: 0.75,
+          maxDataUrlLength: 210000,
+        });
+        processed.push(dataUrl);
+      }
+      const nextGallery = [...currentGallery, ...processed].slice(0, 4);
+      setEditingCourt({
+        ...editingCourt,
+        images: nextGallery,
+        imageUrl: nextGallery[0] || editingCourt.imageUrl,
+      });
+    } catch (err: any) {
+      setEditImageError(err?.message || 'No se pudo procesar la imagen.');
+    } finally {
+      setEditUploadingImage(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleEditAddImageUrl = () => {
+    if (!editingCourt) return;
+    const url = editImageUrlInput.trim();
+    if (!url) return;
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      setEditImageError('La URL debe comenzar con http:// o https://');
+      return;
+    }
+    const currentGallery = getEditingGallery(editingCourt);
+    if (currentGallery.length >= 4) {
+      setEditImageError('Podés adjuntar hasta 4 fotos por cancha.');
+      return;
+    }
+    const nextGallery = [...currentGallery, url].slice(0, 4);
+    setEditImageError(null);
+    setEditingCourt({
+      ...editingCourt,
+      images: nextGallery,
+      imageUrl: nextGallery[0],
+    });
+    setEditImageUrlInput('');
+  };
+
+  const handleEditRemoveImage = (idx: number) => {
+    if (!editingCourt) return;
+    const currentGallery = getEditingGallery(editingCourt);
+    const nextGallery = currentGallery.filter((_, i) => i !== idx);
+    const sportOpt = SPORT_OPTIONS.find(s => s.id === editingCourt.sport);
+    setEditingCourt({
+      ...editingCourt,
+      images: nextGallery,
+      imageUrl: nextGallery[0] || sportOpt?.defaultImg || '',
+    });
+    setEditImageError(null);
+  };
+
   const handleCreateCourt = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
 
     const amenities = amenitiesInput.split(',').map(s => s.trim()).filter(Boolean);
+    const finalGallery = attachedImages.length > 0 ? attachedImages : [imageUrl.trim()].filter(Boolean);
+    const primaryImage = finalGallery[0] || SPORT_OPTIONS[0].defaultImg;
 
     await addCourt({
       name: name.trim(),
@@ -95,7 +243,8 @@ export const CourtsManager: React.FC = () => {
       hourlyRateDay: Number(hourlyRateDay),
       hourlyRateNight: Number(hourlyRateNight),
       depositRequired: Number(depositRequired),
-      imageUrl: imageUrl.trim(),
+      imageUrl: primaryImage,
+      ...(attachedImages.length > 0 ? { images: attachedImages } : {}),
       amenities,
       description: description.trim(),
       status: 'active'
@@ -103,6 +252,9 @@ export const CourtsManager: React.FC = () => {
 
     setIsAddModalOpen(false);
     setName('');
+    setAttachedImages([]);
+    setNewImageUrlInput('');
+    setImageUploadError(null);
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
@@ -110,6 +262,8 @@ export const CourtsManager: React.FC = () => {
     if (!editingCourt) return;
     await updateCourt(editingCourt);
     setEditingCourt(null);
+    setEditImageUrlInput('');
+    setEditImageError(null);
   };
 
   const handleDeleteCourt = async (courtId: string) => {
@@ -400,15 +554,81 @@ export const CourtsManager: React.FC = () => {
                 </label>
               </div>
 
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">URL de Foto de Cancha</label>
-                <input
-                  type="url"
-                  required
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
-                />
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700">Imágenes de la Cancha (máx. 4)</label>
+                  <span className="text-[11px] text-slate-400">
+                    {attachedImages.length > 0 ? `${attachedImages.length}/4 adjuntas` : 'Opcional (usa foto por defecto si no subís)'}
+                  </span>
+                </div>
+
+                {attachedImages.length > 0 && (
+                  <div className="grid grid-cols-4 gap-2">
+                    {attachedImages.map((src, idx) => (
+                      <div key={idx} className="relative h-20 rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
+                        <img src={src} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
+                        {idx === 0 && (
+                          <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px] font-bold">
+                            Portada
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAttachedImage(idx)}
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-slate-950/80 text-white flex items-center justify-center cursor-pointer hover:bg-rose-600"
+                          title="Quitar imagen"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {attachedImages.length < 4 && (
+                  <label className="flex items-center justify-center gap-2 w-full py-2.5 px-3 rounded-xl border-2 border-dashed border-slate-300 hover:border-emerald-500 bg-slate-50 hover:bg-emerald-50/40 text-slate-700 hover:text-emerald-700 font-semibold cursor-pointer transition-colors">
+                    {uploadingImage ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Comprimiendo imagen...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="w-4 h-4 text-emerald-600" />
+                        <span>Adjuntar Imágenes desde Dispositivo (JPG, PNG, WEBP)</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      disabled={uploadingImage}
+                      onChange={handleAttachImages}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={newImageUrlInput}
+                    onChange={(e) => setNewImageUrlInput(e.target.value)}
+                    placeholder="O pegá una URL externa (https://...)"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddImageUrl}
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] cursor-pointer shrink-0"
+                  >
+                    + URL
+                  </button>
+                </div>
+
+                {imageUploadError && (
+                  <p className="text-[11px] text-rose-600 font-semibold">{imageUploadError}</p>
+                )}
               </div>
 
               <div>
@@ -517,6 +737,83 @@ export const CourtsManager: React.FC = () => {
                   onChange={(e) => setEditingCourt({ ...editingCourt, surface: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
                 />
+              </div>
+
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700">Imágenes de la Cancha (máx. 4)</label>
+                  <span className="text-[11px] text-slate-400">
+                    {getEditingGallery(editingCourt).length}/4
+                  </span>
+                </div>
+
+                {getEditingGallery(editingCourt).length > 0 && (
+                  <div className="grid grid-cols-4 gap-2">
+                    {getEditingGallery(editingCourt).map((src, idx) => (
+                      <div key={idx} className="relative h-16 rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
+                        <img src={src} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
+                        {idx === 0 && (
+                          <span className="absolute bottom-1 left-1 px-1 py-0.5 rounded bg-blue-600 text-white text-[9px] font-bold">
+                            Portada
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleEditRemoveImage(idx)}
+                          className="absolute top-1 right-1 w-4 h-4 rounded-full bg-slate-950/80 text-white flex items-center justify-center cursor-pointer hover:bg-rose-600"
+                          title="Quitar imagen"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {getEditingGallery(editingCourt).length < 4 && (
+                  <label className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50 hover:bg-blue-50/40 text-slate-700 font-semibold cursor-pointer transition-colors">
+                    {editUploadingImage ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Comprimiendo imagen...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-4 h-4 text-blue-600" />
+                        <span>Adjuntar Foto desde Dispositivo</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      disabled={editUploadingImage}
+                      onChange={handleEditAttachImages}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={editImageUrlInput}
+                    onChange={(e) => setEditImageUrlInput(e.target.value)}
+                    placeholder="O agregá URL (https://...)"
+                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleEditAddImageUrl}
+                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] cursor-pointer shrink-0"
+                  >
+                    + URL
+                  </button>
+                </div>
+
+                {editImageError && (
+                  <p className="text-[11px] text-rose-600 font-semibold">{editImageError}</p>
+                )}
               </div>
 
               <div className="flex justify-end gap-2 pt-2">

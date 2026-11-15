@@ -12,6 +12,7 @@ export interface Court {
   hourlyRateNight: number; // Precio noche con luz (ARS)
   depositRequired: number; // % de seña, ej: 50%
   imageUrl: string;
+  images?: string[];
   amenities: string[];
   description: string;
   status: 'active' | 'maintenance';
@@ -73,6 +74,9 @@ export interface Booking {
   whatsappSentAt?: string;
   adminId?: string;
   receiptUrl?: string; // Base64 or Image URL of the payment receipt
+  refundAmount?: number;
+  refundedAt?: string;
+  refundReference?: string;
 }
 
 export interface Review {
@@ -91,6 +95,7 @@ export interface Review {
   };
   comment: string;
   date: string;
+  photos?: string[];
   verifiedBookingCode?: string;
   adminId?: string;
   adminReply?: {
@@ -120,6 +125,8 @@ export interface BusinessProfile {
   mpTokenExpiresAt?: string;
   mpConnectedAt?: string;
   whatsappTemplate?: string;
+  mpPaused?: boolean;
+  transferPaused?: boolean;
 }
 
 export interface DeveloperContact {

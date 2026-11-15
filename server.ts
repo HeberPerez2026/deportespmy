@@ -2,6 +2,8 @@ import 'dotenv/config';
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
+import http from 'node:http';
+import https from 'node:https';
 import { createServer as createViteServer } from 'vite';
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 
@@ -54,6 +56,108 @@ function normalizeAdminId(raw?: unknown): string {
     .replace(/[^a-z0-9_-]/g, '');
 }
 
+interface ResilientResponse {
+  ok: boolean;
+  status: number;
+  text: () => Promise<string>;
+  json: <T = any>() => Promise<T>;
+}
+
+function singleHttpsRequest(
+  targetUrl: string,
+  options: { method?: string; headers?: Record<string, string>; body?: string; timeoutMs?: number } = {}
+): Promise<ResilientResponse> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(targetUrl);
+    const isHttps = parsed.protocol === 'https:';
+    const transport = isHttps ? https : http;
+    const method = (options.method || 'GET').toUpperCase();
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'User-Agent': 'DeportesPMY/1.0',
+      Connection: 'close',
+      ...(options.headers || {}),
+    };
+
+    const bodyBuffer = options.body ? Buffer.from(options.body, 'utf-8') : null;
+    if (bodyBuffer && !headers['Content-Length'] && !headers['content-length']) {
+      headers['Content-Length'] = String(bodyBuffer.byteLength);
+    }
+
+    const req = transport.request(
+      {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port || (isHttps ? 443 : 80),
+        path: `${parsed.pathname}${parsed.search}`,
+        method,
+        headers,
+        agent: false, // Prevent stale keep-alive socket reuse (ECONNRESET)
+        timeout: options.timeoutMs ?? 12000,
+      },
+      (res) => {
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+        res.on('end', () => {
+          const rawBody = Buffer.concat(chunks).toString('utf-8');
+          const status = res.statusCode || 0;
+          resolve({
+            ok: status >= 200 && status < 300,
+            status,
+            text: async () => rawBody,
+            json: async <T = any>() => JSON.parse(rawBody) as T,
+          });
+        });
+      }
+    );
+
+    req.on('timeout', () => {
+      req.destroy(new Error('ETIMEDOUT'));
+    });
+
+    req.on('error', (err) => {
+      reject(err);
+    });
+
+    if (bodyBuffer) {
+      req.write(bodyBuffer);
+    }
+    req.end();
+  });
+}
+
+async function resilientFetch(
+  targetUrl: string,
+  options: { method?: string; headers?: Record<string, string>; body?: string; timeoutMs?: number } = {},
+  maxRetries = 2
+): Promise<ResilientResponse> {
+  let lastError: any;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await singleHttpsRequest(targetUrl, options);
+    } catch (err: any) {
+      lastError = err;
+      const code = err?.code || err?.cause?.code || '';
+      const msg = String(err?.message || '');
+      const isTransient =
+        code === 'ECONNRESET' ||
+        code === 'ETIMEDOUT' ||
+        code === 'EPIPE' ||
+        code === 'ECONNREFUSED' ||
+        code === 'EAI_AGAIN' ||
+        msg.includes('ECONNRESET') ||
+        msg.includes('ETIMEDOUT') ||
+        msg.includes('socket hang up');
+
+      if (!isTransient || attempt === maxRetries) {
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
+
 function getFirestoreDocUrl(collectionPath: string, docId?: string): string | null {
   if (!firebaseCfg?.projectId || !firebaseCfg?.firestoreDatabaseId || !firebaseCfg?.apiKey) {
     return null;
@@ -73,7 +177,7 @@ async function fetchAdminTokensFromFirestore(adminId: string): Promise<AdminToke
   if (!url) return null;
 
   try {
-    const resp = await fetch(url);
+    const resp = await resilientFetch(url);
     if (!resp.ok) return null;
     const json: any = await resp.json();
     const fields = json?.fields;
@@ -120,7 +224,7 @@ async function updateAdminTokensInFirestore(adminId: string, record: AdminTokenR
   ].map(f => `updateMask.fieldPaths=${f}`).join('&');
 
   try {
-    await fetch(`${base}?${updateMask}&key=${encodeURIComponent(firebaseCfg.apiKey)}`, {
+    await resilientFetch(`${base}?${updateMask}&key=${encodeURIComponent(firebaseCfg.apiKey)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -151,7 +255,7 @@ async function confirmBookingInFirestore(
   const queryUrl = `https://firestore.googleapis.com/v1/projects/${firebaseCfg.projectId}/databases/${firebaseCfg.firestoreDatabaseId}/documents:runQuery?key=${encodeURIComponent(firebaseCfg.apiKey)}`;
 
   try {
-    const queryResp = await fetch(queryUrl, {
+    const queryResp = await resilientFetch(queryUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -190,7 +294,7 @@ async function confirmBookingInFirestore(
 
     const patchUrl = `https://firestore.googleapis.com/v1/${docName}?updateMask.fieldPaths=status&updateMask.fieldPaths=paymentStatus&updateMask.fieldPaths=amountPaid&updateMask.fieldPaths=balanceDue&updateMask.fieldPaths=paymentReference&updateMask.fieldPaths=whatsappSent&updateMask.fieldPaths=whatsappSentAt&key=${encodeURIComponent(firebaseCfg.apiKey)}`;
 
-    const patchResp = await fetch(patchUrl, {
+    const patchResp = await resilientFetch(patchUrl, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -236,7 +340,7 @@ async function refreshAdminOAuthTokenIfNeeded(record: AdminTokenRecord): Promise
       refresh_token: record.refreshToken
     });
 
-    const resp = await fetch('https://api.mercadopago.com/oauth/token', {
+    const resp = await resilientFetch('https://api.mercadopago.com/oauth/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -268,15 +372,29 @@ async function refreshAdminOAuthTokenIfNeeded(record: AdminTokenRecord): Promise
   }
 }
 
-async function resolveAdminAccessToken(adminId?: string, explicitToken?: string): Promise<string | null> {
+async function fetchAdminProfilePauseFlags(adminId?: string): Promise<{ mpPaused: boolean; transferPaused: boolean }> {
   const cleanId = normalizeAdminId(adminId);
-  if (explicitToken && explicitToken.trim()) {
-    if (cleanId && !adminTokensStore.has(cleanId)) {
-      adminTokensStore.set(cleanId, { adminId: cleanId, accessToken: explicitToken.trim() });
-    }
-    return explicitToken.trim();
-  }
+  if (!cleanId) return { mpPaused: false, transferPaused: false };
 
+  const url = getFirestoreDocUrl('settings', `profile_${cleanId}`);
+  if (!url) return { mpPaused: false, transferPaused: false };
+
+  try {
+    const resp = await resilientFetch(url);
+    if (!resp.ok) return { mpPaused: false, transferPaused: false };
+    const json: any = await resp.json();
+    const fields = json?.fields || {};
+    return {
+      mpPaused: Boolean(fields.mpPaused?.booleanValue),
+      transferPaused: Boolean(fields.transferPaused?.booleanValue),
+    };
+  } catch {
+    return { mpPaused: false, transferPaused: false };
+  }
+}
+
+async function resolveAdminAccessToken(adminId?: string): Promise<string | null> {
+  const cleanId = normalizeAdminId(adminId);
   if (cleanId) {
     let record = adminTokensStore.get(cleanId) || null;
     if (!record) {
@@ -482,7 +600,7 @@ async function startServer() {
         redirect_uri: redirectUri
       });
 
-      const tokenResp = await fetch('https://api.mercadopago.com/oauth/token', {
+      const tokenResp = await resilientFetch('https://api.mercadopago.com/oauth/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -510,7 +628,7 @@ async function startServer() {
       let email = '';
       let mpUserId = tokenData.user_id ? String(tokenData.user_id) : '';
       try {
-        const userResp = await fetch('https://api.mercadopago.com/users/me', {
+        const userResp = await resilientFetch('https://api.mercadopago.com/users/me', {
           headers: { Authorization: `Bearer ${tokenData.access_token}` }
         });
         if (userResp.ok) {
@@ -602,18 +720,29 @@ async function startServer() {
         clientEmail,
         clientPhone,
         adminId,
-        accessToken,
         origin
       } = req.body;
 
       const cleanAdminId = normalizeAdminId(adminId);
-      const resolvedToken = await resolveAdminAccessToken(cleanAdminId, accessToken);
+      const { mpPaused } = await fetchAdminProfilePauseFlags(cleanAdminId);
+      if (mpPaused) {
+        return res.status(403).json({
+          error: 'El complejo pausó temporalmente los cobros con Mercado Pago.',
+          methodPaused: true
+        });
+      }
+
+      const resolvedToken = await resolveAdminAccessToken(cleanAdminId);
       const client = getMercadoPagoClient(resolvedToken);
 
       const appUrl = getAppUrl(origin);
       const referenceCode = bookingCode || bookingId || `PMY-${Date.now()}`;
       const itemTitle = title || `Reserva ${courtName || 'Cancha'} - ${date || ''} (${startTime || ''} hs)`;
-      const price = Number(unit_price) || 1000;
+      const price = Number(unit_price);
+
+      if (!Number.isFinite(price) || price <= 0) {
+        return res.status(400).json({ error: 'Importe de pago inválido.' });
+      }
 
       if (!client) {
         return res.status(400).json({
@@ -659,7 +788,24 @@ async function startServer() {
         preferenceBody.notification_url = `${appUrl}/api/mercadopago/webhook?booking_code=${encodeURIComponent(referenceCode)}${adminQueryParam}`;
       }
 
-      const result = await preference.create({ body: preferenceBody });
+      let result: any;
+      try {
+        result = await preference.create({ body: preferenceBody });
+      } catch {
+        const directPrefResp = await resilientFetch('https://api.mercadopago.com/checkout/preferences', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${resolvedToken}`
+          },
+          body: JSON.stringify(preferenceBody)
+        });
+        const prefJson = await directPrefResp.json();
+        if (!directPrefResp.ok) {
+          throw new Error(prefJson?.message || `Mercado Pago HTTP ${directPrefResp.status}`);
+        }
+        result = prefJson;
+      }
 
       res.json({
         id: result.id,
@@ -700,10 +846,20 @@ async function startServer() {
         return res.status(200).send('Admin Mercado Pago token not configured');
       }
 
-      const payment = new Payment(client);
-      const paymentData = await payment.get({ id: String(paymentId) });
+      let paymentData: any = null;
+      try {
+        const payment = new Payment(client);
+        paymentData = await payment.get({ id: String(paymentId) });
+      } catch {
+        const directPayResp = await resilientFetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(String(paymentId))}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (directPayResp.ok) {
+          paymentData = await directPayResp.json();
+        }
+      }
 
-      if (paymentData && paymentData.status === 'approved') {
+      if (paymentData && paymentData.status === 'approved' && Number(paymentData.transaction_amount) > 0) {
         const bookingCode = paymentData.external_reference || bookingCodeHint || '';
         const amount = Number(paymentData.transaction_amount) || 0;
         console.log(`✅ WEBHOOK PAGO APROBADO [${adminId || 'global'}]: ID ${paymentId} | Reserva: ${bookingCode} | $${amount}`);
@@ -738,8 +894,11 @@ async function startServer() {
   app.get('/api/mercadopago/verify-payment', async (req, res) => {
     try {
       const rawPaymentId = req.query.payment_id as string | undefined;
-      const paymentId = rawPaymentId && rawPaymentId !== 'null' && rawPaymentId !== 'undefined' ? rawPaymentId : undefined;
-      const bookingCode = req.query.booking_code as string | undefined;
+      const paymentId = rawPaymentId && rawPaymentId !== 'null' && rawPaymentId !== 'undefined' && /^[0-9]{4,32}$/.test(rawPaymentId)
+        ? rawPaymentId
+        : undefined;
+      const rawBookingCode = req.query.booking_code as string | undefined;
+      const bookingCode = rawBookingCode && /^[A-Za-z0-9_-]{3,40}$/.test(rawBookingCode) ? rawBookingCode : undefined;
       const adminId = normalizeAdminId(req.query.admin_id);
 
       // 1. Check in-memory verified cache first
@@ -754,14 +913,28 @@ async function startServer() {
 
       // 2. If we have a payment_id, verify directly with Mercado Pago API
       if (paymentId && token) {
-        const client = getMercadoPagoClient(token);
-        if (client) {
-          try {
-            const payment = new Payment(client);
-            const paymentData = await payment.get({ id: paymentId });
-            const isApproved = paymentData.status === 'approved';
-            const resolvedCode = paymentData.external_reference || bookingCode || '';
+        try {
+          let paymentData: any = null;
+          const client = getMercadoPagoClient(token);
+          if (client) {
+            try {
+              const payment = new Payment(client);
+              paymentData = await payment.get({ id: paymentId });
+            } catch {
+              const directResp = await resilientFetch(`https://api.mercadopago.com/v1/payments/${encodeURIComponent(paymentId)}`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              if (directResp.ok) {
+                paymentData = await directResp.json();
+              }
+            }
+          }
+
+          if (paymentData) {
             const amount = Number(paymentData.transaction_amount) || 0;
+            const resolvedCode = paymentData.external_reference || bookingCode || '';
+            const matchesBooking = !bookingCode || !paymentData.external_reference || paymentData.external_reference === bookingCode;
+            const isApproved = paymentData.status === 'approved' && amount > 0 && matchesBooking;
 
             if (isApproved) {
               const record = {
@@ -787,16 +960,16 @@ async function startServer() {
               bookingCode: resolvedCode,
               approvedAt: new Date().toISOString()
             });
-          } catch (apiErr) {
-            console.warn('Error consultando payment.get en MP:', apiErr);
           }
+        } catch (apiErr: any) {
+          console.warn('Error consultando payment.get en MP:', apiErr?.code || apiErr?.message || apiErr);
         }
       }
 
       // 3. Search Mercado Pago payments by external_reference (enables automatic polling confirmation)
       if (bookingCode && token) {
         try {
-          const searchResp = await fetch(
+          const searchResp = await resilientFetch(
             `https://api.mercadopago.com/v1/payments/search?external_reference=${encodeURIComponent(bookingCode)}&sort=date_created&criteria=desc&limit=5`,
             {
               headers: { Authorization: `Bearer ${token}` }
@@ -806,7 +979,9 @@ async function startServer() {
           if (searchResp.ok) {
             const searchData: any = await searchResp.json();
             const results: any[] = Array.isArray(searchData?.results) ? searchData.results : [];
-            const approved = results.find(p => p.status === 'approved');
+            const approved = results.find(
+              p => p.status === 'approved' && Number(p.transaction_amount) > 0 && (!p.external_reference || p.external_reference === bookingCode)
+            );
             if (approved) {
               const pId = String(approved.id);
               const amount = Number(approved.transaction_amount) || 0;
@@ -835,8 +1010,8 @@ async function startServer() {
               });
             }
           }
-        } catch (searchErr) {
-          console.warn('Error buscando pagos por external_reference en MP:', searchErr);
+        } catch (searchErr: any) {
+          console.warn('Error buscando pagos por external_reference en MP:', searchErr?.code || searchErr?.cause?.code || searchErr?.message || searchErr);
         }
       }
 
@@ -844,6 +1019,108 @@ async function startServer() {
     } catch (err: any) {
       console.error('Error al verificar pago:', err);
       res.status(500).json({ verified: false, error: err?.message || String(err) });
+    }
+  });
+
+  // ==========================================
+  // 5. MERCADO PAGO AUTOMATIC REFUND ON ADMIN CANCELLATION
+  // ==========================================
+
+  app.post('/api/mercadopago/refund', async (req, res) => {
+    try {
+      const { bookingCode, paymentReference, amountPaid, adminId } = req.body || {};
+      const cleanAdminId = normalizeAdminId(adminId);
+      const paidNum = Number(amountPaid) || 0;
+
+      if (paidNum <= 0) {
+        return res.json({ ok: true, mpRefunded: false, manualRefundRequired: false, refundedAmount: 0 });
+      }
+
+      const token = await resolveAdminAccessToken(cleanAdminId);
+      if (!token) {
+        return res.json({
+          ok: true,
+          mpRefunded: false,
+          manualRefundRequired: true,
+          refundedAmount: paidNum,
+          message: 'El complejo no tiene Mercado Pago OAuth conectado; registrá la devolución manualmente.'
+        });
+      }
+
+      // Locate numeric Mercado Pago paymentId from paymentReference (e.g. MP-123456789) or search by external_reference
+      let mpPaymentId = '';
+      if (typeof paymentReference === 'string') {
+        const match = paymentReference.match(/^MP-(\d{5,32})$/);
+        if (match) {
+          mpPaymentId = match[1];
+        }
+      }
+
+      if (!mpPaymentId && typeof bookingCode === 'string' && /^[A-Za-z0-9_-]{3,40}$/.test(bookingCode)) {
+        try {
+          const searchResp = await resilientFetch(
+            `https://api.mercadopago.com/v1/payments/search?external_reference=${encodeURIComponent(bookingCode)}&sort=date_created&criteria=desc&limit=5`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (searchResp.ok) {
+            const searchData: any = await searchResp.json();
+            const results: any[] = Array.isArray(searchData?.results) ? searchData.results : [];
+            const approved = results.find(p => p.status === 'approved');
+            if (approved?.id) {
+              mpPaymentId = String(approved.id);
+            }
+          }
+        } catch {}
+      }
+
+      if (!mpPaymentId) {
+        return res.json({
+          ok: true,
+          mpRefunded: false,
+          manualRefundRequired: true,
+          refundedAmount: paidNum,
+          message: 'No se encontró un ID de pago automático en Mercado Pago para esta reserva; corresponde devolución manual.'
+        });
+      }
+
+      const idempotencyKey = `refund-${bookingCode || mpPaymentId}-${mpPaymentId}`;
+      const refundResp = await resilientFetch(
+        `https://api.mercadopago.com/v1/payments/${encodeURIComponent(mpPaymentId)}/refunds`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            'X-Idempotency-Key': idempotencyKey
+          },
+          body: JSON.stringify({})
+        }
+      );
+
+      const refundData: any = await refundResp.json().catch(() => ({}));
+      if (!refundResp.ok) {
+        console.warn(`⚠️ Error reembolsando pago MP ${mpPaymentId}:`, refundData);
+        return res.status(400).json({
+          ok: false,
+          mpRefunded: false,
+          error: refundData?.message || refundData?.error || 'Mercado Pago rechazó la devolución automática.'
+        });
+      }
+
+      console.log(`💸 REEMBOLSO MP EXITOSO [${cleanAdminId || 'global'}]: Pago ${mpPaymentId} | Refund ${refundData?.id || 'OK'} | $${paidNum}`);
+      return res.json({
+        ok: true,
+        mpRefunded: true,
+        refundId: String(refundData?.id || `RF-${mpPaymentId}`),
+        refundedAmount: Number(refundData?.amount) || paidNum
+      });
+    } catch (err: any) {
+      console.error('Error en /api/mercadopago/refund:', err);
+      res.status(500).json({
+        ok: false,
+        mpRefunded: false,
+        error: err?.message || 'Error de conexión al solicitar reembolso en Mercado Pago.'
+      });
     }
   });
 

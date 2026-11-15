@@ -11,6 +11,7 @@ import {
   Moon, 
   Layers,
   ChevronRight,
+  ChevronLeft,
   PlusCircle,
   Search,
   Lock,
@@ -19,11 +20,18 @@ import {
 
 interface CourtCatalogProps {
   onOpenAdminLogin?: () => void;
+  courtsOverride?: Court[];
+  complexNameOverride?: string;
 }
 
-export const CourtCatalog: React.FC<CourtCatalogProps> = ({ onOpenAdminLogin }) => {
+export const CourtCatalog: React.FC<CourtCatalogProps> = ({ 
+  onOpenAdminLogin,
+  courtsOverride,
+  complexNameOverride
+}) => {
   const { 
     courts, 
+    reviews,
     selectedSport, 
     selectedDate, 
     searchQuery,
@@ -36,16 +44,20 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({ onOpenAdminLogin }) 
 
   const [activeBookingCourt, setActiveBookingCourt] = useState<Court | null>(null);
   const [selectedInitialSlot, setSelectedInitialSlot] = useState<string | undefined>(undefined);
+  const [photoIndexByCourt, setPhotoIndexByCourt] = useState<Record<string, number>>({});
 
-  // Filter courts by sport AND search query
-  const filteredCourts = courts.filter(court => {
+  const sourceCourts = courtsOverride ?? courts;
+  const activeComplexTitle = complexNameOverride || businessProfile.complexName || 'Instalaciones Deportivas';
+
+  // Filter courts by sport AND search query (when not overridden or when searching)
+  const filteredCourts = sourceCourts.filter(court => {
     // 1. Sport filter
     if (selectedSport !== 'all' && court.sport !== selectedSport) {
       return false;
     }
 
-    // 2. Search query filter
-    if (searchQuery.trim()) {
+    // 2. Search query filter (only apply global search when showing full catalog)
+    if (!courtsOverride && searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       const nameMatch = court.name.toLowerCase().includes(q);
       const estMatch = court.establishment ? court.establishment.toLowerCase().includes(q) : false;
@@ -82,7 +94,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({ onOpenAdminLogin }) 
         <div>
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-600 mb-1">
             <Layers className="w-4 h-4" />
-            <span>{businessProfile.complexName || 'Instalaciones Deportivas'}</span>
+            <span>{activeComplexTitle}</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-heading">
             Canchas y Horarios para el {selectedDate}
@@ -93,7 +105,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({ onOpenAdminLogin }) 
         </div>
 
         {/* Legend */}
-        {courts.length > 0 && (
+        {sourceCourts.length > 0 && (
           <div className="flex items-center gap-3 sm:gap-4 text-xs font-semibold text-slate-600 bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm self-start md:self-auto">
             <span className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded bg-emerald-500" /> Disponible
@@ -109,7 +121,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({ onOpenAdminLogin }) 
       </div>
 
       {/* Case 1: Database has 0 courts registered yet */}
-      {courts.length === 0 ? (
+      {sourceCourts.length === 0 ? (
         <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-8 sm:p-12 text-center max-w-2xl mx-auto space-y-5">
           <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto shadow-inner">
             <Building2 className="w-8 h-8" />
@@ -173,6 +185,17 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({ onOpenAdminLogin }) 
             const slots = getSlotsForCourtAndDate(court.id, selectedDate);
             const availableSlotsCount = slots.filter(s => s.status === 'available').length;
             const badge = getSportBadge(court.sport);
+            const gallery = (court.images && court.images.length > 0)
+              ? court.images
+              : [court.imageUrl || 'https://images.unsplash.com/photo-1529900245534-47fbf8204e61?auto=format&fit=crop&w=1200&q=80'];
+            const activePhotoIdx = (photoIndexByCourt[court.id] || 0) % gallery.length;
+            const activePhoto = gallery[activePhotoIdx];
+
+            const courtReviews = reviews.filter(r => r.courtId === court.id);
+            const liveReviewCount = courtReviews.length > 0 ? courtReviews.length : (court.reviewCount || 0);
+            const liveRating = courtReviews.length > 0
+              ? courtReviews.reduce((s, r) => s + r.rating, 0) / courtReviews.length
+              : (court.rating || 0);
 
             return (
               <div 
@@ -183,12 +206,62 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({ onOpenAdminLogin }) 
                   {/* Court Image Banner */}
                   <div className="relative h-56 sm:h-64 overflow-hidden group bg-slate-900">
                     <img
-                      src={court.imageUrl || 'https://images.unsplash.com/photo-1529900245534-47fbf8204e61?auto=format&fit=crop&w=1200&q=80'}
+                      src={activePhoto}
                       alt={court.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                       loading="lazy"
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/20" />
+
+                    {/* Photo Carousel Controls when multiple photos are attached */}
+                    {gallery.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPhotoIndexByCourt(prev => ({
+                              ...prev,
+                              [court.id]: (activePhotoIdx - 1 + gallery.length) % gallery.length
+                            }));
+                          }}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-slate-950/70 hover:bg-slate-950 text-white flex items-center justify-center border border-white/20 backdrop-blur-sm cursor-pointer transition-opacity"
+                          aria-label="Foto anterior"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPhotoIndexByCourt(prev => ({
+                              ...prev,
+                              [court.id]: (activePhotoIdx + 1) % gallery.length
+                            }));
+                          }}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-slate-950/70 hover:bg-slate-950 text-white flex items-center justify-center border border-white/20 backdrop-blur-sm cursor-pointer transition-opacity"
+                          aria-label="Siguiente foto"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                        <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-slate-950/70 px-2 py-1 rounded-full backdrop-blur-sm">
+                          {gallery.map((_, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPhotoIndexByCourt(prev => ({ ...prev, [court.id]: idx }));
+                              }}
+                              className={`w-1.5 h-1.5 rounded-full cursor-pointer transition-all ${
+                                idx === activePhotoIdx ? 'bg-emerald-400 w-3' : 'bg-white/50'
+                              }`}
+                              aria-label={`Ver foto ${idx + 1}`}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
 
                     {/* Top Badges */}
                     <div className="absolute top-4 left-4 flex flex-wrap gap-2">
@@ -201,11 +274,11 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({ onOpenAdminLogin }) 
                     </div>
 
                     {/* Rating Pill */}
-                    {court.reviewCount && court.reviewCount > 0 ? (
+                    {liveReviewCount > 0 ? (
                       <div className="absolute top-4 right-4 flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/85 text-amber-400 text-xs font-bold border border-slate-700 backdrop-blur-md">
                         <Star className="w-3.5 h-3.5 fill-amber-400" />
-                        <span>{court.rating?.toFixed(1)}</span>
-                        <span className="text-slate-400 text-[10px]">({court.reviewCount})</span>
+                        <span>{liveRating.toFixed(1)}</span>
+                        <span className="text-slate-400 text-[10px]">({liveReviewCount})</span>
                       </div>
                     ) : (
                       <div className="absolute top-4 right-4 flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/85 text-emerald-400 text-[11px] font-bold border border-slate-700 backdrop-blur-md">
@@ -214,7 +287,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({ onOpenAdminLogin }) 
                     )}
 
                     {/* Bottom Image Info */}
-                    <div className="absolute bottom-4 left-4 right-4 text-white">
+                    <div className="absolute bottom-4 left-4 right-16 text-white">
                       {court.establishment && (
                         <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 block mb-0.5">
                           {court.establishment}

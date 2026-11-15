@@ -88,6 +88,8 @@ interface AppContextType {
   setSearchQuery: (q: string) => void;
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  selectedEstablishmentKey: string | null;
+  setSelectedEstablishmentKey: (key: string | null) => void;
 
   // Admin & SuperAdmin Authentication State
   isAdminAuthenticated: boolean;
@@ -117,6 +119,7 @@ interface AppContextType {
 
   // Business Profile Management
   updateBusinessProfile: (newProfile: Partial<BusinessProfile>) => Promise<void>;
+  toggleAdminPaymentPause: (adminUsername: string, method: 'mp' | 'transfer') => Promise<void>;
 
   // Developer Contact Management (SuperAdmin only)
   updateDeveloperContact: (newContact: Partial<DeveloperContact>) => Promise<void>;
@@ -131,7 +134,17 @@ interface AppContextType {
   createBooking: (input: BookingInput) => Booking;
   submitPaymentReceipt: (bookingCodeOrId: string, receiptUrl: string, paymentReference?: string) => Booking | undefined;
   confirmBookingPayment: (bookingCodeOrId: string, paymentReference: string, paidAmount?: number) => Booking | undefined;
-  cancelBooking: (bookingId: string) => void;
+  cancelBooking: (
+    bookingId: string,
+    options?: { forceManual?: boolean; notifyWhatsApp?: boolean }
+  ) => Promise<{
+    success: boolean;
+    mpRefunded: boolean;
+    manualRefundRequired?: boolean;
+    refundAmount: number;
+    refundId?: string;
+    message?: string;
+  }>;
   collectBalanceAtCourt: (bookingId: string) => void;
   blockTimeSlot: (courtId: string, date: string, startTime: string, durationMinutes: number, reason: string) => void;
   unblockTimeSlot: (bookingId: string) => void;
@@ -257,6 +270,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedSport, setSelectedSport] = useState<SportType | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTab, setActiveTab] = useState<string>('turnos');
+  const [selectedEstablishmentKey, setSelectedEstablishmentKey] = useState<string | null>(null);
 
   // Admin Authentication State
   const [currentAdminUser, setCurrentAdminUser] = useState<AdminUser | null>(() => {
@@ -588,6 +602,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [admins, courts, deleteCourt]);
 
+  // Toggle payment method pause (for SuperAdmin panel per complex)
+  const toggleAdminPaymentPause = useCallback(async (adminUsername: string, method: 'mp' | 'transfer') => {
+    const cleanKey = normalizeAdminKey(adminUsername);
+    if (!cleanKey) return;
+    const currentProf = profilesByAdmin[cleanKey] || EMPTY_BUSINESS_PROFILE;
+    const updatedProf: BusinessProfile = {
+      ...currentProf,
+      mpPaused: method === 'mp' ? !currentProf.mpPaused : Boolean(currentProf.mpPaused),
+      transferPaused: method === 'transfer' ? !currentProf.transferPaused : Boolean(currentProf.transferPaused),
+    };
+    setProfilesByAdmin(prev => ({ ...prev, [cleanKey]: updatedProf }));
+    try {
+      localStorage.setItem(`deportespmy_profile_${cleanKey}`, JSON.stringify(updatedProf));
+    } catch {}
+    await saveBusinessProfileToFirestore(updatedProf, cleanKey);
+  }, [profilesByAdmin]);
+
   // Toggle Admin User Status
   const toggleAdminUserStatus = useCallback(async (targetAdminId: string) => {
     let target: AdminUser | undefined;
@@ -801,10 +832,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createBooking = useCallback((input: BookingInput): Booking => {
     const court = courts.find(c => c.id === input.courtId);
     if (!court) throw new Error('Cancha no encontrada');
+    if (!Number.isFinite(input.totalAmount) || input.totalAmount <= 0) {
+      throw new Error('El importe del turno es inválido.');
+    }
 
     const courtProfile = getBusinessProfileForCourt(court);
     const ownerAdminId = getAdminIdForCourt(court) || normalizeAdminKey(currentAdminUser?.username) || 'admin';
     const bookingStatus = input.status || 'confirmed';
+    const endTime = calculateEndTime(input.startTime, input.durationMinutes);
+
+    // Prevent double booking on overlapping active slots
+    const startH = parseInt(input.startTime.split(':')[0], 10);
+    const endH = startH + Math.ceil(input.durationMinutes / 60);
+    const hasCollision = bookings.some(b => {
+      if (b.courtId !== input.courtId || b.date !== input.date) return false;
+      if (b.status !== 'confirmed' && b.status !== 'pending_payment' && b.status !== 'awaiting_approval') return false;
+      const bStart = parseInt(b.startTime.split(':')[0], 10);
+      const bEnd = parseInt(b.endTime.split(':')[0], 10) || (bStart + 1);
+      return startH < bEnd && endH > bStart;
+    });
+    if (hasCollision) {
+      throw new Error('Este horario acaba de ser reservado. Por favor elegí otro turno disponible.');
+    }
+
+    // Security check for player online payments: reject paused or unconfigured payment methods
+    if (!isAdminAuthenticated) {
+      if (input.paymentMethod === 'mercadopago') {
+        if (courtProfile.mpPaused) {
+          throw new Error('El complejo pausó temporalmente los pagos con Mercado Pago.');
+        }
+        const mpConfigured = Boolean(
+          courtProfile.mpOAuthConnected ||
+          courtProfile.mpAccessToken ||
+          courtProfile.alias?.trim() ||
+          (courtProfile.mpLink && courtProfile.mpLink.trim().startsWith('http'))
+        );
+        if (!mpConfigured) {
+          throw new Error('El complejo no tiene Mercado Pago configurado.');
+        }
+      }
+      if (input.paymentMethod === 'transferencia') {
+        if (courtProfile.transferPaused) {
+          throw new Error('El complejo pausó temporalmente las transferencias bancarias.');
+        }
+        if (!courtProfile.cbu?.trim() && !courtProfile.alias?.trim()) {
+          throw new Error('El complejo no cargó CBU ni Alias para recibir transferencias.');
+        }
+      }
+    }
+
     const amountPaid = bookingStatus === 'pending_payment'
       ? 0
       : (input.isDepositOnly ? Math.round(input.totalAmount * 0.5) : input.totalAmount);
@@ -813,7 +889,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? 'pendiente_mostrador'
       : (input.isDepositOnly ? 'seña_pagada' : 'total_pagado');
     const bookingCode = `PMY-${Math.floor(1000 + Math.random() * 9000)}`;
-    const endTime = calculateEndTime(input.startTime, input.durationMinutes);
 
     const newBooking: Booking = {
       id: `bk-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -890,7 +965,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     return newBooking;
-  }, [courts, getBusinessProfileForCourt, getAdminIdForCourt, bookings, currentAdminUser]);
+  }, [courts, getBusinessProfileForCourt, getAdminIdForCourt, bookings, currentAdminUser, isAdminAuthenticated]);
 
   // Submit payment receipt (for manual Mercado Pago Alias/Link or CBU)
   const submitPaymentReceipt = useCallback((bookingCodeOrId: string, receiptUrl: string, paymentReference?: string): Booking | undefined => {
@@ -1002,25 +1077,124 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return createBooking(input);
   }, [createBooking]);
 
-  // Cancel booking
-  const cancelBooking = useCallback((bookingId: string) => {
-    let targetBooking: Booking | undefined;
-    const updated = bookings.map(b => {
-      if (b.id === bookingId) {
-        targetBooking = {
-          ...b,
-          status: 'cancelled' as const,
-          paymentStatus: 'reembolsado' as const
-        };
-        return targetBooking;
-      }
-      return b;
-    });
-    setBookings(updated);
-    if (targetBooking) {
-      saveBookingToFirestore(targetBooking);
+  // Cancel booking with automatic Mercado Pago refund & admin visual confirmation support
+  const cancelBooking = useCallback(async (
+    bookingId: string,
+    options?: { forceManual?: boolean; notifyWhatsApp?: boolean }
+  ) => {
+    const booking = bookings.find(b => b.id === bookingId || b.bookingCode === bookingId);
+    if (!booking) {
+      return { success: false, mpRefunded: false, refundAmount: 0, message: 'Turno no encontrado.' };
     }
-  }, [bookings]);
+
+    const paidAmount = Number(booking.amountPaid) || 0;
+    const court = courts.find(c => c.id === booking.courtId);
+    const ownerAdminId = normalizeAdminKey(booking.adminId) || getAdminIdForCourt(court);
+
+    let mpRefunded = false;
+    let manualRefundRequired = paidAmount > 0 && booking.paymentMethod !== 'mercadopago';
+    let refundId = paidAmount > 0 ? `DEV-${Date.now().toString().slice(-6)}` : '';
+    let resultMessage = '';
+
+    // Request real Mercado Pago refund if paid online via Mercado Pago
+    if (paidAmount > 0 && booking.paymentMethod === 'mercadopago' && !options?.forceManual) {
+      try {
+        const resp = await fetch('/api/mercadopago/refund', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            bookingCode: booking.bookingCode,
+            paymentReference: booking.paymentReference,
+            amountPaid: paidAmount,
+            adminId: ownerAdminId
+          })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data?.ok) {
+          return {
+            success: false,
+            mpRefunded: false,
+            refundAmount: paidAmount,
+            message: data?.error || 'Mercado Pago rechazó la devolución automática.'
+          };
+        }
+
+        mpRefunded = Boolean(data.mpRefunded);
+        manualRefundRequired = Boolean(data.manualRefundRequired);
+        if (data.refundId) refundId = String(data.refundId);
+        if (data.message) resultMessage = String(data.message);
+      } catch (err: any) {
+        return {
+          success: false,
+          mpRefunded: false,
+          refundAmount: paidAmount,
+          message: err?.message || 'Error de conexión al intentar devolver el pago en Mercado Pago.'
+        };
+      }
+    }
+
+    const targetBooking: Booking = {
+      ...booking,
+      status: 'cancelled',
+      paymentStatus: paidAmount > 0 ? 'reembolsado' : booking.paymentStatus,
+      refundAmount: paidAmount,
+      refundedAt: new Date().toISOString(),
+      refundReference: refundId || undefined
+    };
+
+    const updated = bookings.map(b => b.id === booking.id ? targetBooking : b);
+    setBookings(updated);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(updated));
+    } catch {}
+    await saveBookingToFirestore(targetBooking);
+
+    // Record WhatsApp refund notification log and optionally open WhatsApp
+    if (paidAmount > 0 || options?.notifyWhatsApp) {
+      const courtProfile = getBusinessProfileForCourt(court);
+      const complexName = booking.establishment || courtProfile.complexName || 'DeportesPMY';
+      const refundText = paidAmount > 0
+        ? `Hola ${booking.clientName}, te informamos que tu turno #${booking.bookingCode} en *${complexName}* (${booking.courtName}, ${booking.date} ${booking.startTime} hs) fue *CANCELADO*. ${mpRefunded ? `Ya procesamos la devolución automática de *$${paidAmount.toLocaleString('es-AR')}* a tu cuenta de Mercado Pago (Ref: ${refundId}).` : `Corresponde la devolución de *$${paidAmount.toLocaleString('es-AR')}* abonados (Ref: ${refundId}).`}`
+        : `Hola ${booking.clientName}, te informamos que tu reserva #${booking.bookingCode} en *${complexName}* (${booking.courtName}, ${booking.date} ${booking.startTime} hs) fue cancelada y el horario quedó liberado.`;
+
+      const log: WhatsAppNotificationLog = {
+        id: `wa-ref-${Date.now()}`,
+        bookingCode: booking.bookingCode,
+        recipientName: booking.clientName,
+        recipientPhone: booking.clientPhone,
+        messagePreview: refundText.slice(0, 160) + (refundText.length > 160 ? '...' : ''),
+        sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
+        status: 'delivered',
+        adminId: ownerAdminId,
+        courtId: booking.courtId
+      };
+      setWhatsappLogs(prev => {
+        const next = [log, ...prev];
+        try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
+        return next;
+      });
+
+      if (options?.notifyWhatsApp && booking.clientPhone) {
+        const cleanPhone = booking.clientPhone.replace(/\D/g, '');
+        if (cleanPhone) {
+          window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(refundText)}`, '_blank');
+        }
+      }
+    }
+
+    return {
+      success: true,
+      mpRefunded,
+      manualRefundRequired,
+      refundAmount: paidAmount,
+      refundId: refundId || undefined,
+      message: resultMessage || (mpRefunded
+        ? `Turno cancelado y $${paidAmount.toLocaleString('es-AR')} devueltos automáticamente por Mercado Pago.`
+        : paidAmount > 0
+        ? `Turno cancelado y marcado como reembolsado ($${paidAmount.toLocaleString('es-AR')}).`
+        : 'Turno cancelado y horario liberado.')
+    };
+  }, [bookings, courts, getAdminIdForCourt, getBusinessProfileForCourt]);
 
   // Collect balance at court
   const collectBalanceAtCourt = useCallback((bookingId: string) => {
@@ -1329,6 +1503,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSearchQuery,
     activeTab,
     setActiveTab,
+    selectedEstablishmentKey,
+    setSelectedEstablishmentKey,
     isAdminAuthenticated,
     isSuperAdmin,
     currentAdminUser,
@@ -1348,6 +1524,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteCourt,
     updateCourt,
     updateBusinessProfile,
+    toggleAdminPaymentPause,
     updateDeveloperContact,
     addAdminUser,
     updateAdminUser,
@@ -1389,6 +1566,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     selectedSport,
     searchQuery,
     activeTab,
+    selectedEstablishmentKey,
     isAdminAuthenticated,
     isSuperAdmin,
     currentAdminUser,
@@ -1403,6 +1581,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteCourt,
     updateCourt,
     updateBusinessProfile,
+    toggleAdminPaymentPause,
     updateDeveloperContact,
     addAdminUser,
     updateAdminUser,

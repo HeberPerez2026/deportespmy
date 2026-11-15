@@ -3,6 +3,7 @@ import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/Header';
 import { HeroBanner } from './components/HeroBanner';
 import { CourtCatalog } from './components/CourtCatalog';
+import { EstablishmentsView } from './components/EstablishmentsView';
 import { ReviewsSection } from './components/ReviewsSection';
 import { AdminDashboard } from './components/AdminPanel/AdminDashboard';
 import { AdminLoginModal } from './components/AdminLoginModal';
@@ -179,11 +180,9 @@ const MainContent: React.FC = () => {
               </>
             )}
 
-            {/* PLAYER VIEW 2: NUESTRAS CANCHAS & TARIFAS */}
-            {activeTab === 'canchas' && (
-              <div className="py-6">
-                <CourtCatalog onOpenAdminLogin={() => setIsAdminLoginOpen(true)} />
-              </div>
+            {/* PLAYER VIEW 2: ESTABLECIMIENTOS & CENTROS DEPORTIVOS */}
+            {activeTab === 'establecimientos' && (
+              <EstablishmentsView onOpenAdminLogin={() => setIsAdminLoginOpen(true)} />
             )}
 
             {/* PLAYER VIEW 4: OPINIONES Y VALORACIONES */}

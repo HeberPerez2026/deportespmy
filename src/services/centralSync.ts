@@ -230,7 +230,9 @@ export const subscribeToBusinessProfile = (
             mpAccountNickname: data.mpAccountNickname || '',
             mpTokenExpiresAt: data.mpTokenExpiresAt || '',
             mpConnectedAt: data.mpConnectedAt || '',
-            whatsappTemplate: data.whatsappTemplate || ''
+            whatsappTemplate: data.whatsappTemplate || '',
+            mpPaused: Boolean(data.mpPaused),
+            transferPaused: Boolean(data.transferPaused)
           });
         } else if (profileKey) {
           // If a new admin does not have a profile saved yet, return 100% empty fields
@@ -254,7 +256,9 @@ export const subscribeToBusinessProfile = (
             mpAccountNickname: '',
             mpTokenExpiresAt: '',
             mpConnectedAt: '',
-            whatsappTemplate: ''
+            whatsappTemplate: '',
+            mpPaused: false,
+            transferPaused: false
           });
         }
       },
