@@ -10,6 +10,9 @@ export default defineConfig(() => {
   return {
     base: './',
     plugins: [react(), tailwindcss()],
+    define: {
+      'import.meta.env.VITE_HAS_SAME_ORIGIN_API': JSON.stringify(Boolean(process.env.VERCEL)),
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { apiUrl, safeParseJsonResponse } from '../../utils/api';
+import { apiUrl, getApiBaseUrl, safeParseJsonResponse } from '../../utils/api';
 import { 
   Building2, 
   CreditCard, 
@@ -65,8 +65,14 @@ export const AdminProfileSettings: React.FC = () => {
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
       const origin = event.origin;
+      const apiBase = getApiBaseUrl();
+      const isTrustedApiOrigin = Boolean(apiBase) && origin === apiBase;
       if (
+        !isTrustedApiOrigin &&
         !origin.endsWith('.run.app') &&
+        !origin.endsWith('.onrender.com') &&
+        !origin.endsWith('.koyeb.app') &&
+        !origin.endsWith('.vercel.app') &&
         !origin.includes('localhost') &&
         !origin.includes('deportespmy.com.ar') &&
         origin !== window.location.origin

@@ -8,15 +8,27 @@ export const PUBLISHED_BACKEND_URL =
  *   requests are routed to VITE_API_BASE_URL or the published Cloud Run backend.
  */
 export function getApiBaseUrl(): string {
-  const envBase = (import.meta as unknown as { env?: Record<string, string | undefined> })?.env
-    ?.VITE_API_BASE_URL;
+  const env = (import.meta as unknown as { env?: Record<string, string | boolean | undefined> })?.env;
+  const envBase = env?.VITE_API_BASE_URL;
   if (typeof envBase === 'string' && envBase.trim().startsWith('http')) {
     return envBase.trim().replace(/\/$/, '');
   }
 
+  if (env?.VITE_HAS_SAME_ORIGIN_API === true || env?.VITE_HAS_SAME_ORIGIN_API === 'true') {
+    return '';
+  }
+
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase();
-    if (host.endsWith('.run.app') || host === 'localhost' || host === '127.0.0.1') {
+    if (
+      host.endsWith('.run.app') ||
+      host.endsWith('.vercel.app') ||
+      host.endsWith('.netlify.app') ||
+      host.endsWith('.onrender.com') ||
+      host.endsWith('.koyeb.app') ||
+      host === 'localhost' ||
+      host === '127.0.0.1'
+    ) {
       return '';
     }
     return PUBLISHED_BACKEND_URL;
@@ -32,8 +44,7 @@ export function apiUrl(path: string): string {
 
 export function isStaticCustomDomain(): boolean {
   if (typeof window === 'undefined') return false;
-  const host = window.location.hostname.toLowerCase();
-  return !host.endsWith('.run.app') && host !== 'localhost' && host !== '127.0.0.1';
+  return getApiBaseUrl() !== '';
 }
 
 export async function safeParseJsonResponse(res: Response): Promise<any> {
@@ -44,8 +55,9 @@ export async function safeParseJsonResponse(res: Response): Promise<any> {
   }
   if (trimmed.startsWith('<')) {
     if (isStaticCustomDomain()) {
+      const targetBackend = getApiBaseUrl() || PUBLISHED_BACKEND_URL;
       throw new Error(
-        `No se pudo contactar al backend de Mercado Pago desde ${window.location.hostname} (HTTP ${res.status}). Asegurate de tener publicada la app en AI Studio (${PUBLISHED_BACKEND_URL}) o realizá la vinculación directamente desde el enlace de AI Studio.`
+        `No se pudo contactar al backend de Mercado Pago (${targetBackend}) desde ${window.location.hostname} (HTTP ${res.status}). Verificá que el servidor backend esté activo.`
       );
     }
     throw new Error(

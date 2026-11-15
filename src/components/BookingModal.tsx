@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { apiUrl, safeParseJsonResponse } from '../utils/api';
+import { apiUrl, getApiBaseUrl, safeParseJsonResponse } from '../utils/api';
 import { Court, PaymentMethod, Booking } from '../types';
 import { 
   X, 
@@ -144,8 +144,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     // 2. Listen for postMessage from Checkout Pro popup return
     const handleMessage = (event: MessageEvent) => {
       const origin = event.origin;
+      const apiBase = getApiBaseUrl();
+      const isTrustedApiOrigin = Boolean(apiBase) && origin === apiBase;
       if (
+        !isTrustedApiOrigin &&
         !origin.endsWith('.run.app') &&
+        !origin.endsWith('.onrender.com') &&
+        !origin.endsWith('.koyeb.app') &&
+        !origin.endsWith('.vercel.app') &&
         !origin.includes('localhost') &&
         !origin.includes('deportespmy.com.ar') &&
         origin !== window.location.origin
