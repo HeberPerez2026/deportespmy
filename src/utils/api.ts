@@ -24,6 +24,9 @@ export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
     const host = window.location.hostname.toLowerCase();
     if (
+      host === 'deportespmy.com.ar' ||
+      host === 'www.deportespmy.com.ar' ||
+      host.endsWith('.deportespmy.com.ar') ||
       host.endsWith('.run.app') ||
       host.endsWith('.vercel.app') ||
       host.endsWith('.netlify.app') ||
