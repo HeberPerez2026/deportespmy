@@ -63,7 +63,7 @@ function cleanEnvValue(val?: string): string {
 }
 
 function resolveMpOAuthCredentials(): { clientId: string; clientSecret: string } {
-  const clientId =
+  const envClient =
     cleanEnvValue(process.env.MP_CLIENT_ID) ||
     cleanEnvValue(process.env.mp_client_id) ||
     cleanEnvValue(process.env.MERCADOPAGO_CLIENT_ID) ||
@@ -73,7 +73,7 @@ function resolveMpOAuthCredentials(): { clientId: string; clientSecret: string }
     cleanEnvValue(process.env.mp_app_id) ||
     cleanEnvValue(process.env.MERCADOPAGO_APP_ID);
 
-  const clientSecret =
+  const envSecret =
     cleanEnvValue(process.env.MP_CLIENT_SECRET) ||
     cleanEnvValue(process.env.mp_client_secret) ||
     cleanEnvValue(process.env.MERCADOPAGO_CLIENT_SECRET) ||
@@ -82,6 +82,9 @@ function resolveMpOAuthCredentials(): { clientId: string; clientSecret: string }
     cleanEnvValue(process.env.MP_SECRET) ||
     cleanEnvValue(process.env.mp_secret) ||
     cleanEnvValue(process.env.MERCADOPAGO_SECRET);
+
+  const clientId = envClient || '3170313159721860';
+  const clientSecret = envSecret || 'hwsrqOkpZn7zqTszTVbt97HaGbfStE42';
 
   return { clientId, clientSecret };
 }
@@ -451,7 +454,7 @@ async function resolveAdminAccessToken(adminId?: string): Promise<string | null>
     return null;
   }
 
-  return process.env.MP_ACCESS_TOKEN || null;
+  return cleanEnvValue(process.env.MP_ACCESS_TOKEN) || 'APP_USR-8232141916022310-111512-9d71e62289aa4077a789ee389a7cbbde-3844389793';
 }
 
 export function createApiApp() {
