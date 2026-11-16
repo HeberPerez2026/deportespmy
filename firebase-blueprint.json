@@ -156,6 +156,27 @@
         "isActive": { "type": "boolean" }
       },
       "required": ["username", "password", "role"]
+    },
+    "SiteContent": {
+      "title": "SiteContent",
+      "description": "SuperAdmin-editable texts displayed across player views",
+      "type": "object",
+      "properties": {
+        "navTurnosLabel": { "type": "string", "maxLength": 64 },
+        "navComplejosLabel": { "type": "string", "maxLength": 64 },
+        "navOpinionesLabel": { "type": "string", "maxLength": 64 },
+        "heroLocationEyebrow": { "type": "string", "maxLength": 200 },
+        "heroTitle": { "type": "string", "maxLength": 200 },
+        "heroSubtitle": { "type": "string", "maxLength": 500 },
+        "heroKpiCourtsLabel": { "type": "string", "maxLength": 64 },
+        "heroKpiComplexesLabel": { "type": "string", "maxLength": 64 },
+        "heroBadgeMpLabel": { "type": "string", "maxLength": 100 },
+        "heroBadgeWaLabel": { "type": "string", "maxLength": 100 },
+        "heroSearchPlaceholder": { "type": "string", "maxLength": 200 },
+        "catalogEyebrow": { "type": "string", "maxLength": 120 },
+        "catalogTitlePrefix": { "type": "string", "maxLength": 120 },
+        "catalogSubtitle": { "type": "string", "maxLength": 400 }
+      }
     }
   },
   "firestore": {
@@ -178,6 +199,10 @@
     "/settings/developerContact": {
       "schema": "DeveloperContact",
       "description": "Developer contact and support coordinates"
+    },
+    "/settings/siteContent": {
+      "schema": "SiteContent",
+      "description": "Editable player-view copy managed by SuperAdmin"
     },
     "/admins/{adminId}": {
       "schema": "AdminUser",

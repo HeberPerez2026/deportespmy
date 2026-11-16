@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useLayoutEffect, useState } from 'react';
 
 export type ColorPaletteId = 'volt' | 'esmeralda' | 'azul' | 'ambar' | 'carmesi';
+export type ThemeMode = 'dark' | 'light';
 
 export interface PaletteOption {
   id: ColorPaletteId;
@@ -16,27 +17,27 @@ export const COLOR_PALETTES: PaletteOption[] = [
     name: 'Lima Estadio',
     swatchPrimary: '#B8F230',
     swatchSecondary: '#38BDF8',
-    description: 'Estadio Nocturno clásico lima floodlight',
+    description: 'Lima floodlight deportivo y azul cielo',
   },
   {
     id: 'esmeralda',
     name: 'Esmeralda',
     swatchPrimary: '#10B981',
     swatchSecondary: '#22D3EE',
-    description: 'Verde césped nocturno y cian',
+    description: 'Verde césped y cian',
   },
   {
     id: 'azul',
     name: 'Azul Golfo',
-    swatchPrimary: '#38BDF8',
-    swatchSecondary: '#60A5FA',
+    swatchPrimary: '#0EA5E9',
+    swatchSecondary: '#3B82F6',
     description: 'Azul reflector atlántico',
   },
   {
     id: 'ambar',
     name: 'Ámbar Copa',
     swatchPrimary: '#F59E0B',
-    swatchSecondary: '#FB923C',
+    swatchSecondary: '#EA580C',
     description: 'Dorado torneo y reflector cálido',
   },
   {
@@ -48,12 +49,16 @@ export const COLOR_PALETTES: PaletteOption[] = [
   },
 ];
 
-const STORAGE_KEY = 'dpmy_estadio_palette_v2';
+const PALETTE_STORAGE_KEY = 'dpmy_estadio_palette_v2';
+const MODE_STORAGE_KEY = 'dpmy_theme_mode_v1';
 
 interface ThemeContextType {
   palette: ColorPaletteId;
   setPalette: (next: ColorPaletteId) => void;
   activePalette: PaletteOption;
+  mode: ThemeMode;
+  setMode: (next: ThemeMode) => void;
+  toggleMode: () => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -69,7 +74,7 @@ const VALID_PALETTES = new Set<ColorPaletteId>([
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [palette, setPaletteState] = useState<ColorPaletteId>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY) as ColorPaletteId | null;
+      const saved = localStorage.getItem(PALETTE_STORAGE_KEY) as ColorPaletteId | null;
       if (saved && VALID_PALETTES.has(saved)) {
         return saved;
       }
@@ -77,14 +82,33 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return 'volt';
   });
 
-  useEffect(() => {
-    document.documentElement.classList.add('dark');
-    document.documentElement.setAttribute('data-palette', palette);
-    document.documentElement.removeAttribute('data-theme');
+  const [mode, setModeState] = useState<ThemeMode>(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, palette);
+      const saved = localStorage.getItem(MODE_STORAGE_KEY);
+      if (saved === 'light' || saved === 'dark') {
+        return saved;
+      }
     } catch {}
-  }, [palette]);
+    return 'dark';
+  });
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle('dark', mode === 'dark');
+    root.setAttribute('data-theme', mode);
+    root.setAttribute('data-palette', palette);
+    try {
+      localStorage.setItem(PALETTE_STORAGE_KEY, palette);
+      localStorage.setItem(MODE_STORAGE_KEY, mode);
+    } catch {}
+  }, [palette, mode]);
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.classList.toggle('dark', mode === 'dark');
+    root.setAttribute('data-theme', mode);
+    root.setAttribute('data-palette', palette);
+  }, [palette, mode]);
 
   const setPalette = (next: ColorPaletteId) => {
     if (VALID_PALETTES.has(next)) {
@@ -92,11 +116,28 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const setMode = (next: ThemeMode) => {
+    setModeState(next === 'light' ? 'light' : 'dark');
+  };
+
+  const toggleMode = () => {
+    setModeState((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
   const activePalette =
     COLOR_PALETTES.find((p) => p.id === palette) || COLOR_PALETTES[0];
 
   return (
-    <ThemeContext.Provider value={{ palette, setPalette, activePalette }}>
+    <ThemeContext.Provider
+      value={{
+        palette,
+        setPalette,
+        activePalette,
+        mode,
+        setMode,
+        toggleMode,
+      }}
+    >
       {children}
     </ThemeContext.Provider>
   );

@@ -14,7 +14,8 @@ import {
   PaymentStatus,
   BusinessProfile,
   AdminUser,
-  DeveloperContact
+  DeveloperContact,
+  SiteContent
 } from '../types';
 import { 
   INITIAL_COURTS, 
@@ -24,6 +25,7 @@ import {
   DEFAULT_BUSINESS_PROFILE,
   EMPTY_BUSINESS_PROFILE,
   DEFAULT_DEVELOPER_CONTACT,
+  DEFAULT_SITE_CONTENT,
   INITIAL_ADMINS,
   getIsoDate 
 } from '../data/mockData';
@@ -36,12 +38,15 @@ import {
   deleteBookingFromFirestore, 
   subscribeToReviews, 
   saveReviewToFirestore, 
-  saveReviewReplyToFirestore, 
+  saveReviewReplyToFirestore,
+  deleteReviewFromFirestore,
   subscribeToBusinessProfile,
   subscribeToAllProfiles,
   saveBusinessProfileToFirestore,
   subscribeToDeveloperContact,
   saveDeveloperContactToFirestore,
+  subscribeToSiteContent,
+  saveSiteContentToFirestore,
   subscribeToAdmins,
   saveAdminUserToFirestore,
   deleteAdminUserFromFirestore,
@@ -85,6 +90,7 @@ interface AppContextType {
   getAdminIdForCourt: (court?: Court | null) => string;
   getBusinessProfileForCourt: (court?: Court | null) => BusinessProfile;
   developerContact: DeveloperContact;
+  siteContent: SiteContent;
   admins: AdminUser[];
   
   // Navigation & Filters
@@ -129,8 +135,10 @@ interface AppContextType {
   updateBusinessProfile: (newProfile: Partial<BusinessProfile>) => Promise<void>;
   toggleAdminPaymentPause: (adminUsername: string, method: 'mp' | 'transfer') => Promise<void>;
 
-  // Developer Contact Management (SuperAdmin only)
+  // Developer Contact & Player Site Content Management (SuperAdmin only)
   updateDeveloperContact: (newContact: Partial<DeveloperContact>) => Promise<void>;
+  updateSiteContent: (newContent: Partial<SiteContent>) => Promise<void>;
+  resetSiteContent: () => Promise<void>;
 
   // SuperAdmin User Management
   addAdminUser: (admin: Omit<AdminUser, 'id' | 'createdAt'>) => Promise<void>;
@@ -159,6 +167,7 @@ interface AppContextType {
   createManualAdminBooking: (input: BookingInput) => Booking;
   addReview: (review: Omit<Review, 'id' | 'date'>) => void;
   replyToReview: (reviewId: string, replyText: string) => void;
+  deleteReview: (reviewId: string) => Promise<void>;
   
   // Slots & Stats helpers
   getSlotsForCourtAndDate: (courtId: string, date: string) => TimeSlot[];
@@ -182,6 +191,7 @@ const STORAGE_KEYS = {
   WHATSAPP: 'deportespmy_whatsapp_v6',
   PROFILE: 'deportespmy_profile_v6',
   DEVELOPER_CONTACT: 'deportespmy_dev_contact_v6',
+  SITE_CONTENT: 'deportespmy_site_content_v1',
   ADMINS: 'deportespmy_admins_v6',
   USER_PHONE: 'deportespmy_user_phone',
   USER_NAME: 'deportespmy_user_name',
@@ -261,6 +271,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return saved ? JSON.parse(saved) : DEFAULT_DEVELOPER_CONTACT;
     } catch {
       return DEFAULT_DEVELOPER_CONTACT;
+    }
+  });
+
+  // Site Content State (SuperAdmin editable, all player-view texts)
+  const [siteContent, setSiteContent] = useState<SiteContent>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.SITE_CONTENT);
+      return saved ? { ...DEFAULT_SITE_CONTENT, ...JSON.parse(saved) } : DEFAULT_SITE_CONTENT;
+    } catch {
+      return DEFAULT_SITE_CONTENT;
     }
   });
 
@@ -445,6 +465,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setLastSyncTime(new Date());
     });
 
+    // 6b. Subscribe to editable Site Content (for player views)
+    const unsubSiteContent = subscribeToSiteContent((remoteContent) => {
+      const merged: SiteContent = { ...DEFAULT_SITE_CONTENT, ...remoteContent };
+      setSiteContent(merged);
+      try {
+        localStorage.setItem(STORAGE_KEYS.SITE_CONTENT, JSON.stringify(merged));
+      } catch {}
+      setLastSyncTime(new Date());
+    });
+
     // 7. Subscribe to Admins
     const unsubAdmins = subscribeToAdmins((remoteAdmins) => {
       if (remoteAdmins.length > 0) {
@@ -464,6 +494,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubProfile();
       unsubAllProfiles();
       unsubDevContact();
+      unsubSiteContent();
       unsubAdmins();
     };
   }, [currentAdminUser?.username]);
@@ -572,6 +603,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(STORAGE_KEYS.DEVELOPER_CONTACT, JSON.stringify(nextContact));
     await saveDeveloperContactToFirestore(nextContact);
   }, [developerContact]);
+
+  // Update Site Content (SuperAdmin editable, player-view texts)
+  const updateSiteContent = useCallback(async (partialContent: Partial<SiteContent>) => {
+    const nextContent: SiteContent = {
+      ...siteContent,
+      ...partialContent
+    };
+    setSiteContent(nextContent);
+    try {
+      localStorage.setItem(STORAGE_KEYS.SITE_CONTENT, JSON.stringify(nextContent));
+    } catch {}
+    await saveSiteContentToFirestore(nextContent);
+  }, [siteContent]);
+
+  const resetSiteContent = useCallback(async () => {
+    setSiteContent(DEFAULT_SITE_CONTENT);
+    try {
+      localStorage.setItem(STORAGE_KEYS.SITE_CONTENT, JSON.stringify(DEFAULT_SITE_CONTENT));
+    } catch {}
+    await saveSiteContentToFirestore(DEFAULT_SITE_CONTENT);
+  }, []);
 
   // Add Admin User Action (SuperAdmin only)
   const addAdminUser = useCallback(async (adminData: Omit<AdminUser, 'id' | 'createdAt'>) => {
@@ -1294,6 +1346,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     const nextReviews = [newRev, ...reviews];
     setReviews(nextReviews);
+    try {
+      localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(nextReviews));
+    } catch {}
     saveReviewToFirestore(newRev);
   }, [reviews]);
 
@@ -1313,7 +1368,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return r;
     });
     setReviews(nextReviews);
+    try {
+      localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(nextReviews));
+    } catch {}
     saveReviewReplyToFirestore(reviewId, adminReply);
+  }, [reviews]);
+
+  // Delete review (SuperAdmin moderation)
+  const deleteReview = useCallback(async (reviewId: string) => {
+    const nextReviews = reviews.filter(r => r.id !== reviewId);
+    setReviews(nextReviews);
+    try {
+      localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(nextReviews));
+    } catch {}
+    await deleteReviewFromFirestore(reviewId);
   }, [reviews]);
 
   // Generate Slots for a Court on a specific Date using court's custom open/close hours
@@ -1521,6 +1589,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     getAdminIdForCourt,
     getBusinessProfileForCourt,
     developerContact,
+    siteContent,
     admins,
     selectedDate,
     setSelectedDate,
@@ -1553,6 +1622,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateBusinessProfile,
     toggleAdminPaymentPause,
     updateDeveloperContact,
+    updateSiteContent,
+    resetSiteContent,
     addAdminUser,
     updateAdminUser,
     deleteAdminUser,
@@ -1567,6 +1638,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     createManualAdminBooking,
     addReview,
     replyToReview,
+    deleteReview,
     getSlotsForCourtAndDate,
     getMonthlyStats,
     generateWhatsAppMessage,
@@ -1588,6 +1660,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     getAdminIdForCourt,
     getBusinessProfileForCourt,
     developerContact,
+    siteContent,
     admins,
     selectedDate,
     selectedSport,
@@ -1610,6 +1683,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateBusinessProfile,
     toggleAdminPaymentPause,
     updateDeveloperContact,
+    updateSiteContent,
+    resetSiteContent,
     addAdminUser,
     updateAdminUser,
     deleteAdminUser,
@@ -1624,6 +1699,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     createManualAdminBooking,
     addReview,
     replyToReview,
+    deleteReview,
     getSlotsForCourtAndDate,
     getMonthlyStats,
     generateWhatsAppMessage,

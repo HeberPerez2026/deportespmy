@@ -1,4 +1,4 @@
-import { Court, Booking, Review, MonthlyStats, WhatsAppNotificationLog, BusinessProfile, AdminUser, DeveloperContact } from '../types';
+import { Court, Booking, Review, MonthlyStats, WhatsAppNotificationLog, BusinessProfile, AdminUser, DeveloperContact, SiteContent } from '../types';
 
 // Helper to get formatted date string: YYYY-MM-DD
 export function getIsoDate(daysFromToday = 0): string {
@@ -83,6 +83,76 @@ export const DEFAULT_DEVELOPER_CONTACT: DeveloperContact = {
   whatsappNumber: '+54 9 280 412-3456',
   email: 'soporte@deportespmy.com.ar',
   websiteUrl: 'https://deportespmy.com.ar'
+};
+
+export const DEFAULT_SITE_CONTENT: SiteContent = {
+  navTurnosLabel: 'Turnos',
+  navComplejosLabel: 'Complejos',
+  navOpinionesLabel: 'Opiniones',
+
+  heroLocationEyebrow: 'Puerto Madryn, Chubut · Reservas Online · Turnos de 1 hora',
+  heroTitle: 'Reservá tu cancha en Puerto Madryn',
+  heroSubtitle: 'Consultá horarios disponibles en tiempo real, elegí seña 50% o pago total y recibí tu comprobante al instante por WhatsApp.',
+  heroKpiCourtsLabel: 'Canchas activas',
+  heroKpiComplexesLabel: 'Complejos',
+  heroBadgeMpLabel: 'Mercado Pago & Transferencia',
+  heroBadgeWaLabel: 'Confirmación WhatsApp',
+  heroSearchPlaceholder: 'Buscar por cancha, establecimiento o superficie...',
+  heroTodayLabel: 'Hoy',
+  heroTomorrowLabel: 'Mañana',
+  heroAllSportsLabel: 'Todos los deportes',
+
+  catalogEyebrow: 'Complejos Habilitados',
+  catalogTitlePrefix: 'Disponibilidad para el',
+  catalogSubtitle: 'Seleccioná un horario libre para ver tarifas completas y confirmar tu reserva.',
+  catalogLegendAvailable: 'Disponible',
+  catalogLegendOccupied: 'Ocupado',
+  catalogLegendNight: 'Tarifa nocturna c/luz',
+  catalogEmptyTitle: 'Aún no hay canchas publicadas',
+  catalogEmptySubtitle: 'Cuando los administradores carguen sus espacios deportivos, superficies y tarifas desde el panel, aparecerán listados aquí para reservar en tiempo real.',
+  catalogEmptyButtonLabel: 'Acceso Clubes para publicar canchas',
+  catalogNoResultsTitle: 'Sin resultados para tu búsqueda',
+  catalogNoResultsSubtitle: 'Probá con otro término o seleccioná otra disciplina deportiva.',
+  catalogNoResultsButtonLabel: 'Mostrar todas las canchas',
+  catalogRateDayLabel: 'Tarifa diurna',
+  catalogRateNightLabel: 'Nocturno c/luz',
+  catalogDepositLabel: 'Seña reserva',
+  catalogIncludesLabel: 'Incluye:',
+  catalogSchedulesPrefix: 'Horarios',
+  catalogFullScheduleLabel: 'Ver agenda completa',
+  catalogCardFooterHint: 'Confirmación y comprobante vía WhatsApp',
+  catalogReserveButtonLabel: 'Reservar',
+
+  homeReviewsEyebrow: 'Comunidad deportiva · Puerto Madryn',
+  homeReviewsEmptyHeading: 'Compartí tu opinión después del partido',
+  homeReviewsSubtitle: 'Leé evaluaciones reales de jugadores sobre superficie, iluminación LED, vestuarios y puntualidad en cada complejo.',
+  homeReviewsButtonLabel: 'Explorar opiniones',
+
+  estEyebrow: 'Guía de clubes en Puerto Madryn',
+  estTitle: 'Establecimientos y Centros Deportivos',
+  estSubtitle: 'Ingresá a cada complejo para consultar exclusivamente sus canchas, fotos, ubicación y reseñas verificadas de jugadores.',
+  estSearchPlaceholder: 'Buscar complejo por nombre o dirección...',
+  estAllSportsLabel: 'Todos',
+  estEmptyTitle: 'Aún no hay establecimientos registrados',
+  estEmptySubtitle: 'Cuando los administradores configuren su complejo y publiquen canchas, aparecerán listados aquí para ingresar a cada sede.',
+  estEnterButtonLabel: 'Ingresar',
+  estBackToDirectoryLabel: 'Volver al directorio de complejos',
+  estDetailBadgeLabel: 'Complejo deportivo habilitado',
+  estCourtsTabLabel: 'Canchas y turnos',
+  estReviewsTabLabel: 'Opiniones',
+  estWhatsappButtonLabel: 'WhatsApp del complejo',
+  estMinPriceLabel: 'Turnos desde',
+
+  reviewsEyebrow: 'Comunidad DeportesPMY',
+  reviewsDescription: 'Evaluaciones de jugadores sobre el estado de la cancha, iluminación, vestuarios y atención del complejo.',
+  reviewsWriteButtonLabel: 'Dejar mi valoración',
+  reviewsSurfaceLabel: 'Superficie y césped',
+  reviewsLightingLabel: 'Iluminación nocturna',
+  reviewsFacilitiesLabel: 'Vestuarios y duchas',
+  reviewsServiceLabel: 'Atención y puntualidad',
+  reviewsEmptyTitle: 'Aún no hay opiniones registradas',
+  reviewsEmptySubtitle: 'Las valoraciones aparecerán aquí a medida que los jugadores compartan su experiencia.',
+  reviewsModalTitle: 'Dejar opinión sobre la cancha',
 };
 
 // Initial system accounts: superadmin requested by user

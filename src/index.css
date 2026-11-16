@@ -8,17 +8,122 @@
 }
 
 /* ============================================================================
-   DeportesPMY — Tema "Estadio Nocturno"
-   Oscuro de alto contraste, acentos floodlight personalizables y tipografía
-   de marcador deportivo con números tabulares.
+   DeportesPMY — Dual Theme System (Modo Claro / Modo Oscuro "Estadio Nocturno")
+   + 5 Paletas de Color Personalizables con contraste WCAG garantizado.
    ============================================================================ */
+
+/* -------- MODO CLARO (DEFAULT :root) -------- */
 :root {
+  color-scheme: light;
+
+  --bg-canvas: #F3F5F8;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #F8FAFC;
+  --bg-subtle: #E8EDF3;
+  --bg-header: rgba(255, 255, 255, 0.94);
+  --bg-hero: #EDF1F6;
+  --hero-scrim: linear-gradient(180deg, rgba(243, 245, 248, 0.88) 0%, rgba(243, 245, 248, 0.96) 100%);
+  --border-hairline: #D8E0EA;
+  --border-strong: #B6C2D2;
+
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+
+  /* Default Light Palette: Lima Estadio */
+  --accent: #A3E635;
+  --accent-hover: #BEF264;
+  --accent-ink: #0F172A;
+  --accent-fg: #0F172A;
+  --accent-bright: #65A30D;
+  --accent-secondary: #0284C7;
+  --accent-soft: rgba(132, 204, 22, 0.16);
+  --accent-soft-text: #3F6212;
+  --hero-glow: rgba(132, 204, 22, 0.18);
+  --hero-glow-2: rgba(2, 132, 199, 0.12);
+
+  --night-cue: #0284C7;
+  --mp-brand: #009EE3;
+  --mp-soft: rgba(0, 158, 227, 0.12);
+  --mp-text: #0369A1;
+}
+
+:root[data-palette="volt"] {
+  --accent: #A3E635;
+  --accent-hover: #BEF264;
+  --accent-ink: #0F172A;
+  --accent-fg: #0F172A;
+  --accent-bright: #65A30D;
+  --accent-secondary: #0284C7;
+  --accent-soft: rgba(132, 204, 22, 0.16);
+  --accent-soft-text: #3F6212;
+  --hero-glow: rgba(132, 204, 22, 0.18);
+  --hero-glow-2: rgba(2, 132, 199, 0.12);
+}
+
+:root[data-palette="esmeralda"] {
+  --accent: #10B981;
+  --accent-hover: #059669;
+  --accent-ink: #FFFFFF;
+  --accent-fg: #FFFFFF;
+  --accent-bright: #059669;
+  --accent-secondary: #0891B2;
+  --accent-soft: rgba(16, 185, 129, 0.13);
+  --accent-soft-text: #047857;
+  --hero-glow: rgba(16, 185, 129, 0.16);
+  --hero-glow-2: rgba(8, 145, 178, 0.12);
+}
+
+:root[data-palette="azul"] {
+  --accent: #0EA5E9;
+  --accent-hover: #0284C7;
+  --accent-ink: #FFFFFF;
+  --accent-fg: #FFFFFF;
+  --accent-bright: #0284C7;
+  --accent-secondary: #2563EB;
+  --accent-soft: rgba(14, 165, 233, 0.13);
+  --accent-soft-text: #0369A1;
+  --hero-glow: rgba(14, 165, 233, 0.16);
+  --hero-glow-2: rgba(37, 99, 235, 0.12);
+}
+
+:root[data-palette="ambar"] {
+  --accent: #F59E0B;
+  --accent-hover: #D97706;
+  --accent-ink: #0F172A;
+  --accent-fg: #0F172A;
+  --accent-bright: #D97706;
+  --accent-secondary: #EA580C;
+  --accent-soft: rgba(245, 158, 11, 0.15);
+  --accent-soft-text: #B45309;
+  --hero-glow: rgba(245, 158, 11, 0.16);
+  --hero-glow-2: rgba(234, 88, 12, 0.12);
+}
+
+:root[data-palette="carmesi"] {
+  --accent: #E11D48;
+  --accent-hover: #BE123C;
+  --accent-ink: #FFFFFF;
+  --accent-fg: #FFFFFF;
+  --accent-bright: #E11D48;
+  --accent-secondary: #EA580C;
+  --accent-soft: rgba(225, 29, 72, 0.12);
+  --accent-soft-text: #BE123C;
+  --hero-glow: rgba(225, 29, 72, 0.14);
+  --hero-glow-2: rgba(234, 88, 12, 0.11);
+}
+
+/* -------- MODO OSCURO "ESTADIO NOCTURNO" (:root.dark) -------- */
+:root.dark {
+  color-scheme: dark;
+
   --bg-canvas: #0D1117;
   --bg-surface: #161B22;
   --bg-elevated: #1C222B;
   --bg-subtle: #21262D;
-  --bg-header: #090D12;
+  --bg-header: rgba(9, 13, 18, 0.95);
   --bg-hero: #090D12;
+  --hero-scrim: linear-gradient(180deg, rgba(9, 13, 18, 0.88) 0%, rgba(13, 17, 23, 0.96) 100%);
   --border-hairline: #2A313C;
   --border-strong: #3B4454;
 
@@ -26,25 +131,13 @@
   --text-secondary: #CBD5E1;
   --text-muted: #8B949E;
 
-  /* Default: Lima Estadio (Volt Floodlight) */
-  --accent: #B8F230;
-  --accent-hover: #C8FA4B;
-  --accent-ink: #090D12;
-  --accent-fg: #090D12;
-  --accent-bright: #B8F230;
-  --accent-secondary: #38BDF8;
-  --accent-soft: rgba(184, 242, 48, 0.14);
-  --accent-soft-text: #C8FA4B;
-  --hero-glow: rgba(184, 242, 48, 0.14);
-  --hero-glow-2: rgba(56, 189, 248, 0.12);
-
   --night-cue: #38BDF8;
   --mp-brand: #009EE3;
   --mp-soft: rgba(0, 158, 227, 0.16);
   --mp-text: #38BDF8;
 }
 
-:root[data-palette="volt"] {
+:root.dark[data-palette="volt"] {
   --accent: #B8F230;
   --accent-hover: #C8FA4B;
   --accent-ink: #090D12;
@@ -57,7 +150,7 @@
   --hero-glow-2: rgba(56, 189, 248, 0.12);
 }
 
-:root[data-palette="esmeralda"] {
+:root.dark[data-palette="esmeralda"] {
   --accent: #10B981;
   --accent-hover: #34D399;
   --accent-ink: #06130E;
@@ -70,7 +163,7 @@
   --hero-glow-2: rgba(34, 211, 238, 0.12);
 }
 
-:root[data-palette="azul"] {
+:root.dark[data-palette="azul"] {
   --accent: #38BDF8;
   --accent-hover: #7DD3FC;
   --accent-ink: #090D12;
@@ -83,7 +176,7 @@
   --hero-glow-2: rgba(96, 165, 250, 0.12);
 }
 
-:root[data-palette="ambar"] {
+:root.dark[data-palette="ambar"] {
   --accent: #F59E0B;
   --accent-hover: #FBBF24;
   --accent-ink: #090D12;
@@ -96,7 +189,7 @@
   --hero-glow-2: rgba(251, 146, 60, 0.12);
 }
 
-:root[data-palette="carmesi"] {
+:root.dark[data-palette="carmesi"] {
   --accent: #F43F5E;
   --accent-hover: #FB7185;
   --accent-ink: #FFFFFF;
@@ -111,7 +204,6 @@
 
 @layer base {
   html, body {
-    color-scheme: dark;
     background-color: var(--bg-canvas);
     color: var(--text-primary);
     font-family: var(--font-sans);

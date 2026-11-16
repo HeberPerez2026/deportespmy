@@ -369,7 +369,7 @@ export const CourtsManager: React.FC = () => {
 
                   <div className="absolute bottom-3 left-3 right-3 text-white">
                     {court.establishment && (
-                      <span className="text-[10px] font-semibold uppercase text-[var(--accent-soft-text)] block">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-white/85 block">
                         {court.establishment}
                       </span>
                     )}
@@ -429,7 +429,7 @@ export const CourtsManager: React.FC = () => {
               <div className="p-3.5 bg-[var(--bg-elevated)] border-t border-[var(--border-hairline)] flex items-center justify-between gap-2">
                 <button
                   onClick={() => setDeleteConfirmId(court.id)}
-                  className="px-3 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
                   title="Eliminar esta cancha"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -453,7 +453,7 @@ export const CourtsManager: React.FC = () => {
       {deleteConfirmId && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4">
-            <div className="w-12 h-12 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
+            <div className="w-12 h-12 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
               <AlertTriangle className="w-6 h-6" />
             </div>
             <h3 className="text-lg font-bold text-[var(--text-primary)] font-heading">¿Eliminar esta cancha?</h3>
@@ -726,7 +726,7 @@ export const CourtsManager: React.FC = () => {
                 </div>
 
                 {imageUploadError && (
-                  <p className="text-[11px] text-rose-400 font-semibold">{imageUploadError}</p>
+                  <p className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold">{imageUploadError}</p>
                 )}
               </div>
 
@@ -993,7 +993,7 @@ export const CourtsManager: React.FC = () => {
                 </div>
 
                 {editImageError && (
-                  <p className="text-[11px] text-rose-400 font-semibold">{editImageError}</p>
+                  <p className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold">{editImageError}</p>
                 )}
               </div>
 

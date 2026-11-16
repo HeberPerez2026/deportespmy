@@ -11,6 +11,7 @@ import {
   X,
   Loader2,
   AlertCircle,
+  Trash2,
 } from 'lucide-react';
 
 interface ReviewsSectionProps {
@@ -48,11 +49,44 @@ const StarSelectorRow: React.FC<{
   </div>
 );
 
+const StarDisplayBar: React.FC<{ value: number; sizeClass?: string }> = ({
+  value,
+  sizeClass = 'w-4 h-4',
+}) => (
+  <div className="flex items-center gap-0.5">
+    {[1, 2, 3, 4, 5].map((starIndex) => {
+      const fillPercent = Math.max(0, Math.min(1, value - (starIndex - 1))) * 100;
+      return (
+        <span key={starIndex} className={`relative inline-block ${sizeClass}`}>
+          <Star className={`${sizeClass} text-[var(--border-strong)]`} />
+          {fillPercent > 0 && (
+            <span
+              className="absolute inset-0 overflow-hidden"
+              style={{ width: `${fillPercent}%` }}
+            >
+              <Star className={`${sizeClass} fill-amber-400 text-amber-400`} />
+            </span>
+          )}
+        </span>
+      );
+    })}
+  </div>
+);
+
 export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
   courtsOverride,
   complexNameOverride,
 }) => {
-  const { reviews, courts, addReview, replyToReview, isAdminAuthenticated } = useApp();
+  const {
+    reviews,
+    courts,
+    addReview,
+    replyToReview,
+    deleteReview,
+    isAdminAuthenticated,
+    isSuperAdmin,
+    siteContent,
+  } = useApp();
 
   const scopedCourts = courtsOverride ?? courts;
   const scopedCourtIds = new Set(scopedCourts.map((c) => c.id));
@@ -65,10 +99,10 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
   const [adminReplyReviewId, setAdminReplyReviewId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const [courtId, setCourtId] = useState(scopedCourts[0]?.id || '');
   const [name, setName] = useState('');
-  const [rating, setRating] = useState(5);
   const [surfaceScore, setSurfaceScore] = useState(5);
   const [lightingScore, setLightingScore] = useState(5);
   const [facilitiesScore, setFacilitiesScore] = useState(5);
@@ -77,6 +111,11 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
   const [photos, setPhotos] = useState<string[]>([]);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+
+  // Automatic general average of the 4 category criteria
+  const calculatedOverallRating = Number(
+    ((surfaceScore + lightingScore + facilitiesScore + serviceScore) / 4).toFixed(1)
+  );
 
   useEffect(() => {
     if (scopedCourts.length > 0 && !scopedCourts.some((c) => c.id === courtId)) {
@@ -91,7 +130,7 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
 
   const hasReviews = scopedReviews.length > 0;
   const overallAvg = hasReviews
-    ? (scopedReviews.reduce((sum, r) => sum + r.rating, 0) / scopedReviews.length).toFixed(1)
+    ? (scopedReviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) / scopedReviews.length).toFixed(1)
     : '—';
 
   const surfaceAvg = hasReviews
@@ -179,7 +218,7 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
       sport: court.sport,
       userName: name.trim(),
       userPhone: '',
-      rating,
+      rating: calculatedOverallRating,
       scores: {
         surface: surfaceScore,
         lighting: lightingScore,
@@ -194,7 +233,6 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
     setIsWriteModalOpen(false);
     setComment('');
     setName('');
-    setRating(5);
     setSurfaceScore(5);
     setLightingScore(5);
     setFacilitiesScore(5);
@@ -204,10 +242,10 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
   };
 
   const breakdownRows = [
-    { label: 'Superficie y césped', avg: surfaceAvg },
-    { label: 'Iluminación nocturna', avg: lightingAvg },
-    { label: 'Vestuarios y duchas', avg: facilitiesAvg },
-    { label: 'Atención y puntualidad', avg: serviceAvg },
+    { label: siteContent.reviewsSurfaceLabel, avg: surfaceAvg },
+    { label: siteContent.reviewsLightingLabel, avg: lightingAvg },
+    { label: siteContent.reviewsFacilitiesLabel, avg: facilitiesAvg },
+    { label: siteContent.reviewsServiceLabel, avg: serviceAvg },
   ];
 
   return (
@@ -219,25 +257,14 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
             <p className="text-xs font-semibold text-[var(--accent-soft-text)]">
               {complexNameOverride
                 ? `Opiniones · ${complexNameOverride}`
-                : 'Comunidad DeportesPMY'}
+                : siteContent.reviewsEyebrow}
             </p>
             <div className="flex items-baseline gap-3.5">
               <span className="font-heading text-5xl sm:text-6xl font-extrabold text-[var(--text-primary)] tabular-nums">
                 {overallAvg}
               </span>
               <div>
-                <div className="flex text-amber-400">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <Star
-                      key={i}
-                      className={`w-4 h-4 ${
-                        hasReviews && i <= Math.round(Number(overallAvg))
-                          ? 'fill-amber-400 text-amber-400'
-                          : 'text-[var(--border-strong)]'
-                      }`}
-                    />
-                  ))}
-                </div>
+                <StarDisplayBar value={hasReviews ? Number(overallAvg) : 0} sizeClass="w-4 h-4" />
                 <span className="text-xs text-[var(--text-muted)] mt-1 block tabular-nums">
                   {hasReviews
                     ? `${scopedReviews.length} ${scopedReviews.length === 1 ? 'opinión publicada' : 'opiniones publicadas'}`
@@ -247,7 +274,7 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
             </div>
 
             <p className="text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
-              Evaluaciones de jugadores sobre el estado de la cancha, iluminación, vestuarios y atención del complejo.
+              {siteContent.reviewsDescription}
             </p>
 
             {scopedCourts.length > 0 && (
@@ -257,7 +284,7 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
                 className="px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer transition-colors"
               >
                 <Plus className="w-4 h-4" />
-                <span>Dejar mi valoración</span>
+                <span>{siteContent.reviewsWriteButtonLabel}</span>
               </button>
             )}
           </div>
@@ -316,134 +343,172 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
 
       {/* Reviews List */}
       <div className="space-y-4">
-        {filteredReviews.map((rev) => (
-          <article
-            key={rev.id}
-            className="bg-[var(--bg-surface)] rounded-xl p-6 border border-[var(--border-hairline)] space-y-4"
-          >
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-[var(--accent-soft)] text-[var(--accent-soft-text)] font-bold flex items-center justify-center text-sm shrink-0">
-                  {rev.userName.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <h4 className="font-semibold text-[var(--text-primary)] text-sm">{rev.userName}</h4>
-                  <div className="text-xs text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
-                    <span className="text-[var(--text-secondary)] font-medium">{rev.courtName}</span>
-                    <span>·</span>
-                    <span className="font-mono tabular-nums">{rev.date}</span>
+        {filteredReviews.map((rev) => {
+          const safeRating = Math.max(1, Math.min(5, Number(rev.rating) || 5));
+          const isConfirmingDelete = deleteConfirmId === rev.id;
+
+          return (
+            <article
+              key={rev.id}
+              className="bg-[var(--bg-surface)] rounded-xl p-6 border border-[var(--border-hairline)] space-y-4"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-[var(--accent-soft)] text-[var(--accent-soft-text)] font-bold flex items-center justify-center text-sm shrink-0">
+                    {rev.userName.charAt(0).toUpperCase()}
                   </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1 text-amber-400 self-start sm:self-auto">
-                {[...Array(rev.rating)].map((_, i) => (
-                  <Star key={i} className="w-3.5 h-3.5 fill-amber-400" />
-                ))}
-                <span className="font-mono text-xs font-bold text-[var(--text-primary)] ml-1 tabular-nums">
-                  {rev.rating}.0
-                </span>
-              </div>
-            </div>
-
-            <p className="text-xs text-[var(--text-muted)] tabular-nums">
-              Piso <strong className="text-[var(--text-primary)]">{rev.scores?.surface ?? rev.rating}/5</strong>
-              {' · '}
-              Iluminación <strong className="text-[var(--text-primary)]">{rev.scores?.lighting ?? rev.rating}/5</strong>
-              {' · '}
-              Vestuarios <strong className="text-[var(--text-primary)]">{rev.scores?.facilities ?? rev.rating}/5</strong>
-              {' · '}
-              Atención <strong className="text-[var(--text-primary)]">{rev.scores?.service ?? rev.rating}/5</strong>
-            </p>
-
-            <p className="text-sm text-[var(--text-primary)] leading-relaxed">
-              &ldquo;{rev.comment}&rdquo;
-            </p>
-
-            {rev.photos && rev.photos.length > 0 && (
-              <div className="flex flex-wrap gap-2.5 pt-1">
-                {rev.photos.map((photoSrc, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => setLightboxPhoto(photoSrc)}
-                    className="group w-24 h-24 rounded-lg overflow-hidden border border-[var(--border-hairline)] cursor-pointer bg-[var(--bg-subtle)]"
-                    title="Ampliar foto"
-                  >
-                    <img
-                      src={photoSrc}
-                      alt={`Foto de ${rev.userName} (${idx + 1})`}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                      loading="lazy"
-                    />
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {rev.adminReply ? (
-              <div className="p-3.5 bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg space-y-1 text-xs">
-                <div className="flex items-center gap-1.5 text-[var(--text-primary)] font-semibold">
-                  <ShieldCheck className="w-4 h-4 text-[var(--accent-soft-text)]" />
-                  <span>Respuesta del complejo</span>
-                  <span className="text-[var(--text-muted)] font-mono font-normal">({rev.adminReply.date})</span>
-                </div>
-                <p className="text-[var(--text-secondary)] pl-5">{rev.adminReply.text}</p>
-              </div>
-            ) : isAdminAuthenticated ? (
-              <div className="pt-1">
-                {adminReplyReviewId === rev.id ? (
-                  <div className="p-3 bg-[var(--bg-subtle)] rounded-lg space-y-2 text-xs">
-                    <label className="font-semibold text-[var(--text-primary)] block">
-                      Responder como administrador:
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      placeholder="Escribí una respuesta formal para este jugador..."
-                      className="w-full bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg p-2 text-xs text-[var(--text-primary)]"
-                    />
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setAdminReplyReviewId(null)}
-                        className="px-3 py-1.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)] text-[var(--text-secondary)] font-semibold cursor-pointer"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleAdminReplySubmit(rev.id)}
-                        className="px-4 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] font-semibold cursor-pointer"
-                      >
-                        Publicar respuesta
-                      </button>
+                  <div>
+                    <h4 className="font-semibold text-[var(--text-primary)] text-sm">{rev.userName}</h4>
+                    <div className="text-xs text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
+                      <span className="text-[var(--text-secondary)] font-medium">{rev.courtName}</span>
+                      <span>·</span>
+                      <span className="font-mono tabular-nums">{rev.date}</span>
                     </div>
                   </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setAdminReplyReviewId(rev.id)}
-                    className="text-xs font-semibold text-[var(--accent-soft-text)] hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    <MessageSquare className="w-3.5 h-3.5" />
-                    <span>Responder como complejo</span>
-                  </button>
-                )}
+                </div>
+
+                <div className="flex items-center gap-3 self-start sm:self-auto">
+                  <div className="flex items-center gap-1.5">
+                    <StarDisplayBar value={safeRating} sizeClass="w-3.5 h-3.5" />
+                    <span className="font-mono text-xs font-bold text-[var(--text-primary)] ml-1 tabular-nums">
+                      {safeRating.toFixed(1)}
+                    </span>
+                  </div>
+
+                  {isSuperAdmin && (
+                    isConfirmingDelete ? (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await deleteReview(rev.id);
+                            setDeleteConfirmId(null);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-semibold cursor-pointer"
+                        >
+                          Confirmar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeleteConfirmId(null)}
+                          className="px-2 py-1 rounded-lg bg-[var(--bg-subtle)] text-[var(--text-secondary)] text-[11px] font-semibold cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirmId(rev.id)}
+                        className="p-1.5 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 transition-colors cursor-pointer"
+                        title="Eliminar opinión (SuperAdmin)"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
-            ) : null}
-          </article>
-        ))}
+
+              <p className="text-xs text-[var(--text-muted)] tabular-nums">
+                Piso <strong className="text-[var(--text-primary)]">{rev.scores?.surface ?? safeRating}/5</strong>
+                {' · '}
+                Iluminación <strong className="text-[var(--text-primary)]">{rev.scores?.lighting ?? safeRating}/5</strong>
+                {' · '}
+                Vestuarios <strong className="text-[var(--text-primary)]">{rev.scores?.facilities ?? safeRating}/5</strong>
+                {' · '}
+                Atención <strong className="text-[var(--text-primary)]">{rev.scores?.service ?? safeRating}/5</strong>
+              </p>
+
+              <p className="text-sm text-[var(--text-primary)] leading-relaxed">
+                &ldquo;{rev.comment}&rdquo;
+              </p>
+
+              {rev.photos && rev.photos.length > 0 && (
+                <div className="flex flex-wrap gap-2.5 pt-1">
+                  {rev.photos.map((photoSrc, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setLightboxPhoto(photoSrc)}
+                      className="group w-24 h-24 rounded-lg overflow-hidden border border-[var(--border-hairline)] cursor-pointer bg-[var(--bg-subtle)]"
+                      title="Ampliar foto"
+                    >
+                      <img
+                        src={photoSrc}
+                        alt={`Foto de ${rev.userName} (${idx + 1})`}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                        loading="lazy"
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {rev.adminReply ? (
+                <div className="p-3.5 bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg space-y-1 text-xs">
+                  <div className="flex items-center gap-1.5 text-[var(--text-primary)] font-semibold">
+                    <ShieldCheck className="w-4 h-4 text-[var(--accent-soft-text)]" />
+                    <span>Respuesta del complejo</span>
+                    <span className="text-[var(--text-muted)] font-mono font-normal">({rev.adminReply.date})</span>
+                  </div>
+                  <p className="text-[var(--text-secondary)] pl-5">{rev.adminReply.text}</p>
+                </div>
+              ) : isAdminAuthenticated ? (
+                <div className="pt-1">
+                  {adminReplyReviewId === rev.id ? (
+                    <div className="p-3 bg-[var(--bg-subtle)] rounded-lg space-y-2 text-xs">
+                      <label className="font-semibold text-[var(--text-primary)] block">
+                        Responder como administrador:
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        placeholder="Escribí una respuesta formal para este jugador..."
+                        className="w-full bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg p-2 text-xs text-[var(--text-primary)]"
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAdminReplyReviewId(null)}
+                          className="px-3 py-1.5 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)] text-[var(--text-secondary)] font-semibold cursor-pointer"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAdminReplySubmit(rev.id)}
+                          className="px-4 py-1.5 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] font-semibold cursor-pointer"
+                        >
+                          Publicar respuesta
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setAdminReplyReviewId(rev.id)}
+                      className="text-xs font-semibold text-[var(--accent-soft-text)] hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" />
+                      <span>Responder como complejo</span>
+                    </button>
+                  )}
+                </div>
+              ) : null}
+            </article>
+          );
+        })}
 
         {filteredReviews.length === 0 && (
           <div className="bg-[var(--bg-surface)] rounded-xl p-10 border border-[var(--border-hairline)] text-center max-w-md mx-auto space-y-2">
             <MessageSquare className="w-6 h-6 text-[var(--text-muted)] mx-auto" />
             <h4 className="font-heading font-bold text-[var(--text-primary)] text-lg">
-              Aún no hay opiniones registradas
+              {siteContent.reviewsEmptyTitle}
             </h4>
             <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-              Las valoraciones aparecerán aquí a medida que los jugadores compartan su experiencia.
+              {siteContent.reviewsEmptySubtitle}
             </p>
           </div>
         )}
@@ -457,7 +522,7 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
               <h3 className="font-heading text-xl font-bold">
                 {complexNameOverride
                   ? `Dejar opinión sobre ${complexNameOverride}`
-                  : 'Dejar opinión sobre la cancha'}
+                  : siteContent.reviewsModalTitle}
               </h3>
               <button
                 type="button"
@@ -501,28 +566,20 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
                 />
               </div>
 
-              <div className="p-3 bg-[var(--bg-canvas)] rounded-lg text-center border border-[var(--border-hairline)]">
-                <span className="font-semibold text-[var(--text-primary)] block mb-1.5">
-                  Puntuación general
+              {/* Automatic Average General Score */}
+              <div className="p-3.5 bg-[var(--bg-canvas)] rounded-lg text-center border border-[var(--border-hairline)] space-y-1.5">
+                <span className="font-semibold text-[var(--text-primary)] block">
+                  Puntuación general (promedio automático)
                 </span>
-                <div className="flex justify-center gap-2">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setRating(star)}
-                      className="p-1 cursor-pointer"
-                    >
-                      <Star
-                        className={`w-6 h-6 ${
-                          star <= rating
-                            ? 'fill-amber-400 text-amber-400'
-                            : 'text-[var(--border-strong)]'
-                        }`}
-                      />
-                    </button>
-                  ))}
+                <div className="flex items-center justify-center gap-3">
+                  <StarDisplayBar value={calculatedOverallRating} sizeClass="w-6 h-6" />
+                  <span className="font-mono text-lg font-extrabold text-[var(--text-primary)] tabular-nums">
+                    {calculatedOverallRating.toFixed(1)} <span className="text-xs font-normal text-[var(--text-muted)]">/ 5.0</span>
+                  </span>
                 </div>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Se calcula automáticamente al puntuar los 4 rubros debajo.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -607,7 +664,7 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
                 )}
 
                 {photoError && (
-                  <p className="text-[11px] text-rose-600 font-semibold flex items-center gap-1">
+                  <p className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
                     <AlertCircle className="w-3.5 h-3.5" />
                     <span>{photoError}</span>
                   </p>

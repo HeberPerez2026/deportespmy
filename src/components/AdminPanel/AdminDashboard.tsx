@@ -16,7 +16,6 @@ import {
   MessageCircle, 
   Database, 
   ShieldCheck, 
-  LogOut, 
   RefreshCw, 
   Building2,
   Crown
@@ -32,7 +31,6 @@ export const AdminDashboard: React.FC = () => {
     admins,
     isSuperAdmin,
     currentAdminUser,
-    logoutAdmin,
     isSyncing,
     cloudConnected,
     refreshFromCloud
@@ -77,16 +75,7 @@ export const AdminDashboard: React.FC = () => {
           </div>
 
           <div className="flex flex-col items-end gap-3 shrink-0">
-            <button
-              type="button"
-              onClick={logoutAdmin}
-              className="px-4 py-2 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-600 text-rose-600 dark:text-rose-400 hover:text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Cerrar Sesión</span>
-            </button>
-
-            <div className="bg-[var(--bg-canvas)] px-4 py-2.5 rounded-lg border border-[var(--border-hairline)] text-right">
+            <div className="bg-[var(--bg-canvas)] px-4 py-2.5 rounded-lg border border-[var(--border-hairline)] text-center min-w-[130px]">
               <span className="text-[11px] text-[var(--text-muted)] block">Administradores</span>
               <span className="font-mono text-xl font-bold text-[var(--text-primary)] tabular-nums">
                 {admins.filter(a => a.role === 'admin').length}
@@ -143,15 +132,6 @@ export const AdminDashboard: React.FC = () => {
         </div>
 
         <div className="flex flex-col items-end gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={logoutAdmin}
-            className="px-4 py-2 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-600 text-rose-600 dark:text-rose-400 hover:text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>Cerrar Sesión</span>
-          </button>
-
           <div className="grid grid-cols-3 gap-3 bg-[var(--bg-canvas)] px-4 py-2.5 rounded-lg border border-[var(--border-hairline)] text-center">
             <div>
               <span className="text-[10px] text-[var(--text-muted)] block">Canchas</span>

@@ -43,7 +43,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
     getSlotsForCourtAndDate,
     isAdminAuthenticated,
     setActiveTab,
-    businessProfile,
+    siteContent,
   } = useApp();
 
   const [activeBookingCourt, setActiveBookingCourt] = useState<Court | null>(null);
@@ -51,8 +51,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
   const [photoIndexByCourt, setPhotoIndexByCourt] = useState<Record<string, number>>({});
 
   const sourceCourts = courtsOverride ?? courts;
-  const activeComplexTitle =
-    complexNameOverride || businessProfile.complexName || 'Complejos Habilitados';
+  const activeComplexTitle = complexNameOverride || siteContent.catalogEyebrow;
 
   const filteredCourts = sourceCourts.filter((court) => {
     if (selectedSport !== 'all' && court.sport !== selectedSport) {
@@ -86,10 +85,10 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
             {activeComplexTitle}
           </p>
           <h2 className="font-heading text-2xl sm:text-3xl font-extrabold text-[var(--text-primary)]">
-            Disponibilidad para el <span className="font-mono tabular-nums">{selectedDate}</span>
+            {siteContent.catalogTitlePrefix} <span className="font-mono tabular-nums">{selectedDate}</span>
           </h2>
           <p className="text-sm text-[var(--text-secondary)]">
-            Seleccioná un horario libre para ver tarifas completas y confirmar tu reserva.
+            {siteContent.catalogSubtitle}
           </p>
         </div>
 
@@ -98,15 +97,15 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
           <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-[var(--text-secondary)] shrink-0">
             <span className="inline-flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm bg-[var(--accent)]" />
-              Disponible
+              {siteContent.catalogLegendAvailable}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm bg-[var(--border-strong)]" />
-              Ocupado
+              {siteContent.catalogLegendOccupied}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-sm bg-[var(--night-cue)]" />
-              Tarifa nocturna c/luz
+              {siteContent.catalogLegendNight}
             </span>
           </div>
         )}
@@ -121,10 +120,10 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
 
           <div className="space-y-2">
             <h3 className="font-heading text-2xl font-bold text-[var(--text-primary)]">
-              Aún no hay canchas publicadas
+              {siteContent.catalogEmptyTitle}
             </h3>
             <p className="text-sm text-[var(--text-secondary)] leading-relaxed max-w-lg mx-auto">
-              Cuando los administradores carguen sus espacios deportivos, superficies y tarifas desde el panel, aparecerán listados aquí para reservar en tiempo real.
+              {siteContent.catalogEmptySubtitle}
             </p>
           </div>
 
@@ -148,7 +147,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
                 className="px-5 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs sm:text-sm inline-flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <Lock className="w-4 h-4" />
-                <span>Acceso Clubes para publicar canchas</span>
+                <span>{siteContent.catalogEmptyButtonLabel}</span>
               </button>
             )}
           </div>
@@ -160,17 +159,17 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
             <Search className="w-5 h-5" />
           </div>
           <h3 className="font-heading text-xl font-bold text-[var(--text-primary)]">
-            Sin resultados para tu búsqueda
+            {siteContent.catalogNoResultsTitle}
           </h3>
           <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
-            No encontramos canchas que coincidan con &ldquo;{searchQuery}&rdquo; o con la disciplina elegida.
+            {siteContent.catalogNoResultsSubtitle}
           </p>
           <button
             type="button"
             onClick={() => setSearchQuery('')}
             className="px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs cursor-pointer transition-colors"
           >
-            Mostrar todas las canchas
+            {siteContent.catalogNoResultsButtonLabel}
           </button>
         </div>
       ) : (
@@ -286,7 +285,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
                     {/* Rates Row (Tabular Numbers, No Pill Cluster) */}
                     <div className="grid grid-cols-3 gap-3 pb-4 border-b border-[var(--border-hairline)]">
                       <div>
-                        <span className="text-xs text-[var(--text-muted)] block">Tarifa diurna</span>
+                        <span className="text-xs text-[var(--text-muted)] block">{siteContent.catalogRateDayLabel}</span>
                         <span className="font-mono text-base font-bold text-[var(--text-primary)] tabular-nums">
                           ${court.hourlyRateDay.toLocaleString('es-AR')}
                           <span className="text-xs font-normal text-[var(--text-muted)]">/h</span>
@@ -294,7 +293,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
                       </div>
 
                       <div>
-                        <span className="text-xs text-[var(--text-muted)] block">Nocturno c/luz</span>
+                        <span className="text-xs text-[var(--text-muted)] block">{siteContent.catalogRateNightLabel}</span>
                         <span className="font-mono text-base font-bold text-[var(--text-primary)] tabular-nums">
                           ${court.hourlyRateNight.toLocaleString('es-AR')}
                           <span className="text-xs font-normal text-[var(--text-muted)]">/h</span>
@@ -302,7 +301,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
                       </div>
 
                       <div className="text-right">
-                        <span className="text-xs text-[var(--text-muted)] block">Seña reserva</span>
+                        <span className="text-xs text-[var(--text-muted)] block">{siteContent.catalogDepositLabel}</span>
                         <span className="font-mono text-base font-bold text-[var(--accent-soft-text)] tabular-nums">
                           {court.depositRequired || 50}%
                         </span>
@@ -312,7 +311,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
                     {/* Amenities as clean dot-separated editorial line */}
                     {court.amenities && court.amenities.length > 0 && (
                       <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                        <span className="font-semibold text-[var(--text-primary)]">Incluye: </span>
+                        <span className="font-semibold text-[var(--text-primary)]">{siteContent.catalogIncludesLabel} </span>
                         {court.amenities.join(' · ')}
                       </p>
                     )}
@@ -321,14 +320,14 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
                     <div>
                       <div className="flex items-center justify-between text-xs mb-2.5 gap-2">
                         <span className="font-semibold text-[var(--text-primary)] tabular-nums">
-                          Horarios ({availableSlotsCount} libres · <span className="text-[var(--text-muted)] font-mono">{scheduleLabel}</span>)
+                          {siteContent.catalogSchedulesPrefix} ({availableSlotsCount} libres · <span className="text-[var(--text-muted)] font-mono">{scheduleLabel}</span>)
                         </span>
                         <button
                           type="button"
                           onClick={() => handleOpenBooking(court)}
                           className="text-[var(--accent-soft-text)] hover:underline font-semibold cursor-pointer shrink-0"
                         >
-                          Ver agenda completa
+                          {siteContent.catalogFullScheduleLabel}
                         </button>
                       </div>
 
@@ -368,7 +367,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
                 {/* Card Footer */}
                 <div className="px-5 sm:px-6 py-4 bg-[var(--bg-elevated)] border-t border-[var(--border-hairline)] flex items-center justify-between gap-4">
                   <span className="text-xs text-[var(--text-secondary)]">
-                    Confirmación y comprobante vía WhatsApp
+                    {siteContent.catalogCardFooterHint}
                   </span>
 
                   <button
@@ -376,7 +375,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
                     onClick={() => handleOpenBooking(court)}
                     className="px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs sm:text-sm inline-flex items-center gap-1.5 transition-colors duration-150 whitespace-nowrap shrink-0 cursor-pointer"
                   >
-                    <span>Reservar</span>
+                    <span>{siteContent.catalogReserveButtonLabel}</span>
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>

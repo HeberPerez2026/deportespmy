@@ -278,8 +278,8 @@ export const AdminProfileSettings: React.FC = () => {
         </div>
 
         {savedSuccess && (
-          <div className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/35 text-xs font-semibold">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <div className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/35 text-xs font-semibold">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             <span>¡Datos guardados con éxito!</span>
           </div>
         )}
@@ -311,7 +311,7 @@ export const AdminProfileSettings: React.FC = () => {
             <button
               type="button"
               onClick={handleDisconnectMercadoPago}
-              className="px-4 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/35 font-semibold text-xs flex items-center gap-2 transition-colors cursor-pointer self-start sm:self-center shrink-0"
+              className="px-4 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-500/35 font-semibold text-xs flex items-center gap-2 transition-colors cursor-pointer self-start sm:self-center shrink-0"
             >
               <Unlink className="w-4 h-4" />
               <span>Desconectar Cuenta</span>
@@ -363,25 +363,25 @@ export const AdminProfileSettings: React.FC = () => {
         )}
 
         {oauthSuccessNotice && (
-          <div className="p-3 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 text-xs font-semibold flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <div className="p-3 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-800 dark:text-emerald-200 text-xs font-semibold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>{oauthSuccessNotice}</span>
           </div>
         )}
 
         {oauthError && (
-          <div className="p-3 rounded-lg bg-rose-500/15 border border-rose-500/35 text-rose-200 text-xs font-semibold flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+          <div className="p-3 rounded-lg bg-rose-500/15 border border-rose-500/35 text-rose-800 dark:text-rose-200 text-xs font-semibold flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
             <span>{oauthError}</span>
           </div>
         )}
 
         {!oauthServerConfigured && !isMpConnected && (
-          <div className="p-3.5 rounded-lg bg-amber-500/15 border border-amber-500/35 text-amber-200 text-xs flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="p-3.5 rounded-lg bg-amber-500/15 border border-amber-500/35 text-amber-900 dark:text-amber-200 text-xs flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
               <p className="font-bold">Faltan configurar las credenciales OAuth de la plataforma</p>
-              <p className="text-[11px] text-amber-200/90">
+              <p className="text-[11px] text-amber-800 dark:text-amber-200/90">
                 El servidor{oauthDiag?.host ? ` (${oauthDiag.host}${oauthDiag.vercelEnv ? ` · ${oauthDiag.vercelEnv}` : ''})` : ''} reporta:{' '}
                 <code className="font-mono bg-amber-500/20 px-1 rounded">
                   MP_CLIENT_ID: {oauthDiag?.hasClientId ? 'OK' : 'FALTA'}
@@ -433,7 +433,7 @@ export const AdminProfileSettings: React.FC = () => {
                   Mercado Pago
                 </span>
                 <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                  isMpPaused ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'
+                  isMpPaused ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300' : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
                 }`}>
                   {isMpPaused ? 'Pausado / Suspendido' : 'Activo'}
                 </span>
@@ -466,11 +466,11 @@ export const AdminProfileSettings: React.FC = () => {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <span className="font-bold text-[var(--text-primary)] inline-flex items-center gap-1.5">
-                  <Landmark className="w-3.5 h-3.5 text-amber-400" />
+                  <Landmark className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400" />
                   Transferencia CBU / Banco
                 </span>
                 <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                  isTransferPaused ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'
+                  isTransferPaused ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300' : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
                 }`}>
                   {isTransferPaused ? 'Pausado / Suspendido' : 'Activo'}
                 </span>

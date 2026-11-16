@@ -315,7 +315,7 @@ export const ScheduleGrid: React.FC = () => {
                             <span className="font-mono font-black text-xs sm:text-sm text-[var(--text-primary)] group-hover:text-[var(--accent-ink)] leading-tight tabular-nums">
                               ${slot.price.toLocaleString('es-AR')}
                             </span>
-                            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-300 group-hover:text-[var(--accent-ink)] mt-0.5">
+                            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-300 group-hover:text-[var(--accent-ink)] mt-0.5">
                               Libre
                             </span>
                           </button>
@@ -497,7 +497,7 @@ export const ScheduleGrid: React.FC = () => {
             {/* If it was a blocked slot */}
             {activeBookingDetails.clientName.startsWith('[BLOQUEADO') ? (
               <div className="space-y-3 text-xs">
-                <div className="p-3 bg-amber-500/15 border border-amber-500/35 rounded-2xl text-amber-200">
+                <div className="p-3 bg-amber-500/15 border border-amber-500/35 rounded-2xl text-amber-900 dark:text-amber-200">
                   <strong>Horario Bloqueado</strong>
                   <p className="mt-1">{activeBookingDetails.notes}</p>
                 </div>
@@ -524,7 +524,7 @@ export const ScheduleGrid: React.FC = () => {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[var(--text-muted)]">Teléfono:</span>
-                    <span className="font-mono font-bold text-emerald-300">{activeBookingDetails.clientPhone}</span>
+                    <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">{activeBookingDetails.clientPhone}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[var(--text-muted)]">Fecha y Hora:</span>
@@ -538,7 +538,7 @@ export const ScheduleGrid: React.FC = () => {
                     <span className="text-[var(--text-muted)]">Total Cancha:</span>
                     <span className="font-bold text-[var(--text-primary)]">${activeBookingDetails.totalAmount.toLocaleString('es-AR')}</span>
                   </div>
-                  <div className="flex justify-between text-emerald-300">
+                  <div className="flex justify-between text-emerald-700 dark:text-emerald-300">
                     <span>Abonado ({activeBookingDetails.paymentMethod.toUpperCase()}):</span>
                     <span className="font-extrabold">${activeBookingDetails.amountPaid.toLocaleString('es-AR')}</span>
                   </div>
@@ -565,12 +565,12 @@ export const ScheduleGrid: React.FC = () => {
                   )}
 
                   {activeBookingDetails.balanceDue > 0 ? (
-                    <div className="flex justify-between text-amber-300 font-bold pt-1 border-t border-[var(--border-hairline)]">
+                    <div className="flex justify-between text-amber-700 dark:text-amber-300 font-bold pt-1 border-t border-[var(--border-hairline)]">
                       <span>Saldo Pendiente en Cancha:</span>
                       <span>${activeBookingDetails.balanceDue.toLocaleString('es-AR')}</span>
                     </div>
                   ) : (
-                    <div className="text-emerald-300 font-bold pt-1 border-t border-[var(--border-hairline)]">
+                    <div className="text-emerald-700 dark:text-emerald-300 font-bold pt-1 border-t border-[var(--border-hairline)]">
                       ✓ Saldo Totalmente Cancelado
                     </div>
                   )}
@@ -612,9 +612,9 @@ export const ScheduleGrid: React.FC = () => {
                   <div className="flex gap-2">
                     <button
                       onClick={() => triggerWhatsAppSend(activeBookingDetails)}
-                      className="flex-1 py-2.5 rounded-xl bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/35 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="flex-1 py-2.5 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/35 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                     >
-                      <MessageCircle className="w-4 h-4 text-emerald-400" />
+                      <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                       <span>Reenviar WhatsApp</span>
                     </button>
 
@@ -624,7 +624,7 @@ export const ScheduleGrid: React.FC = () => {
                         setNotifyClientOnRefund(true);
                         setCancelConfirmBooking(activeBookingDetails);
                       }}
-                      className="px-4 py-2.5 rounded-xl bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 border border-rose-500/35 font-bold text-xs cursor-pointer flex items-center gap-1.5"
+                      className="px-4 py-2.5 rounded-xl bg-rose-500/15 text-rose-700 dark:text-rose-300 hover:bg-rose-500/25 border border-rose-500/35 font-bold text-xs cursor-pointer flex items-center gap-1.5"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
                       <span>Cancelar y Devolver</span>
@@ -679,8 +679,8 @@ export const ScheduleGrid: React.FC = () => {
                 <strong className="uppercase text-[var(--text-secondary)]">{cancelConfirmBooking.paymentMethod}</strong>
               </div>
               <div className="flex justify-between items-center pt-2 border-t border-[var(--border-hairline)]">
-                <span className="font-bold text-rose-300">Importe abonado a devolver:</span>
-                <span className="text-lg font-black text-rose-400 font-mono">
+                <span className="font-bold text-rose-700 dark:text-rose-300">Importe abonado a devolver:</span>
+                <span className="text-lg font-black text-rose-600 dark:text-rose-400 font-mono">
                   ${cancelConfirmBooking.amountPaid.toLocaleString('es-AR')}
                 </span>
               </div>
@@ -688,8 +688,8 @@ export const ScheduleGrid: React.FC = () => {
 
             <div className={`p-3 rounded-2xl text-xs leading-relaxed border ${
               cancelConfirmBooking.amountPaid > 0 && cancelConfirmBooking.paymentMethod === 'mercadopago'
-                ? 'bg-sky-500/15 border-sky-500/35 text-sky-200'
-                : 'bg-amber-500/15 border-amber-500/35 text-amber-200'
+                ? 'bg-sky-500/15 border-sky-500/35 text-sky-800 dark:text-sky-200'
+                : 'bg-amber-500/15 border-amber-500/35 text-amber-900 dark:text-amber-200'
             }`}>
               {cancelConfirmBooking.amountPaid <= 0 ? (
                 <span>Este turno no registra dinero acreditado aún. Al confirmar se cancelará y el horario quedará libre inmediatamente.</span>
@@ -711,7 +711,7 @@ export const ScheduleGrid: React.FC = () => {
             </label>
 
             {refundError && (
-              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/35 text-xs text-rose-200 space-y-2">
+              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/35 text-xs text-rose-800 dark:text-rose-200 space-y-2">
                 <p className="font-bold">{refundError}</p>
                 <button
                   type="button"

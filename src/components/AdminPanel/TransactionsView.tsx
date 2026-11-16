@@ -45,12 +45,12 @@ export const TransactionsView: React.FC = () => {
   return (
     <div className="space-y-6">
       {refundNotice && (
-        <div className="bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 rounded-2xl p-3.5 text-xs font-bold flex items-center justify-between gap-2 shadow-sm">
+        <div className="bg-emerald-500/15 border border-emerald-500/35 text-emerald-800 dark:text-emerald-200 rounded-2xl p-3.5 text-xs font-bold flex items-center justify-between gap-2 shadow-sm">
           <div className="flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+            <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>{refundNotice}</span>
           </div>
-          <button onClick={() => setRefundNotice(null)} className="text-emerald-300 hover:text-emerald-100 cursor-pointer">
+          <button onClick={() => setRefundNotice(null)} className="text-emerald-700 dark:text-emerald-300 hover:opacity-80 cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -164,7 +164,7 @@ export const TransactionsView: React.FC = () => {
                     </td>
                     <td className="py-3 px-4 text-right font-bold">
                       <div className="flex flex-col items-end">
-                        <span className={b.status === 'awaiting_approval' ? 'text-rose-400' : 'text-emerald-400'}>
+                        <span className={b.status === 'awaiting_approval' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}>
                           ${b.amountPaid.toLocaleString('es-AR')}
                         </span>
                         {b.status === 'awaiting_approval' && (
@@ -176,14 +176,14 @@ export const TransactionsView: React.FC = () => {
                     </td>
                     <td className="py-3 px-4 text-right font-bold">
                       {b.balanceDue > 0 ? (
-                        <span className="text-amber-400">${b.balanceDue.toLocaleString('es-AR')}</span>
+                        <span className="text-amber-600 dark:text-amber-400">${b.balanceDue.toLocaleString('es-AR')}</span>
                       ) : (
                         <span className="text-[var(--text-muted)] font-normal">Saldado</span>
                       )}
                     </td>
                     <td className="py-3 px-4 text-center">
                       {b.status === 'cancelled' && b.paymentStatus === 'reembolsado' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30 text-[10px] font-bold">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-700 dark:text-rose-300 border border-rose-500/30 text-[10px] font-bold">
                           ↩ Reembolsado ${(b.refundAmount ?? b.amountPaid).toLocaleString('es-AR')}
                         </span>
                       ) : (
@@ -196,7 +196,7 @@ export const TransactionsView: React.FC = () => {
                               Cobrar Saldo
                             </button>
                           ) : (
-                            <span className="text-emerald-400 text-[11px] font-bold">✓ Saldado</span>
+                            <span className="text-emerald-600 dark:text-emerald-400 text-[11px] font-bold">✓ Saldado</span>
                           )}
                           <button
                             onClick={() => {
@@ -204,7 +204,7 @@ export const TransactionsView: React.FC = () => {
                               setNotifyWhatsApp(true);
                               setCancelTarget(b);
                             }}
-                            className="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 font-bold text-[10px] cursor-pointer"
+                            className="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-700 dark:text-rose-300 border border-rose-500/30 font-bold text-[10px] cursor-pointer"
                             title="Cancelar turno y devolver importe abonado"
                           >
                             Devolver
@@ -256,8 +256,8 @@ export const TransactionsView: React.FC = () => {
                 <strong className="font-mono text-[var(--text-secondary)]">{cancelTarget.date} {cancelTarget.startTime} hs</strong>
               </div>
               <div className="flex justify-between items-center pt-2 border-t border-[var(--border-hairline)]">
-                <span className="font-bold text-rose-300">Importe a devolver al jugador:</span>
-                <span className="text-lg font-black text-rose-400 font-mono">
+                <span className="font-bold text-rose-700 dark:text-rose-300">Importe a devolver al jugador:</span>
+                <span className="text-lg font-black text-rose-600 dark:text-rose-400 font-mono">
                   ${cancelTarget.amountPaid.toLocaleString('es-AR')}
                 </span>
               </div>
@@ -274,7 +274,7 @@ export const TransactionsView: React.FC = () => {
             </label>
 
             {refundError && (
-              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/35 text-xs text-rose-200 space-y-2">
+              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/35 text-xs text-rose-700 dark:text-rose-200 space-y-2">
                 <p className="font-bold">{refundError}</p>
                 <button
                   type="button"

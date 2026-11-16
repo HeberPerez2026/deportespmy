@@ -1096,11 +1096,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                     </div>
                   </div>
                 ) : confirmedBooking.status === 'confirmed' ? (
-                  <div className="w-16 h-16 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+                  <div className="w-16 h-16 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
                     <CheckCircle className="w-10 h-10" />
                   </div>
                 ) : (
-                  <div className="w-16 h-16 bg-amber-500/20 text-amber-400 border border-amber-500/40 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20">
+                  <div className="w-16 h-16 bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20">
                     <Clock className="w-10 h-10 animate-pulse" />
                   </div>
                 )}
@@ -1108,8 +1108,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
 
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <span className={`text-xs font-semibold ${
-                  isWaitingForConfirmation ? 'text-sky-400' : 
-                  confirmedBooking.status === 'confirmed' ? 'text-emerald-400' : 'text-amber-400'
+                  isWaitingForConfirmation ? 'text-sky-600 dark:text-sky-400' : 
+                  confirmedBooking.status === 'confirmed' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
                 }`}>
                   {isWaitingForConfirmation ? 'Esperando confirmación de pago' : 
                    confirmedBooking.status === 'confirmed' ? 'Reserva exitosa y pago acreditado' : 'Reserva pendiente de verificación'}

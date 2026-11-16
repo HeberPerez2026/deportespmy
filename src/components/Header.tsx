@@ -8,7 +8,6 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
   const {
-    activeTab,
     setActiveTab,
     isAdminAuthenticated,
     logoutAdmin,
@@ -21,21 +20,17 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
   };
 
   const handleAdminAction = () => {
-    if (isAdminAuthenticated && activeTab === 'admin') {
-      logoutAdmin();
-      return;
-    }
     if (isAdminAuthenticated) {
-      setActiveTab('admin');
+      logoutAdmin();
       return;
     }
     onOpenAdminLogin();
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-[#090D12]/95 backdrop-blur-md border-b border-[#2A313C] text-[#F3F4F6]">
+    <header className="sticky top-0 z-40 bg-[var(--bg-header)] backdrop-blur-md border-b border-[var(--border-hairline)] text-[var(--text-primary)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-        {/* Logo mejorado + DeportesPMY */}
+        {/* Logo + DeportesPMY */}
         <button
           type="button"
           onClick={handleGoHome}
@@ -58,7 +53,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
               {/* Escudo atlético angular */}
               <path
                 d="M22 2.5L38.5 8.2V21.5C38.5 31.2 31.3 38.4 22 41.5C12.7 38.4 5.5 31.2 5.5 21.5V8.2L22 2.5Z"
-                fill="#161B22"
+                fill="var(--bg-surface)"
                 stroke="url(#dpmyShieldGrad)"
                 strokeWidth="2.4"
               />
@@ -100,7 +95,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
             </svg>
           </span>
 
-          <span className="font-heading text-xl sm:text-[22px] font-extrabold tracking-tight text-white">
+          <span className="font-heading text-xl sm:text-[22px] font-extrabold tracking-tight text-[var(--text-primary)]">
             Deportes<span style={{ color: 'var(--accent-bright)' }}>PMY</span>
           </span>
         </button>
@@ -110,12 +105,12 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
           type="button"
           onClick={handleAdminAction}
           className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shrink-0 border ${
-            isAdminAuthenticated && activeTab === 'admin'
-              ? 'bg-rose-500/15 hover:bg-rose-600 text-rose-200 hover:text-white border-rose-500/40'
+            isAdminAuthenticated
+              ? 'bg-rose-500/15 hover:bg-rose-600 text-rose-600 dark:text-rose-200 hover:text-white border-rose-500/40'
               : 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] border-transparent shadow-sm'
           }`}
         >
-          {isAdminAuthenticated && activeTab === 'admin' ? (
+          {isAdminAuthenticated ? (
             <>
               <LogOut className="w-3.5 h-3.5" />
               <span>Cerrar Sesión</span>
@@ -123,7 +118,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
           ) : (
             <>
               <ShieldCheck className="w-4 h-4" />
-              <span>{isAdminAuthenticated ? 'Panel Administrador' : 'Acceso Administrador'}</span>
+              <span>Acceso Administrador</span>
             </>
           )}
         </button>

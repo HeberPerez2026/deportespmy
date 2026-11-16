@@ -65,6 +65,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
     setSelectedSport,
     isAdminAuthenticated,
     setActiveTab,
+    siteContent,
   } = useApp();
 
   const [estSearch, setEstSearch] = useState('');
@@ -258,7 +259,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span>Volver al directorio de complejos</span>
+                <span>{siteContent.estBackToDirectoryLabel}</span>
               </button>
             </div>
 
@@ -283,7 +284,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold text-[var(--accent-soft-text)] mb-1">
-                      Complejo deportivo habilitado
+                      {siteContent.estDetailBadgeLabel}
                     </p>
                     <h1 className="font-heading text-3xl sm:text-4xl font-extrabold text-[var(--text-primary)] leading-tight">
                       {selectedEst.name}
@@ -341,7 +342,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                         className="px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                       >
                         <MessageCircle className="w-3.5 h-3.5" />
-                        <span>WhatsApp del complejo</span>
+                        <span>{siteContent.estWhatsappButtonLabel}</span>
                       </a>
                     )}
                     {selectedEst.email && (
@@ -370,7 +371,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                       : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
-                  Canchas y turnos ({selectedEst.courts.length})
+                  {siteContent.estCourtsTabLabel} ({selectedEst.courts.length})
                 </button>
 
                 <button
@@ -382,7 +383,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                       : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
-                  Opiniones ({selectedEst.reviews.length})
+                  {siteContent.estReviewsTabLabel} ({selectedEst.reviews.length})
                 </button>
               </div>
 
@@ -397,7 +398,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                         : 'bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                     }`}
                   >
-                    Hoy
+                    {siteContent.heroTodayLabel}
                   </button>
                   <button
                     type="button"
@@ -408,7 +409,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                         : 'bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                     }`}
                   >
-                    Mañana
+                    {siteContent.heroTomorrowLabel}
                   </button>
                   <input
                     type="date"
@@ -487,13 +488,13 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-6">
           <div className="space-y-2 max-w-2xl">
             <p className="text-xs font-semibold text-[var(--accent-soft-text)]">
-              Guía de clubes en Puerto Madryn
+              {siteContent.estEyebrow}
             </p>
             <h1 className="font-heading text-3xl sm:text-4xl font-extrabold text-[var(--text-primary)] leading-tight">
-              Establecimientos y Centros Deportivos
+              {siteContent.estTitle}
             </h1>
             <p className="text-sm text-[var(--text-secondary)]">
-              Ingresá a cada complejo para consultar exclusivamente sus canchas, fotos, ubicación y reseñas verificadas de jugadores.
+              {siteContent.estSubtitle}
             </p>
           </div>
 
@@ -504,7 +505,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                 type="text"
                 value={estSearch}
                 onChange={(e) => setEstSearch(e.target.value)}
-                placeholder="Buscar complejo por nombre o dirección..."
+                placeholder={siteContent.estSearchPlaceholder}
                 className="w-full h-11 pl-10 pr-9 text-sm bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
               />
               {estSearch && (
@@ -529,7 +530,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                     : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                 }`}
               >
-                Todos ({establishments.length})
+                {siteContent.estAllSportsLabel} ({establishments.length})
               </button>
               {(Object.keys(SPORT_DISPLAY_LABELS) as SportType[]).map((sp) => (
                 <button
@@ -559,10 +560,10 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
             </div>
             <div className="space-y-2">
               <h3 className="font-heading text-2xl font-bold text-[var(--text-primary)]">
-                Aún no hay establecimientos registrados
+                {siteContent.estEmptyTitle}
               </h3>
               <p className="text-sm text-[var(--text-secondary)] max-w-lg mx-auto">
-                Cuando los administradores configuren su complejo y publiquen canchas, aparecerán listados aquí para ingresar a cada sede.
+                {siteContent.estEmptySubtitle}
               </p>
             </div>
             {isAdminAuthenticated ? (
@@ -694,7 +695,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                       {est.minPrice !== null ? (
                         <>
                           <span className="text-[11px] text-[var(--text-muted)] block">
-                            Turnos desde
+                            {siteContent.estMinPriceLabel}
                           </span>
                           <span className="font-mono text-sm font-bold text-[var(--text-primary)] tabular-nums">
                             ${est.minPrice.toLocaleString('es-AR')}
@@ -709,7 +710,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                     </div>
 
                     <span className="px-3.5 py-2 rounded-lg bg-[var(--accent)] group-hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs inline-flex items-center gap-1 transition-colors">
-                      <span>Ingresar</span>
+                      <span>{siteContent.estEnterButtonLabel}</span>
                       <ChevronRight className="w-4 h-4" />
                     </span>
                   </div>

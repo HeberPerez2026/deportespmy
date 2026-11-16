@@ -7,7 +7,7 @@ import {
   onSnapshot 
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Booking, Review, Court, BusinessProfile, AdminUser, DeveloperContact } from '../types';
+import { Booking, Review, Court, BusinessProfile, AdminUser, DeveloperContact, SiteContent } from '../types';
 import { normalizeCourtSchedule } from '../utils/scheduleHours';
 
 export enum OperationType {
@@ -199,6 +199,17 @@ export const saveReviewReplyToFirestore = async (
   }
 };
 
+// Delete Review from Firestore (SuperAdmin moderation)
+export const deleteReviewFromFirestore = async (reviewId: string): Promise<boolean> => {
+  try {
+    await deleteDoc(doc(db, 'reviews', reviewId));
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Delete review error:', err);
+    return false;
+  }
+};
+
 // Real-time listener for Business Profile (supports per-admin profile or general profile)
 export const subscribeToBusinessProfile = (
   onUpdate: (profile: BusinessProfile) => void,
@@ -357,6 +368,39 @@ export const saveDeveloperContactToFirestore = async (contact: DeveloperContact)
     return true;
   } catch (err) {
     console.warn('[Firestore] Save developer contact error:', err);
+    return false;
+  }
+};
+
+// Real-time listener for SiteContent (SuperAdmin-editable player texts)
+export const subscribeToSiteContent = (
+  onUpdate: (content: Partial<SiteContent>) => void
+): (() => void) => {
+  try {
+    return onSnapshot(
+      doc(db, 'settings', 'siteContent'),
+      (snap) => {
+        if (snap.exists()) {
+          onUpdate(snap.data() as Partial<SiteContent>);
+        }
+      },
+      (error) => {
+        console.warn('[Firestore] SiteContent subscription error:', error);
+      }
+    );
+  } catch (err) {
+    console.warn('[Firestore] Error attaching siteContent listener:', err);
+    return () => {};
+  }
+};
+
+// Save SiteContent
+export const saveSiteContentToFirestore = async (content: SiteContent): Promise<boolean> => {
+  try {
+    await setDoc(doc(db, 'settings', 'siteContent'), content);
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Save siteContent error:', err);
     return false;
   }
 };

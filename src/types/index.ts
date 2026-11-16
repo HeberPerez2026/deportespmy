@@ -147,6 +147,82 @@ export interface DeveloperContact {
   websiteUrl: string;
 }
 
+export interface SiteContent {
+  // Navegación principal (vista de jugador)
+  navTurnosLabel: string;
+  navComplejosLabel: string;
+  navOpinionesLabel: string;
+
+  // Portada / Hero
+  heroLocationEyebrow: string;
+  heroTitle: string;
+  heroSubtitle: string;
+  heroKpiCourtsLabel: string;
+  heroKpiComplexesLabel: string;
+  heroBadgeMpLabel: string;
+  heroBadgeWaLabel: string;
+  heroSearchPlaceholder: string;
+  heroTodayLabel: string;
+  heroTomorrowLabel: string;
+  heroAllSportsLabel: string;
+
+  // Catálogo de canchas y turnos
+  catalogEyebrow: string;
+  catalogTitlePrefix: string;
+  catalogSubtitle: string;
+  catalogLegendAvailable: string;
+  catalogLegendOccupied: string;
+  catalogLegendNight: string;
+  catalogEmptyTitle: string;
+  catalogEmptySubtitle: string;
+  catalogEmptyButtonLabel: string;
+  catalogNoResultsTitle: string;
+  catalogNoResultsSubtitle: string;
+  catalogNoResultsButtonLabel: string;
+  catalogRateDayLabel: string;
+  catalogRateNightLabel: string;
+  catalogDepositLabel: string;
+  catalogIncludesLabel: string;
+  catalogSchedulesPrefix: string;
+  catalogFullScheduleLabel: string;
+  catalogCardFooterHint: string;
+  catalogReserveButtonLabel: string;
+
+  // Banda de opiniones en inicio
+  homeReviewsEyebrow: string;
+  homeReviewsEmptyHeading: string;
+  homeReviewsSubtitle: string;
+  homeReviewsButtonLabel: string;
+
+  // Directorio y ficha de complejos
+  estEyebrow: string;
+  estTitle: string;
+  estSubtitle: string;
+  estSearchPlaceholder: string;
+  estAllSportsLabel: string;
+  estEmptyTitle: string;
+  estEmptySubtitle: string;
+  estEnterButtonLabel: string;
+  estBackToDirectoryLabel: string;
+  estDetailBadgeLabel: string;
+  estCourtsTabLabel: string;
+  estReviewsTabLabel: string;
+  estWhatsappButtonLabel: string;
+  estMinPriceLabel: string;
+
+  // Sección de opiniones
+  reviewsEyebrow: string;
+  reviewsDescription: string;
+  reviewsWriteButtonLabel: string;
+  reviewsSurfaceLabel: string;
+  reviewsLightingLabel: string;
+  reviewsFacilitiesLabel: string;
+  reviewsServiceLabel: string;
+  reviewsEmptyTitle: string;
+  reviewsEmptySubtitle: string;
+  reviewsModalTitle: string;
+}
+
 export interface AdminUser {
   id: string;
   username: string;
