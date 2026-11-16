@@ -10,6 +10,11 @@ export interface Court {
   hasLighting: boolean;
   hourlyRateDay: number; // Precio día (ARS)
   hourlyRateNight: number; // Precio noche con luz (ARS)
+  hora_inicio?: string; // Hora apertura operativa 'HH:00' (ej: '09:00', default '09:00')
+  hora_fin?: string; // Hora último turno 'HH:00' (ej: '23:00', '00:00', default '23:00')
+  openHour?: number; // Hora primer turno entero (6..22, derivado/sincronizado con hora_inicio)
+  closeHour?: number; // Hora último turno entero (7..25 donde 24=00:00 y 25=01:00, derivado/sincronizado con hora_fin)
+  nightStartHour?: number; // Inicio tarifa nocturna (15..23, default 18)
   depositRequired: number; // % de seña, ej: 50%
   imageUrl: string;
   images?: string[];
@@ -28,7 +33,7 @@ export interface TimeSlot {
   courtId: string;
   date: string; // YYYY-MM-DD
   startTime: string; // '18:00'
-  endTime: string; // '19:00' or '19:30'
+  endTime: string; // '19:00'
   price: number;
   status: SlotStatus;
   bookingId?: string;
@@ -127,6 +132,11 @@ export interface BusinessProfile {
   whatsappTemplate?: string;
   mpPaused?: boolean;
   transferPaused?: boolean;
+  instagramUrl?: string;
+  facebookUrl?: string;
+  tiktokUrl?: string;
+  youtubeUrl?: string;
+  socialFeedUrl?: string;
 }
 
 export interface DeveloperContact {

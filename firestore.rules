@@ -59,6 +59,11 @@ service cloud.firestore {
         && data.sport is string && data.sport.size() <= 32
         && data.hourlyRateDay is number && data.hourlyRateDay >= 0
         && data.hourlyRateNight is number && data.hourlyRateNight >= 0
+        && (!('hora_inicio' in data) || (data.hora_inicio is string && data.hora_inicio.size() <= 10))
+        && (!('hora_fin' in data) || (data.hora_fin is string && data.hora_fin.size() <= 10))
+        && (!('openHour' in data) || (data.openHour is number && data.openHour >= 0 && data.openHour <= 26))
+        && (!('closeHour' in data) || (data.closeHour is number && data.closeHour >= 0 && data.closeHour <= 26))
+        && (!('nightStartHour' in data) || (data.nightStartHour is number && data.nightStartHour >= 0 && data.nightStartHour <= 25))
         && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 350000))
         && (!('images' in data) || (
           data.images is list

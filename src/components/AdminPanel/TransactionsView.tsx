@@ -45,24 +45,24 @@ export const TransactionsView: React.FC = () => {
   return (
     <div className="space-y-6">
       {refundNotice && (
-        <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-2xl p-3.5 text-xs font-bold flex items-center justify-between gap-2 shadow-sm">
+        <div className="bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 rounded-2xl p-3.5 text-xs font-bold flex items-center justify-between gap-2 shadow-sm">
           <div className="flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{refundNotice}</span>
           </div>
-          <button onClick={() => setRefundNotice(null)} className="text-emerald-700 hover:text-emerald-900 cursor-pointer">
+          <button onClick={() => setRefundNotice(null)} className="text-emerald-300 hover:text-emerald-100 cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
       
       {/* Header */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-[var(--bg-surface)] p-5 rounded-xl border border-[var(--border-hairline)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 block mb-0.5">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-soft-text)] block mb-0.5">
             Caja & Liquidaciones
           </span>
-          <h2 className="text-xl font-extrabold text-slate-900 font-heading">
+          <h2 className="text-xl font-bold text-[var(--text-primary)] font-heading">
             Control de Cobranzas y Arqueo de Caja
           </h2>
         </div>
@@ -71,7 +71,7 @@ export const TransactionsView: React.FC = () => {
         <select
           value={filterMethod}
           onChange={(e) => setFilterMethod(e.target.value)}
-          className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 cursor-pointer"
+          className="bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg px-3 py-2 text-xs font-semibold text-[var(--text-primary)] cursor-pointer"
         >
           <option value="all">Todos los Medios de Pago</option>
           <option value="mercadopago">Mercado Pago</option>
@@ -85,86 +85,86 @@ export const TransactionsView: React.FC = () => {
       {/* Cashbox KPI Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-            Total Recaudado (Ingresado)
+        <div className="bg-[var(--bg-surface)] p-5 rounded-xl border border-[var(--border-hairline)]">
+          <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block">
+            Total Recaudado
           </span>
-          <div className="text-2xl font-black text-emerald-600 font-heading mt-1">
+          <div className="text-2xl font-bold text-[var(--accent)] font-heading tabular-nums mt-1">
             ${totalCollected.toLocaleString('es-AR')}
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">Acreditado en cuentas y caja</span>
+          <span className="text-[11px] text-[var(--text-muted)] mt-1 block">Acreditado en cuentas y caja</span>
         </div>
 
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+        <div className="bg-[var(--bg-surface)] p-5 rounded-xl border border-[var(--border-hairline)]">
+          <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block">
             Saldo a Cobrar en Cancha
           </span>
-          <div className="text-2xl font-black text-amber-600 font-heading mt-1">
+          <div className="text-2xl font-bold text-amber-600 font-heading tabular-nums mt-1">
             ${totalPending.toLocaleString('es-AR')}
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">Señas pendientes de cancelación</span>
+          <span className="text-[11px] text-[var(--text-muted)] mt-1 block">Señas pendientes de cancelación</span>
         </div>
 
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+        <div className="bg-[var(--bg-surface)] p-5 rounded-xl border border-[var(--border-hairline)]">
+          <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block">
             Mercado Pago Online
           </span>
-          <div className="text-2xl font-black text-sky-600 font-heading mt-1">
+          <div className="text-2xl font-bold text-[var(--mp-brand)] font-heading tabular-nums mt-1">
             ${mpCollected.toLocaleString('es-AR')}
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">Acreditado en tu cuenta Mercado Pago</span>
+          <span className="text-[11px] text-[var(--text-muted)] mt-1 block">Acreditado en tu cuenta Mercado Pago</span>
         </div>
 
-        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
-          <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+        <div className="bg-[var(--bg-surface)] p-5 rounded-xl border border-[var(--border-hairline)]">
+          <span className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider block">
             Efectivo en Recepción
           </span>
-          <div className="text-2xl font-black text-slate-800 font-heading mt-1">
+          <div className="text-2xl font-bold text-[var(--text-primary)] font-heading tabular-nums mt-1">
             ${cashCollected.toLocaleString('es-AR')}
           </div>
-          <span className="text-[11px] text-slate-400 mt-1 block">Caja física mostrador</span>
+          <span className="text-[11px] text-[var(--text-muted)] mt-1 block">Caja física mostrador</span>
         </div>
 
       </div>
 
       {/* Transactions Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs text-left">
             <thead>
-              <tr className="bg-slate-50 text-slate-600 border-b border-slate-200">
-                <th className="py-3 px-4 font-bold">Comprobante</th>
-                <th className="py-3 px-4 font-bold">Cliente</th>
-                <th className="py-3 px-4 font-bold">Cancha</th>
-                <th className="py-3 px-4 font-bold">Fecha / Turno</th>
-                <th className="py-3 px-4 font-bold">Medio de Pago</th>
-                <th className="py-3 px-4 font-bold text-right">Abonado</th>
-                <th className="py-3 px-4 font-bold text-right">Saldo Restante</th>
-                <th className="py-3 px-4 font-bold text-center">Acción</th>
+              <tr className="bg-[var(--bg-subtle)] text-[var(--text-secondary)] border-b border-[var(--border-hairline)]">
+                <th className="py-3 px-4 font-semibold">Comprobante</th>
+                <th className="py-3 px-4 font-semibold">Cliente</th>
+                <th className="py-3 px-4 font-semibold">Cancha</th>
+                <th className="py-3 px-4 font-semibold">Fecha / Turno</th>
+                <th className="py-3 px-4 font-semibold">Medio de Pago</th>
+                <th className="py-3 px-4 font-semibold text-right">Abonado</th>
+                <th className="py-3 px-4 font-semibold text-right">Saldo Restante</th>
+                <th className="py-3 px-4 font-semibold text-center">Acción</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[var(--border-hairline)]">
               {filteredBookings.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-10 text-center text-slate-400 text-xs">
+                  <td colSpan={8} className="py-10 text-center text-[var(--text-muted)] text-xs">
                     No hay movimientos ni cobros registrados en la caja actualmente.
                   </td>
                 </tr>
               ) : (
                 filteredBookings.map((b) => (
-                  <tr key={b.id} className="hover:bg-slate-50">
-                    <td className="py-3 px-4 font-mono font-bold text-slate-700">#{b.bookingCode}</td>
-                    <td className="py-3 px-4 font-bold text-slate-900">{b.clientName}</td>
-                    <td className="py-3 px-4 text-slate-600">{b.courtName.split('-')[0]}</td>
-                    <td className="py-3 px-4 text-slate-600 font-mono">{b.date} {b.startTime}</td>
+                  <tr key={b.id} className="hover:bg-[var(--bg-subtle)]/60">
+                    <td className="py-3 px-4 font-mono font-semibold text-[var(--text-secondary)]">#{b.bookingCode}</td>
+                    <td className="py-3 px-4 font-semibold text-[var(--text-primary)]">{b.clientName}</td>
+                    <td className="py-3 px-4 text-[var(--text-secondary)]">{b.courtName.split('-')[0]}</td>
+                    <td className="py-3 px-4 text-[var(--text-secondary)] font-mono tabular-nums">{b.date} {b.startTime}</td>
                     <td className="py-3 px-4">
-                      <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded uppercase font-semibold text-[10px]">
+                      <span className="bg-[var(--bg-subtle)] text-[var(--text-secondary)] border border-[var(--border-hairline)] px-2 py-0.5 rounded uppercase font-semibold text-[10px]">
                         {b.paymentMethod}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-right font-bold">
                       <div className="flex flex-col items-end">
-                        <span className={b.status === 'awaiting_approval' ? 'text-rose-500' : 'text-emerald-600'}>
+                        <span className={b.status === 'awaiting_approval' ? 'text-rose-400' : 'text-emerald-400'}>
                           ${b.amountPaid.toLocaleString('es-AR')}
                         </span>
                         {b.status === 'awaiting_approval' && (
@@ -176,14 +176,14 @@ export const TransactionsView: React.FC = () => {
                     </td>
                     <td className="py-3 px-4 text-right font-bold">
                       {b.balanceDue > 0 ? (
-                        <span className="text-amber-600">${b.balanceDue.toLocaleString('es-AR')}</span>
+                        <span className="text-amber-400">${b.balanceDue.toLocaleString('es-AR')}</span>
                       ) : (
-                        <span className="text-slate-400 font-normal">Saldado</span>
+                        <span className="text-[var(--text-muted)] font-normal">Saldado</span>
                       )}
                     </td>
                     <td className="py-3 px-4 text-center">
                       {b.status === 'cancelled' && b.paymentStatus === 'reembolsado' ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 text-[10px] font-bold">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30 text-[10px] font-bold">
                           ↩ Reembolsado ${(b.refundAmount ?? b.amountPaid).toLocaleString('es-AR')}
                         </span>
                       ) : (
@@ -191,12 +191,12 @@ export const TransactionsView: React.FC = () => {
                           {b.balanceDue > 0 ? (
                             <button
                               onClick={() => collectBalanceAtCourt(b.id)}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] cursor-pointer shadow-xs"
+                              className="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-[#090D12] font-bold text-[10px] cursor-pointer shadow-xs"
                             >
                               Cobrar Saldo
                             </button>
                           ) : (
-                            <span className="text-emerald-600 text-[11px] font-bold">✓ Saldado</span>
+                            <span className="text-emerald-400 text-[11px] font-bold">✓ Saldado</span>
                           )}
                           <button
                             onClick={() => {
@@ -204,7 +204,7 @@ export const TransactionsView: React.FC = () => {
                               setNotifyWhatsApp(true);
                               setCancelTarget(b);
                             }}
-                            className="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-[10px] cursor-pointer"
+                            className="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 font-bold text-[10px] cursor-pointer"
                             title="Cancelar turno y devolver importe abonado"
                           >
                             Devolver
@@ -222,59 +222,59 @@ export const TransactionsView: React.FC = () => {
 
       {/* Visual Confirmation Modal for Refund from Cashbox */}
       {cancelTarget && (
-        <div className="fixed inset-0 z-[60] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl text-slate-900 space-y-4 border border-rose-200">
+        <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] rounded-2xl max-w-md w-full p-6 shadow-2xl text-[var(--text-primary)] space-y-4 border border-rose-500/40">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
+                <div className="w-11 h-11 rounded-2xl bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center justify-center shrink-0">
                   <AlertTriangle className="w-6 h-6" />
                 </div>
                 <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider text-rose-600 block">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-rose-400 block">
                     Confirmación de Devolución
                   </span>
-                  <h3 className="text-base font-extrabold text-slate-900 font-heading">
+                  <h3 className="text-base font-extrabold text-[var(--text-primary)] font-heading">
                     ¿Cancelar Turno #{cancelTarget.bookingCode} y Reembolsar?
                   </h3>
                 </div>
               </div>
               <button
                 onClick={() => !isRefunding && setCancelTarget(null)}
-                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5 text-xs">
+            <div className="p-3.5 bg-[var(--bg-canvas)] rounded-2xl border border-[var(--border-hairline)] space-y-1.5 text-xs">
               <div className="flex justify-between">
-                <span className="text-slate-500">Cliente:</span>
-                <strong className="text-slate-900">{cancelTarget.clientName}</strong>
+                <span className="text-[var(--text-muted)]">Cliente:</span>
+                <strong className="text-[var(--text-primary)]">{cancelTarget.clientName}</strong>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Turno:</span>
-                <strong className="font-mono text-slate-800">{cancelTarget.date} {cancelTarget.startTime} hs</strong>
+                <span className="text-[var(--text-muted)]">Turno:</span>
+                <strong className="font-mono text-[var(--text-secondary)]">{cancelTarget.date} {cancelTarget.startTime} hs</strong>
               </div>
-              <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-                <span className="font-bold text-rose-700">Importe a devolver al jugador:</span>
-                <span className="text-lg font-black text-rose-600 font-mono">
+              <div className="flex justify-between items-center pt-2 border-t border-[var(--border-hairline)]">
+                <span className="font-bold text-rose-300">Importe a devolver al jugador:</span>
+                <span className="text-lg font-black text-rose-400 font-mono">
                   ${cancelTarget.amountPaid.toLocaleString('es-AR')}
                 </span>
               </div>
             </div>
 
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none">
+            <label className="flex items-center gap-2 text-xs font-semibold text-[var(--text-secondary)] cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={notifyWhatsApp}
                 onChange={(e) => setNotifyWhatsApp(e.target.checked)}
-                className="w-4 h-4 rounded text-emerald-600"
+                className="w-4 h-4 rounded accent-[var(--accent)]"
               />
               <span>Notificar cancelación y devolución por WhatsApp al jugador</span>
             </label>
 
             {refundError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-2">
+              <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/35 text-xs text-rose-200 space-y-2">
                 <p className="font-bold">{refundError}</p>
                 <button
                   type="button"
@@ -287,12 +287,12 @@ export const TransactionsView: React.FC = () => {
               </div>
             )}
 
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-hairline)]">
               <button
                 type="button"
                 disabled={isRefunding}
                 onClick={() => setCancelTarget(null)}
-                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
+                className="px-4 py-2.5 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
               >
                 Volver
               </button>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { apiFetch, getApiBaseUrl, safeParseJsonResponse } from '../utils/api';
 import { Court, PaymentMethod, Booking } from '../types';
+import { getNormalizedCourtSchedule, parseSlotHourOrder } from '../utils/scheduleHours';
 import { 
   X, 
   Calendar, 
@@ -16,7 +17,6 @@ import {
   QrCode, 
   ArrowRight, 
   ArrowLeft,
-  Sparkles,
   Info,
   Copy,
   Check,
@@ -25,7 +25,8 @@ import {
   Image as ImageIcon,
   FileCheck,
   PauseCircle,
-  AlertTriangle
+  AlertTriangle,
+  Landmark
 } from 'lucide-react';
 
 interface BookingModalProps {
@@ -59,8 +60,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
 
   // Multi-step state: 1 (Turno) -> 2 (Datos) -> 3 (Pago Online) -> 4 (Confirmado)
   const [step, setStep] = useState<number>(initialSlotTime ? 2 : 1);
-  const [selectedSlotTime, setSelectedSlotTime] = useState<string>(initialSlotTime || '19:00');
-  const [durationMinutes, setDurationMinutes] = useState<number>(court.sport === 'padel' || court.sport === 'tenis' ? 90 : 60);
+  const [selectedSlotTime, setSelectedSlotTime] = useState<string>(initialSlotTime || '');
+  const durationMinutes = 60; // Turnos estrictamente de 1 hora (60 min)
   
   // Client input states (clean from 0, no mock hardcoded values)
   const [name, setName] = useState(userName || '');
@@ -87,12 +88,22 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const [isSubmittingReceipt, setIsSubmittingReceipt] = useState(false);
 
-  // Available slots for selected date
+  // Available slots for selected date (scoped estrictamente a hora_inicio..hora_fin)
   const slots = getSlotsForCourtAndDate(court.id, selectedDate);
-  const hourNum = parseInt(selectedSlotTime.split(':')[0], 10);
-  const isNight = hourNum >= 18;
+  const { hora_inicio, hora_fin, nightStartHour } = getNormalizedCourtSchedule(court);
+  const hourNum = parseSlotHourOrder(selectedSlotTime || hora_inicio);
+  const isNight = hourNum >= nightStartHour;
   const baseHourlyPrice = isNight ? court.hourlyRateNight : court.hourlyRateDay;
-  const totalPrice = durationMinutes === 90 ? Math.round(baseHourlyPrice * 1.5) : baseHourlyPrice;
+  const totalPrice = baseHourlyPrice;
+
+  useEffect(() => {
+    if (slots.length === 0) return;
+    const match = slots.find((s) => s.startTime === selectedSlotTime);
+    if (!match) {
+      const firstAvail = slots.find((s) => s.status === 'available') || slots[0];
+      if (firstAvail) setSelectedSlotTime(firstAvail.startTime);
+    }
+  }, [slots, selectedSlotTime]);
   const depositAmount = Math.round(totalPrice * (court.depositRequired / 100));
   const amountToPayNow = paymentOption === 'deposit' ? depositAmount : totalPrice;
   const balanceDue = totalPrice - amountToPayNow;
@@ -380,26 +391,23 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-      <div className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl text-slate-100 overflow-hidden my-8">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+      <div className="relative w-full max-w-2xl bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl shadow-2xl text-[var(--text-primary)] overflow-hidden my-8">
         
         {/* Modal Top Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-slate-950/80 border-b border-slate-800">
+        <div className="flex items-center justify-between px-6 py-4 bg-[var(--bg-elevated)] border-b border-[var(--border-hairline)]">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                Reserva Online • DeportesPMY
-              </span>
-              <span className="text-slate-600">•</span>
-              <span className="text-xs text-slate-400 font-mono">deportespmy.com.ar</span>
-            </div>
-            <h2 className="text-lg font-bold text-white font-heading">
+            <p className="text-xs font-semibold text-[var(--accent-soft-text)]">
+              Reserva online · DeportesPMY
+            </p>
+            <h2 className="font-heading text-2xl font-bold text-[var(--text-primary)] leading-tight">
               {court.name}
             </h2>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white rounded-xl hover:bg-slate-800 transition-colors"
+            className="p-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-subtle)] transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -407,90 +415,75 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
 
         {/* Multi-step progress bar */}
         {step < 4 && (
-          <div className="px-6 py-3 bg-slate-950/40 border-b border-slate-800/80 flex items-center justify-between text-xs">
-            <div className={`flex items-center gap-1.5 ${step >= 1 ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${step >= 1 ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800'}`}>1</span>
+          <div className="px-6 py-3 bg-[var(--bg-canvas)] border-b border-[var(--border-hairline)] flex items-center justify-between text-xs">
+            <div className={`flex items-center gap-2 ${step >= 1 ? 'text-[var(--text-primary)] font-semibold' : 'text-[var(--text-muted)]'}`}>
+              <span className={`w-5 h-5 rounded-md flex items-center justify-center font-mono text-[11px] ${step >= 1 ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--bg-subtle)]'}`}>1</span>
               <span>Horario</span>
             </div>
-            <div className="w-8 h-0.5 bg-slate-800" />
-            <div className={`flex items-center gap-1.5 ${step >= 2 ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${step >= 2 ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800'}`}>2</span>
-              <span>Tus Datos</span>
+            <div className="flex-1 mx-3 h-px bg-[var(--border-hairline)]" />
+            <div className={`flex items-center gap-2 ${step >= 2 ? 'text-[var(--text-primary)] font-semibold' : 'text-[var(--text-muted)]'}`}>
+              <span className={`w-5 h-5 rounded-md flex items-center justify-center font-mono text-[11px] ${step >= 2 ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--bg-subtle)]'}`}>2</span>
+              <span>Datos</span>
             </div>
-            <div className="w-8 h-0.5 bg-slate-800" />
-            <div className={`flex items-center gap-1.5 ${step >= 3 ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
-              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[11px] ${step >= 3 ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800'}`}>3</span>
-              <span>Pago Seguro</span>
+            <div className="flex-1 mx-3 h-px bg-[var(--border-hairline)]" />
+            <div className={`flex items-center gap-2 ${step >= 3 ? 'text-[var(--text-primary)] font-semibold' : 'text-[var(--text-muted)]'}`}>
+              <span className={`w-5 h-5 rounded-md flex items-center justify-center font-mono text-[11px] ${step >= 3 ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-[var(--bg-subtle)]'}`}>3</span>
+              <span>Pago</span>
             </div>
           </div>
         )}
 
         <div className="p-6">
           
-          {/* STEP 1: Select Slot & Duration */}
+          {/* STEP 1: Select Slot (1h fixed) */}
           {step === 1 && (
             <div className="space-y-6">
-              
-              {/* Date & Duration Pickers */}
+              {/* Date & Fixed 1h Info */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                  <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1.5">
                     Fecha
                   </label>
-                  <div className="relative">
-                    <input
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
-                    />
-                  </div>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg px-3.5 py-2.5 text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                    style={{ colorScheme: 'dark' }}
+                  />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                    Duración del Turno
+                  <label className="block text-xs font-semibold text-[var(--text-secondary)] mb-1.5">
+                    Duración del turno
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setDurationMinutes(60)}
-                      className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all ${
-                        durationMinutes === 60 
-                          ? 'bg-emerald-500 text-slate-950 border-emerald-400' 
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-750'
-                      }`}
-                    >
-                      60 Minutos (1h)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDurationMinutes(90)}
-                      className={`py-2 px-3 text-xs font-bold rounded-xl border transition-all ${
-                        durationMinutes === 90 
-                          ? 'bg-emerald-500 text-slate-950 border-emerald-400' 
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-750'
-                      }`}
-                    >
-                      90 Minutos (1.5h)
-                    </button>
+                  <div className="h-[42px] px-3.5 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-hairline)] flex items-center justify-between text-xs">
+                    <span className="inline-flex items-center gap-2 font-semibold text-[var(--text-primary)]">
+                      <Clock className="w-4 h-4 text-[var(--accent-soft-text)]" />
+                      <span>1 hora fija (60 min)</span>
+                    </span>
+                    <span className="font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
+                      {hora_inicio}–{hora_fin} hs
+                    </span>
                   </div>
                 </div>
               </div>
 
               {/* Time Slots Grid */}
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center justify-between">
-                  <span>Horarios Disponibles para {selectedDate}</span>
-                  <span className="text-[11px] font-normal text-emerald-400">Verde = Libre</span>
-                </label>
+                <div className="flex items-center justify-between text-xs mb-2">
+                  <span className="font-semibold text-[var(--text-primary)]">
+                    Horarios disponibles · <span className="font-mono tabular-nums">{selectedDate}</span>
+                  </span>
+                  <span className="text-[var(--accent-soft-text)] font-medium">Seleccioná horario (1h)</span>
+                </div>
 
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-60 overflow-y-auto pr-1">
                   {slots.map((slot) => {
                     const isAvailable = slot.status === 'available';
                     const isSelected = selectedSlotTime === slot.startTime;
-                    const slotHour = parseInt(slot.startTime.split(':')[0], 10);
-                    const isNightSlot = slotHour >= 18;
+                    const slotHourOrder = parseSlotHourOrder(slot.startTime);
+                    const isNightSlot = slotHourOrder >= nightStartHour;
 
                     return (
                       <button
@@ -498,20 +491,20 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                         type="button"
                         disabled={!isAvailable}
                         onClick={() => setSelectedSlotTime(slot.startTime)}
-                        className={`p-2.5 rounded-xl text-center border text-xs font-semibold transition-all relative ${
+                        className={`p-2 rounded-lg text-center border text-xs font-medium transition-colors relative tabular-nums ${
                           !isAvailable
-                            ? 'bg-slate-800/40 text-slate-600 border-slate-800 cursor-not-allowed line-through'
+                            ? 'bg-[var(--bg-subtle)] text-[var(--text-muted)] border-transparent cursor-not-allowed line-through opacity-55'
                             : isSelected
-                            ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold shadow-md shadow-emerald-500/20'
-                            : 'bg-slate-800/90 text-slate-200 border-slate-700/80 hover:border-emerald-500/60 hover:bg-slate-750'
+                            ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)] font-bold cursor-pointer'
+                            : 'bg-[var(--bg-canvas)] text-[var(--text-primary)] border-[var(--border-hairline)] hover:border-[var(--accent)] cursor-pointer'
                         }`}
                       >
-                        <div className="text-sm font-bold">{slot.startTime}</div>
-                        <div className="text-[10px] opacity-80">
-                          {isAvailable ? `$${(durationMinutes === 90 ? Math.round(slot.price * 1.5) : slot.price).toLocaleString('es-AR')}` : 'Ocupado'}
+                        <div className="font-mono text-sm font-bold">{slot.startTime}</div>
+                        <div className="font-mono text-[11px] opacity-85">
+                          {isAvailable ? `$${slot.price.toLocaleString('es-AR')}` : 'Ocupado'}
                         </div>
                         {isNightSlot && isAvailable && (
-                          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-amber-400" title="Tarifa nocturna con luz" />
+                          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--night-cue)]" title="Tarifa nocturna con luz" />
                         )}
                       </button>
                     );
@@ -519,50 +512,47 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 </div>
               </div>
 
-              {/* Court Amenities Summary */}
-              <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 flex items-center justify-between text-xs text-slate-300">
+              {/* Court Summary */}
+              <div className="p-3.5 bg-[var(--bg-canvas)] rounded-lg border border-[var(--border-hairline)] flex items-center justify-between text-xs text-[var(--text-secondary)]">
                 <span className="flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  {court.surface} • {court.isIndoor ? 'Techada' : 'Al aire libre'}
+                  <ShieldCheck className="w-4 h-4 text-[var(--accent-soft-text)]" />
+                  {court.surface} · {court.isIndoor ? 'Techada' : 'Al aire libre'}
                 </span>
-                <span className="font-bold text-emerald-300">
-                  Total: ${totalPrice.toLocaleString('es-AR')}
+                <span className="font-mono font-bold text-[var(--text-primary)] text-sm tabular-nums">
+                  ${totalPrice.toLocaleString('es-AR')}
                 </span>
               </div>
 
-              {/* Step 1 Actions */}
-              <div className="flex justify-end pt-2">
+              <div className="flex justify-end pt-1">
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="px-6 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-emerald-500/20"
+                  className="px-5 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs sm:text-sm inline-flex items-center gap-2 transition-colors cursor-pointer"
                 >
-                  <span>Continuar con Datos</span>
+                  <span>Continuar con datos</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
-
             </div>
           )}
 
           {/* STEP 2: Client Info & WhatsApp Phone */}
           {step === 2 && (
             <div className="space-y-4">
-              
-              <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-xs text-emerald-300 flex items-start gap-2.5">
-                <MessageCircle className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+              <div className="p-3.5 bg-[var(--accent-soft)] border border-[var(--border-hairline)] rounded-lg text-xs text-[var(--text-primary)] flex items-start gap-2.5">
+                <MessageCircle className="w-4 h-4 shrink-0 text-[var(--accent-soft-text)] mt-0.5" />
                 <div>
-                  <p className="font-bold">Notificación Automática por WhatsApp</p>
-                  <p className="text-slate-300 mt-0.5">
-                    Al confirmar, el sistema generará y enviará inmediatamente el comprobante con código QR y detalles del partido a tu número de WhatsApp.
+                  <p className="font-semibold">Notificación directa por WhatsApp</p>
+                  <p className="text-[var(--text-secondary)] mt-0.5">
+                    Al confirmar, generaremos el comprobante del partido para enviarlo directo a tu WhatsApp.
                   </p>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5 text-emerald-400" />
-                  Nombre Completo del Titular
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1.5 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                  Nombre completo del titular
                 </label>
                 <input
                   type="text"
@@ -570,14 +560,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   placeholder="Ej: Gonzalo Morales"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                  <Phone className="w-3.5 h-3.5 text-emerald-400" />
-                  Celular WhatsApp (Con código de área)
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1.5 flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                  Celular WhatsApp (con código de área)
                 </label>
                 <input
                   type="tel"
@@ -585,17 +575,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   placeholder="+5492804567890"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400 font-mono"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg px-3.5 py-2.5 text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
-                <span className="text-[11px] text-slate-500 mt-1 block">
+                <span className="text-[11px] text-[var(--text-muted)] mt-1 block">
                   Ejemplo Puerto Madryn: +54 9 280 456-7890
                 </span>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-emerald-400" />
-                  Email (Para comprobante electrónico)
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1.5 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+                  Email (para comprobante)
                 </label>
                 <input
                   type="email"
@@ -603,29 +593,28 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   placeholder="tuemail@gmail.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg px-3.5 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1">
-                  Notas o Solicitudes Adicionales (Opcional)
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1.5">
+                  Notas adicionales (opcional)
                 </label>
                 <textarea
                   rows={2}
-                  placeholder="Ej: Necesitamos 10 chalecos, paletas de pádel o reserva de parrilla post-partido..."
+                  placeholder="Ej: Necesitamos chalecos o alquiler de paletas..."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-emerald-400 resize-none"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg px-3.5 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] resize-none"
                 />
               </div>
 
-              {/* Step 2 Actions */}
-              <div className="flex justify-between pt-3">
+              <div className="flex justify-between pt-2">
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="px-4 py-2.5 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   <span>Volver</span>
@@ -635,69 +624,71 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   type="button"
                   disabled={!name.trim() || !phone.trim()}
                   onClick={() => setStep(3)}
-                  className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-sm flex items-center gap-2 transition-colors cursor-pointer shadow-lg shadow-emerald-500/20"
+                  className="px-5 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 text-[var(--accent-ink)] font-semibold text-xs sm:text-sm inline-flex items-center gap-2 transition-colors cursor-pointer"
                 >
-                  <span>Ir a Pago Online</span>
+                  <span>Ir al pago</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
-
             </div>
           )}
 
           {/* STEP 3: Online Payment Checkout */}
           {step === 3 && (
             <div className="space-y-5">
-              
-              {/* Payment Split Option (50% Seña vs 100% Total) */}
+              {/* Payment Split Option */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                  Modalidad de Pago Online
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-2">
+                  Modalidad de pago online
                 </label>
 
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
                     onClick={() => setPaymentOption('deposit')}
-                    className={`p-3.5 rounded-2xl border text-left transition-all ${
+                    className={`p-3.5 rounded-lg border text-left transition-colors cursor-pointer ${
                       paymentOption === 'deposit'
-                        ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-md'
-                        : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-750'
+                        ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--text-primary)]'
+                        : 'bg-[var(--bg-canvas)] border-[var(--border-hairline)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase text-emerald-400">Seña 50%</span>
-                      <span className="text-sm font-extrabold text-white">${depositAmount.toLocaleString('es-AR')}</span>
+                      <span className="text-xs font-bold text-[var(--accent-soft-text)]">Seña 50%</span>
+                      <span className="font-mono text-sm font-bold text-[var(--text-primary)] tabular-nums">
+                        ${depositAmount.toLocaleString('es-AR')}
+                      </span>
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Abonás la mitad ahora y el saldo restante de ${depositAmount.toLocaleString('es-AR')} en la cancha antes de jugar.
+                    <p className="text-[11px] text-[var(--text-secondary)] mt-1">
+                      Abonás la mitad ahora y el saldo de ${depositAmount.toLocaleString('es-AR')} en cancha.
                     </p>
                   </button>
 
                   <button
                     type="button"
                     onClick={() => setPaymentOption('full')}
-                    className={`p-3.5 rounded-2xl border text-left transition-all ${
+                    className={`p-3.5 rounded-lg border text-left transition-colors cursor-pointer ${
                       paymentOption === 'full'
-                        ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-md'
-                        : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-750'
+                        ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--text-primary)]'
+                        : 'bg-[var(--bg-canvas)] border-[var(--border-hairline)] text-[var(--text-secondary)] hover:border-[var(--border-strong)]'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase text-emerald-400">Pago Total 100%</span>
-                      <span className="text-sm font-extrabold text-white">${totalPrice.toLocaleString('es-AR')}</span>
+                      <span className="text-xs font-bold text-[var(--accent-soft-text)]">Total 100%</span>
+                      <span className="font-mono text-sm font-bold text-[var(--text-primary)] tabular-nums">
+                        ${totalPrice.toLocaleString('es-AR')}
+                      </span>
                     </div>
-                    <p className="text-[11px] text-slate-400 mt-1">
-                      Dejás la cancha 100% cancelada. Llegás al complejo y pasás directo a jugar.
+                    <p className="text-[11px] text-[var(--text-secondary)] mt-1">
+                      Dejás la cancha cancelada y pasás directo a jugar.
                     </p>
                   </button>
                 </div>
               </div>
 
-              {/* Payment Method Selector: ONLY Mercado Pago or CBU */}
+              {/* Payment Method Selector */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                  Seleccionar Medio de Pago
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-2">
+                  Medio de pago
                 </label>
 
                 <div className="grid grid-cols-2 gap-2.5">
@@ -707,40 +698,39 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                       setMpFlowError(null);
                       setPaymentMethod('mercadopago');
                     }}
-                    className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col gap-1 cursor-pointer ${
+                    className={`p-3.5 rounded-lg border text-left transition-colors flex flex-col gap-1 cursor-pointer ${
                       isMpPaused
-                        ? paymentMethod === 'mercadopago'
-                          ? 'bg-rose-950/40 border-rose-500/70 text-rose-200 ring-2 ring-rose-500/30'
-                          : 'bg-slate-800/40 text-slate-400 border-rose-900/50 opacity-80'
+                        ? 'bg-rose-500/10 border-rose-500/40 text-[var(--text-primary)]'
                         : paymentMethod === 'mercadopago'
-                        ? 'bg-sky-500/20 border-sky-400 text-sky-200 ring-2 ring-sky-400/50'
-                        : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-slate-750'
+                        ? 'bg-[var(--mp-soft)] border-[var(--mp-brand)] text-[var(--text-primary)]'
+                        : 'bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-1">
-                      <span className="font-extrabold text-xs text-sky-300 flex items-center gap-1.5">
-                        <span>💙</span> Mercado Pago
+                      <span className="font-bold text-xs text-[var(--mp-text)] flex items-center gap-1.5">
+                        <CreditCard className="w-3.5 h-3.5" />
+                        <span>Mercado Pago</span>
                       </span>
                       {isMpPaused ? (
-                        <span className="text-[10px] bg-rose-500/25 text-rose-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <span className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
                           <PauseCircle className="w-3 h-3" /> Suspendido
                         </span>
                       ) : !hasMpConfigured ? (
-                        <span className="text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full font-bold">Sin configurar</span>
+                        <span className="text-[10px] text-[var(--text-muted)] font-semibold">Sin configurar</span>
                       ) : (
-                        <span className="text-[10px] bg-sky-500/25 text-sky-300 px-2 py-0.5 rounded-full font-bold">
+                        <span className="text-[10px] text-[var(--mp-text)] font-semibold">
                           {hasAutomaticMP ? 'Automático' : 'App / Alias'}
                         </span>
                       )}
                     </div>
-                    <span className="text-[11px] text-slate-300">
+                    <span className="text-[11px] text-[var(--text-secondary)]">
                       {isMpPaused
                         ? 'Pausado temporalmente por el club'
                         : !hasMpConfigured
                         ? 'El club aún no configuró MP'
                         : hasAutomaticMP
                         ? 'Pagá con tarjeta o saldo y confirmá al instante'
-                        : 'Transferí directo a nuestro Alias por la app'}
+                        : 'Transferí directo al Alias desde tu app'}
                     </span>
                   </button>
 
@@ -750,31 +740,30 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                       setMpFlowError(null);
                       setPaymentMethod('transferencia');
                     }}
-                    className={`p-3.5 rounded-2xl border text-left transition-all flex flex-col gap-1 cursor-pointer ${
+                    className={`p-3.5 rounded-lg border text-left transition-colors flex flex-col gap-1 cursor-pointer ${
                       isTransferPaused
-                        ? paymentMethod === 'transferencia'
-                          ? 'bg-rose-950/40 border-rose-500/70 text-rose-200 ring-2 ring-rose-500/30'
-                          : 'bg-slate-800/40 text-slate-400 border-rose-900/50 opacity-80'
+                        ? 'bg-rose-500/10 border-rose-500/40 text-[var(--text-primary)]'
                         : paymentMethod === 'transferencia'
-                        ? 'bg-amber-500/20 border-amber-400 text-amber-200 ring-2 ring-amber-400/50'
-                        : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-slate-750'
+                        ? 'bg-[var(--accent-soft)] border-[var(--accent)] text-[var(--text-primary)]'
+                        : 'bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-1">
-                      <span className="font-extrabold text-xs text-amber-300 flex items-center gap-1.5">
-                        <span>🏦</span> CBU / Banco
+                      <span className="font-bold text-xs text-[var(--text-primary)] flex items-center gap-1.5">
+                        <Landmark className="w-3.5 h-3.5 text-[var(--night-cue)]" />
+                        <span>CBU / Banco</span>
                       </span>
                       {isTransferPaused ? (
-                        <span className="text-[10px] bg-rose-500/25 text-rose-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                        <span className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
                           <PauseCircle className="w-3 h-3" /> Suspendido
                         </span>
                       ) : !hasTransferConfigured ? (
-                        <span className="text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full font-bold">Sin configurar</span>
+                        <span className="text-[10px] text-[var(--text-muted)] font-semibold">Sin configurar</span>
                       ) : (
-                        <span className="text-[10px] bg-amber-500/25 text-amber-300 px-2 py-0.5 rounded-full font-bold">Transferencia</span>
+                        <span className="text-[10px] text-[var(--text-secondary)] font-semibold">Transferencia</span>
                       )}
                     </div>
-                    <span className="text-[11px] text-slate-300">
+                    <span className="text-[11px] text-[var(--text-secondary)]">
                       {isTransferPaused
                         ? 'Pausado temporalmente por el club'
                         : !hasTransferConfigured
@@ -787,50 +776,51 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
 
               {/* Method Specific Form Details */}
               {paymentMethod === 'mercadopago' && (
-                <div className={`p-4 border rounded-2xl space-y-3 ${
-                  isMpPaused ? 'bg-rose-950/30 border-rose-500/40' : 'bg-sky-950/30 border-sky-800/60'
+                <div className={`p-4 border rounded-lg space-y-3 ${
+                  isMpPaused ? 'bg-rose-500/10 border-rose-500/40' : 'bg-[var(--bg-canvas)] border-[var(--border-hairline)]'
                 }`}>
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-sky-300 flex items-center gap-1.5">
-                      <span>💙</span> {hasAutomaticMP ? 'Mercado Pago Checkout Pro' : 'Cobro Online con Mercado Pago'}
+                    <span className="text-xs font-bold text-[var(--mp-text)] flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5" />
+                      <span>{hasAutomaticMP ? 'Mercado Pago Checkout Pro' : 'Cobro con Mercado Pago'}</span>
                     </span>
-                    <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
+                    <span className={`text-[11px] font-semibold ${
                       isMpPaused
-                        ? 'bg-rose-500/20 text-rose-300'
+                        ? 'text-rose-600 dark:text-rose-400'
                         : !hasMpConfigured
-                        ? 'bg-slate-800 text-slate-400'
-                        : 'bg-emerald-500/20 text-emerald-300'
+                        ? 'text-[var(--text-muted)]'
+                        : 'text-[var(--accent-soft-text)]'
                     }`}>
-                      {isMpPaused ? 'Método Suspendido' : !hasMpConfigured ? 'No Disponible' : hasAutomaticMP ? 'Confirmación Automática' : 'Acreditación Directa'}
+                      {isMpPaused ? 'Suspendido' : !hasMpConfigured ? 'No disponible' : hasAutomaticMP ? 'Confirmación automática' : 'Acreditación directa'}
                     </span>
                   </div>
 
                   {isMpPaused ? (
-                    <div className="p-3.5 bg-rose-950/50 border border-rose-500/40 rounded-xl text-xs text-rose-200 space-y-1">
-                      <div className="flex items-center gap-1.5 font-bold text-rose-300">
-                        <PauseCircle className="w-4 h-4 text-rose-400" />
-                        <span>Mercado Pago Suspendido Temporalmente</span>
+                    <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-xs space-y-1">
+                      <div className="flex items-center gap-1.5 font-semibold text-rose-600 dark:text-rose-400">
+                        <PauseCircle className="w-4 h-4" />
+                        <span>Mercado Pago suspendido temporalmente</span>
                       </div>
-                      <p className="text-[11px] text-slate-300">
-                        El administrador de este complejo pausó los cobros con Mercado Pago en este momento. {isTransferAvailable ? 'Podés abonar mediante Transferencia CBU / Banco.' : 'Consultá con el club por WhatsApp.'}
+                      <p className="text-[11px] text-[var(--text-secondary)]">
+                        El complejo pausó cobros con Mercado Pago en este momento. {isTransferAvailable ? 'Podés abonar por Transferencia CBU / Banco.' : 'Consultá con el club por WhatsApp.'}
                       </p>
                     </div>
                   ) : hasAutomaticMP ? (
-                    <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-xs text-slate-300">
-                      <p className="text-slate-200 leading-relaxed">
-                        Pagás de forma segura con <strong>Tarjetas, Dinero en cuenta o QR</strong> directo a la cuenta oficial del complejo{effectiveProfile.mpAccountNickname ? ` (@${effectiveProfile.mpAccountNickname})` : ''}. Tu turno se confirma <strong>automáticamente</strong> al instante.
+                    <div className="p-3.5 bg-[var(--bg-surface)] rounded-lg border border-[var(--border-hairline)] space-y-2 text-xs text-[var(--text-secondary)]">
+                      <p className="leading-relaxed">
+                        Pagás con <strong>tarjetas, dinero en cuenta o QR</strong> directo a la cuenta oficial del complejo{effectiveProfile.mpAccountNickname ? ` (@${effectiveProfile.mpAccountNickname})` : ''}. Tu turno se confirma <strong>automáticamente</strong>.
                       </p>
-                      <div className="pt-1 border-t border-slate-800 flex justify-between items-center">
-                        <span className="font-bold text-slate-200">Total a abonar ahora:</span>
-                        <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
+                      <div className="pt-2 border-t border-[var(--border-hairline)] flex justify-between items-center">
+                        <span className="font-semibold text-[var(--text-primary)]">Total a abonar ahora:</span>
+                        <strong className="font-mono text-[var(--text-primary)] text-base tabular-nums">${amountToPayNow.toLocaleString('es-AR')}</strong>
                       </div>
                     </div>
                   ) : targetAlias ? (
-                    <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-xs text-slate-300">
+                    <div className="p-3.5 bg-[var(--bg-surface)] rounded-lg border border-[var(--border-hairline)] space-y-2 text-xs text-[var(--text-secondary)]">
                       <div className="flex justify-between items-center">
                         <div>
-                          <span className="text-[10px] text-slate-400 block">Alias de Mercado Pago del Complejo:</span>
-                          <strong className="font-mono text-emerald-400 text-sm font-black tracking-wide">
+                          <span className="text-[11px] text-[var(--text-muted)] block">Alias de Mercado Pago:</span>
+                          <strong className="font-mono text-[var(--text-primary)] text-sm font-bold">
                             {targetAlias}
                           </strong>
                         </div>
@@ -841,49 +831,49 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                             setCopiedAlias(true);
                             setTimeout(() => setCopiedAlias(false), 2500);
                           }}
-                          className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                          className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[var(--border-hairline)]"
                         >
-                          {copiedAlias ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
-                          <span>{copiedAlias ? '¡Copiado!' : 'Copiar Alias'}</span>
+                          {copiedAlias ? <Check className="w-3.5 h-3.5 text-[var(--accent-soft-text)]" /> : <Copy className="w-3.5 h-3.5 text-[var(--text-muted)]" />}
+                          <span>{copiedAlias ? 'Copiado' : 'Copiar Alias'}</span>
                         </button>
                       </div>
 
                       {(effectiveProfile.accountHolder || effectiveProfile.ownerName) && (
-                        <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex justify-between">
+                        <div className="text-[11px] pt-1.5 border-t border-[var(--border-hairline)] flex justify-between">
                           <span>Titular:</span>
-                          <strong className="text-slate-200">{effectiveProfile.accountHolder || effectiveProfile.ownerName}</strong>
+                          <strong className="text-[var(--text-primary)]">{effectiveProfile.accountHolder || effectiveProfile.ownerName}</strong>
                         </div>
                       )}
 
-                      <div className="pt-1 border-t border-slate-800 flex justify-between items-center">
-                        <span className="font-bold text-slate-200">Importe a transferir:</span>
-                        <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
+                      <div className="pt-1.5 border-t border-[var(--border-hairline)] flex justify-between items-center">
+                        <span className="font-semibold text-[var(--text-primary)]">Importe a transferir:</span>
+                        <strong className="font-mono text-[var(--text-primary)] text-base tabular-nums">${amountToPayNow.toLocaleString('es-AR')}</strong>
                       </div>
                     </div>
                   ) : hasDirectLink ? (
-                    <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-xs text-slate-300">
-                      <span className="text-slate-300 block">
-                        Este complejo cuenta con <strong>Link Oficial de Pago</strong> para abonar de forma directa.
+                    <div className="p-3.5 bg-[var(--bg-surface)] rounded-lg border border-[var(--border-hairline)] space-y-2 text-xs text-[var(--text-secondary)]">
+                      <span className="block">
+                        Este complejo cuenta con <strong>Link Oficial de Pago</strong> directo.
                       </span>
-                      <div className="pt-1 border-t border-slate-800 flex justify-between items-center">
-                        <span className="font-bold text-slate-200">Monto:</span>
-                        <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
+                      <div className="pt-1.5 border-t border-[var(--border-hairline)] flex justify-between items-center">
+                        <span className="font-semibold text-[var(--text-primary)]">Monto:</span>
+                        <strong className="font-mono text-[var(--text-primary)] text-base tabular-nums">${amountToPayNow.toLocaleString('es-AR')}</strong>
                       </div>
                     </div>
                   ) : (
-                    <div className="p-3.5 bg-amber-950/40 border border-amber-600/30 rounded-xl text-xs text-amber-200 space-y-1">
-                      <div className="flex items-center gap-1.5 font-bold text-amber-300">
-                        <Info className="w-4 h-4 text-amber-400" />
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs space-y-1">
+                      <div className="flex items-center gap-1.5 font-semibold text-amber-700 dark:text-amber-300">
+                        <Info className="w-4 h-4" />
                         <span>Configuración de Mercado Pago pendiente</span>
                       </div>
-                      <p className="text-[11px] text-slate-300">
-                        El administrador de este complejo aún no conectó su cuenta ni ingresó su Alias. {isTransferAvailable ? 'Podés elegir Transferencia Bancaria (CBU).' : 'Este método no está habilitado por el momento.'}
+                      <p className="text-[11px] text-[var(--text-secondary)]">
+                        El complejo aún no conectó su cuenta ni cargó su Alias. {isTransferAvailable ? 'Podés elegir Transferencia Bancaria (CBU).' : 'Método no habilitado.'}
                       </p>
                     </div>
                   )}
 
                   {mpFlowError && (
-                    <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/40 text-xs text-rose-200">
+                    <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs text-rose-600 dark:text-rose-300">
                       {mpFlowError}
                     </div>
                   )}
@@ -891,42 +881,43 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
               )}
 
               {paymentMethod === 'transferencia' && (
-                <div className={`p-4 border rounded-2xl space-y-3 text-xs ${
-                  isTransferPaused ? 'bg-rose-950/30 border-rose-500/40' : 'bg-amber-950/20 border-amber-800/50'
+                <div className={`p-4 border rounded-lg space-y-3 text-xs ${
+                  isTransferPaused ? 'bg-rose-500/10 border-rose-500/40' : 'bg-[var(--bg-canvas)] border-[var(--border-hairline)]'
                 }`}>
-                  <div className="flex items-center justify-between text-amber-300 font-bold">
+                  <div className="flex items-center justify-between font-bold text-[var(--text-primary)]">
                     <span className="flex items-center gap-1.5">
-                      <span>🏦</span> Datos de la Cuenta Bancaria (CBU / CVU)
+                      <Landmark className="w-3.5 h-3.5 text-[var(--night-cue)]" />
+                      <span>Cuenta bancaria (CBU / CVU)</span>
                     </span>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                    <span className={`text-[11px] font-semibold ${
                       isTransferPaused
-                        ? 'bg-rose-500/20 text-rose-300'
+                        ? 'text-rose-600 dark:text-rose-400'
                         : !hasTransferConfigured
-                        ? 'bg-slate-800 text-slate-400'
-                        : 'bg-amber-500/20 text-amber-300'
+                        ? 'text-[var(--text-muted)]'
+                        : 'text-[var(--accent-soft-text)]'
                     }`}>
-                      {isTransferPaused ? 'Método Suspendido' : !hasTransferConfigured ? 'Sin CBU / Alias' : 'Transferencia Inmediata'}
+                      {isTransferPaused ? 'Suspendido' : !hasTransferConfigured ? 'Sin CBU / Alias' : 'Transferencia inmediata'}
                     </span>
                   </div>
 
                   {isTransferPaused ? (
-                    <div className="p-3.5 bg-rose-950/50 border border-rose-500/40 rounded-xl text-xs text-rose-200 space-y-1">
-                      <div className="flex items-center gap-1.5 font-bold text-rose-300">
-                        <PauseCircle className="w-4 h-4 text-rose-400" />
-                        <span>Transferencia Bancaria Suspendida Temporalmente</span>
+                    <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-xs space-y-1">
+                      <div className="flex items-center gap-1.5 font-semibold text-rose-600 dark:text-rose-400">
+                        <PauseCircle className="w-4 h-4" />
+                        <span>Transferencia suspendida temporalmente</span>
                       </div>
-                      <p className="text-[11px] text-slate-300">
-                        El administrador de este complejo pausó las transferencias por CBU/Alias en este momento. {isMpAvailable ? 'Podés pagar con Mercado Pago.' : 'Contactá al club para coordinar.'}
+                      <p className="text-[11px] text-[var(--text-secondary)]">
+                        El administrador pausó las transferencias por CBU/Alias. {isMpAvailable ? 'Podés pagar con Mercado Pago.' : 'Contactá al club.'}
                       </p>
                     </div>
                   ) : hasTransferConfigured ? (
                     <>
-                      <div className="p-3.5 bg-slate-900/90 rounded-xl border border-slate-800 space-y-2 text-slate-300">
+                      <div className="p-3.5 bg-[var(--bg-surface)] rounded-lg border border-[var(--border-hairline)] space-y-2 text-[var(--text-secondary)]">
                         {targetCbu && (
                           <div className="flex justify-between items-center">
                             <div>
-                              <span className="text-[10px] text-slate-400 block">CBU / CVU (22 dígitos):</span>
-                              <strong className="font-mono text-slate-100 text-xs font-bold tracking-wider">
+                              <span className="text-[11px] text-[var(--text-muted)] block">CBU / CVU (22 dígitos):</span>
+                              <strong className="font-mono text-[var(--text-primary)] text-xs font-bold">
                                 {targetCbu}
                               </strong>
                             </div>
@@ -937,19 +928,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                                 setCopiedCbu(true);
                                 setTimeout(() => setCopiedCbu(false), 2500);
                               }}
-                              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                              className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[var(--border-hairline)]"
                             >
-                              {copiedCbu ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
-                              <span>{copiedCbu ? '¡Copiado!' : 'Copiar CBU'}</span>
+                              {copiedCbu ? <Check className="w-3.5 h-3.5 text-[var(--accent-soft-text)]" /> : <Copy className="w-3.5 h-3.5 text-[var(--text-muted)]" />}
+                              <span>{copiedCbu ? 'Copiado' : 'Copiar CBU'}</span>
                             </button>
                           </div>
                         )}
 
                         {targetAlias && (
-                          <div className="flex justify-between items-center pt-1 border-t border-slate-800">
+                          <div className="flex justify-between items-center pt-1.5 border-t border-[var(--border-hairline)]">
                             <div>
-                              <span className="text-[10px] text-slate-400 block">Alias Bancario:</span>
-                              <strong className="font-mono text-emerald-400 text-xs font-bold">
+                              <span className="text-[11px] text-[var(--text-muted)] block">Alias bancario:</span>
+                              <strong className="font-mono text-[var(--text-primary)] text-xs font-bold">
                                 {targetAlias}
                               </strong>
                             </div>
@@ -960,52 +951,54 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                                 setCopiedAlias(true);
                                 setTimeout(() => setCopiedAlias(false), 2500);
                               }}
-                              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                              className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-[var(--border-hairline)]"
                             >
-                              {copiedAlias ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
-                              <span>{copiedAlias ? '¡Copiado!' : 'Copiar Alias'}</span>
+                              {copiedAlias ? <Check className="w-3.5 h-3.5 text-[var(--accent-soft-text)]" /> : <Copy className="w-3.5 h-3.5 text-[var(--text-muted)]" />}
+                              <span>{copiedAlias ? 'Copiado' : 'Copiar Alias'}</span>
                             </button>
                           </div>
                         )}
 
                         {(effectiveProfile.accountHolder || effectiveProfile.ownerName) && (
-                          <div className="text-[11px] text-slate-400 pt-1 border-t border-slate-800 flex justify-between">
+                          <div className="text-[11px] pt-1.5 border-t border-[var(--border-hairline)] flex justify-between">
                             <span>Titular:</span>
-                            <strong className="text-slate-200">{effectiveProfile.accountHolder || effectiveProfile.ownerName}</strong>
+                            <strong className="text-[var(--text-primary)]">{effectiveProfile.accountHolder || effectiveProfile.ownerName}</strong>
                           </div>
                         )}
 
-                        <div className="pt-1 border-t border-slate-800 flex justify-between items-center">
-                          <span className="font-bold text-slate-200">Monto a transferir:</span>
-                          <strong className="text-white text-base font-black">${amountToPayNow.toLocaleString('es-AR')}</strong>
+                        <div className="pt-1.5 border-t border-[var(--border-hairline)] flex justify-between items-center">
+                          <span className="font-semibold text-[var(--text-primary)]">Monto a transferir:</span>
+                          <strong className="font-mono text-[var(--text-primary)] text-base tabular-nums">${amountToPayNow.toLocaleString('es-AR')}</strong>
                         </div>
                       </div>
 
                       <div>
-                        <label className="block text-slate-400 mb-1">Nº de Operación o Comprobante (Opcional)</label>
+                        <label className="block text-[var(--text-secondary)] font-medium mb-1">
+                          Nº de operación o comprobante (opcional)
+                        </label>
                         <input
                           type="text"
                           placeholder="Ej: TRF-98231 o últimos 4 dígitos"
                           value={transferRef}
                           onChange={(e) => setTransferRef(e.target.value)}
-                          className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs font-mono"
+                          className="w-full bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg px-3 py-2 text-[var(--text-primary)] text-xs font-mono focus:outline-none focus:border-[var(--accent)]"
                         />
                       </div>
                     </>
                   ) : (
-                    <div className="p-3.5 bg-amber-950/40 border border-amber-600/30 rounded-xl text-xs text-amber-200 space-y-1">
-                      <div className="flex items-center gap-1.5 font-bold text-amber-300">
-                        <AlertTriangle className="w-4 h-4 text-amber-400" />
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs space-y-1">
+                      <div className="flex items-center gap-1.5 font-semibold text-amber-700 dark:text-amber-300">
+                        <AlertTriangle className="w-4 h-4" />
                         <span>Transferencia CBU no disponible</span>
                       </div>
-                      <p className="text-[11px] text-slate-300">
-                        El complejo aún no ha cargado un CBU ni Alias para recibir transferencias. Por seguridad, no es posible reservar por transferencia ni enviar comprobantes hasta que el club configure su cuenta.
+                      <p className="text-[11px] text-[var(--text-secondary)]">
+                        El complejo aún no cargó un CBU ni Alias para recibir transferencias.
                       </p>
                     </div>
                   )}
 
                   {mpFlowError && (
-                    <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/40 text-xs text-rose-200">
+                    <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs text-rose-600 dark:text-rose-300">
                       {mpFlowError}
                     </div>
                   )}
@@ -1013,33 +1006,32 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
               )}
 
               {/* Order summary breakdown */}
-              <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800/80 space-y-1.5 text-xs text-slate-300">
+              <div className="p-3.5 bg-[var(--bg-canvas)] rounded-lg border border-[var(--border-hairline)] space-y-1.5 text-xs text-[var(--text-secondary)]">
                 <div className="flex justify-between">
-                  <span>Turno: {selectedDate} ({selectedSlotTime} hs)</span>
-                  <span className="text-slate-400">{durationMinutes} min</span>
+                  <span>Turno: <span className="font-mono tabular-nums">{selectedDate} ({selectedSlotTime} hs)</span></span>
+                  <span className="font-mono tabular-nums">1 hora (60 min)</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Valor Cancha:</span>
-                  <span>${totalPrice.toLocaleString('es-AR')}</span>
+                  <span>Valor cancha:</span>
+                  <span className="font-mono tabular-nums">${totalPrice.toLocaleString('es-AR')}</span>
                 </div>
-                <div className="flex justify-between text-emerald-400 font-bold pt-1 border-t border-slate-800">
-                  <span>A Pagar Ahora ({paymentOption === 'deposit' ? 'Seña 50%' : 'Total 100%'}):</span>
-                  <span className="text-base">${amountToPayNow.toLocaleString('es-AR')}</span>
+                <div className="flex justify-between text-[var(--accent-soft-text)] font-bold pt-1.5 border-t border-[var(--border-hairline)]">
+                  <span>A pagar ahora ({paymentOption === 'deposit' ? 'Seña 50%' : 'Total 100%'}):</span>
+                  <span className="font-mono text-base tabular-nums">${amountToPayNow.toLocaleString('es-AR')}</span>
                 </div>
                 {balanceDue > 0 && (
-                  <div className="flex justify-between text-[11px] text-amber-300">
-                    <span>Saldo a pagar en cancha:</span>
-                    <span>${balanceDue.toLocaleString('es-AR')}</span>
+                  <div className="flex justify-between text-[11px] text-[var(--night-cue)] font-medium">
+                    <span>Saldo restante en cancha:</span>
+                    <span className="font-mono tabular-nums">${balanceDue.toLocaleString('es-AR')}</span>
                   </div>
                 )}
               </div>
 
-              {/* Step 3 Actions */}
-              <div className="flex justify-between pt-2">
+              <div className="flex justify-between pt-1">
                 <button
                   type="button"
                   onClick={() => setStep(2)}
-                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="px-4 py-2.5 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   <span>Volver</span>
@@ -1053,27 +1045,23 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                     (paymentMethod === 'transferencia' && !isTransferAvailable)
                   }
                   onClick={handleConfirmAndPay}
-                  className={`px-6 py-3 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-xl ${
-                    paymentMethod === 'mercadopago'
-                      ? 'bg-sky-400 hover:bg-sky-300 shadow-sky-400/25'
-                      : 'bg-emerald-500 hover:bg-emerald-400 shadow-emerald-500/25'
-                  }`}
+                  className="px-5 py-2.5 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs sm:text-sm inline-flex items-center gap-2 transition-colors cursor-pointer"
                 >
                   {isProcessing ? (
                     <>
-                      <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                      <span>{paymentMethod === 'mercadopago' ? 'Preparando Mercado Pago...' : 'Confirmando Reserva...'}</span>
+                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      <span>{paymentMethod === 'mercadopago' ? 'Preparando Mercado Pago...' : 'Confirmando reserva...'}</span>
                     </>
                   ) : paymentMethod === 'mercadopago' ? (
                     <>
                       <span>
                         {isMpPaused
-                          ? 'Mercado Pago Suspendido'
+                          ? 'Mercado Pago suspendido'
                           : !hasMpConfigured
-                          ? 'Mercado Pago No Configurado'
+                          ? 'Mercado Pago no configurado'
                           : hasAutomaticMP
                           ? `Pagar $${amountToPayNow.toLocaleString('es-AR')} con Mercado Pago`
-                          : `Abrir Mercado Pago y Transferir $${amountToPayNow.toLocaleString('es-AR')}`}
+                          : `Abrir Mercado Pago ($${amountToPayNow.toLocaleString('es-AR')})`}
                       </span>
                       <ExternalLink className="w-4 h-4" />
                     </>
@@ -1081,17 +1069,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                     <>
                       <span>
                         {isTransferPaused
-                          ? 'Transferencia Suspendida'
+                          ? 'Transferencia suspendida'
                           : !hasTransferConfigured
-                          ? 'CBU / Alias No Configurado'
-                          : 'Confirmar Reserva y Adjuntar Comprobante'}
+                          ? 'CBU / Alias no configurado'
+                          : 'Confirmar y adjuntar comprobante'}
                       </span>
                       <ShieldCheck className="w-4 h-4" />
                     </>
                   )}
                 </button>
               </div>
-
             </div>
           )}
 
@@ -1120,20 +1107,20 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
               </div>
 
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <span className={`text-xs font-bold uppercase tracking-wider ${
+                <span className={`text-xs font-semibold ${
                   isWaitingForConfirmation ? 'text-sky-400' : 
                   confirmedBooking.status === 'confirmed' ? 'text-emerald-400' : 'text-amber-400'
                 }`}>
-                  {isWaitingForConfirmation ? '⏳ Esperando Confirmación de Pago...' : 
-                   confirmedBooking.status === 'confirmed' ? '¡Reserva Exitosa y Pago Acreditado!' : '📋 Reserva Pendiente de Verificación'}
+                  {isWaitingForConfirmation ? 'Esperando confirmación de pago' : 
+                   confirmedBooking.status === 'confirmed' ? 'Reserva exitosa y pago acreditado' : 'Reserva pendiente de verificación'}
                 </span>
                 
-                <h3 className="text-2xl font-black text-white font-heading mt-1">
+                <h3 className="text-2xl font-bold font-heading mt-1">
                   {isWaitingForConfirmation ? 'Procesando en Mercado Pago' : 
                    confirmedBooking.status === 'confirmed' ? `Turno Confirmado #${confirmedBooking.bookingCode}` : `Turno Reservado #${confirmedBooking.bookingCode}`}
                 </h3>
                 
-                <p className="text-xs text-slate-300 mt-2 max-w-md mx-auto leading-relaxed">
+                <p className="text-xs text-[var(--text-secondary)] mt-2 max-w-md mx-auto leading-relaxed">
                   {isWaitingForConfirmation ? (
                     confirmedBooking.paymentMethod === 'mercadopago' && hasAutomaticMP
                       ? 'Estamos verificando tu pago en Mercado Pago en tiempo real. Apenas se apruebe, tu turno quedará confirmado automáticamente.'
@@ -1148,25 +1135,22 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 </p>
               </div>
 
-              {/* Real-time Skeleton Loader when verifying automatic OAuth Checkout Pro payment */}
               {isWaitingForConfirmation && hasAutomaticMP && confirmedBooking.paymentMethod === 'mercadopago' && (
-                <div className="max-w-md mx-auto p-4 rounded-2xl bg-sky-950/35 border border-sky-500/35 space-y-3 text-left">
+                <div className="max-w-md mx-auto p-4 rounded-xl bg-[var(--mp-soft)] border border-[var(--border-hairline)] space-y-3 text-left">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-sky-300 flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-sky-400 animate-ping" />
+                    <span className="font-semibold text-[var(--mp-text)]">
                       Verificando transacción en tiempo real...
                     </span>
-                    <span className="font-mono text-[11px] text-slate-400">#{confirmedBooking.bookingCode}</span>
+                    <span className="font-mono text-[11px] text-[var(--text-muted)]">#{confirmedBooking.bookingCode}</span>
                   </div>
 
-                  {/* Skeleton shimmer bars */}
                   <div className="space-y-2 animate-pulse">
-                    <div className="h-3 bg-slate-800 rounded-lg w-3/4" />
-                    <div className="h-3 bg-slate-800 rounded-lg w-1/2" />
+                    <div className="h-2.5 bg-[var(--bg-subtle)] rounded w-3/4" />
+                    <div className="h-2.5 bg-[var(--bg-subtle)] rounded w-1/2" />
                   </div>
 
                   {mpFlowError && (
-                    <p className="text-[11px] text-rose-300 font-semibold">{mpFlowError}</p>
+                    <p className="text-[11px] text-rose-600 dark:text-rose-400 font-semibold">{mpFlowError}</p>
                   )}
 
                   {mpCheckoutUrl && (
@@ -1175,7 +1159,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                         href={mpCheckoutUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex-1 py-2.5 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 transition-colors"
+                        className="flex-1 py-2.5 px-4 rounded-lg bg-[var(--mp-brand)] hover:opacity-90 text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-opacity"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
                         <span>Abrir Mercado Pago</span>
@@ -1186,97 +1170,103 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                           setIsWaitingForConfirmation(false);
                           setStep(3);
                         }}
-                        className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
+                        className="py-2.5 px-4 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs cursor-pointer"
                       >
-                        Cambiar Medio
+                        Cambiar medio
                       </button>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Clean Reservation Details Summary Card */}
-              <div className="max-w-md mx-auto bg-slate-950 p-4 rounded-2xl border border-slate-800 text-left space-y-2.5 text-xs text-slate-300">
-                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                  <span className="text-xs font-bold text-white uppercase tracking-wider">Detalles del Turno Reservado</span>
-                  <span className="text-[11px] font-mono text-emerald-400 font-bold">
+              {/* Clean Reservation Details Summary */}
+              <div className="max-w-md mx-auto bg-[var(--bg-canvas)] p-4 rounded-lg border border-[var(--border-hairline)] text-left space-y-2.5 text-xs text-[var(--text-secondary)]">
+                <div className="flex items-center justify-between pb-2 border-b border-[var(--border-hairline)]">
+                  <span className="font-semibold text-[var(--text-primary)]">Detalles del turno</span>
+                  <span className="font-mono text-[var(--accent-soft-text)] font-bold">
                     #{confirmedBooking.bookingCode}
                   </span>
                 </div>
 
                 <div className="space-y-1.5">
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Cancha:</span>
-                    <strong className="text-white">{confirmedBooking.courtName}</strong>
+                    <span>Cancha:</span>
+                    <strong className="text-[var(--text-primary)]">{confirmedBooking.courtName}</strong>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Fecha y Horario:</span>
-                    <strong className="text-white">{confirmedBooking.date} • {confirmedBooking.startTime} a {confirmedBooking.endTime} hs</strong>
+                    <span>Fecha y horario:</span>
+                    <strong className="font-mono text-[var(--text-primary)] tabular-nums">
+                      {confirmedBooking.date} · {confirmedBooking.startTime} a {confirmedBooking.endTime} hs
+                    </strong>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Titular del Turno:</span>
-                    <strong className="text-white">{confirmedBooking.clientName}</strong>
+                    <span>Titular:</span>
+                    <strong className="text-[var(--text-primary)]">{confirmedBooking.clientName}</strong>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-slate-400">Total Cancha:</span>
-                    <strong className="text-white">${confirmedBooking.totalAmount.toLocaleString('es-AR')}</strong>
+                    <span>Total cancha:</span>
+                    <strong className="font-mono text-[var(--text-primary)] tabular-nums">${confirmedBooking.totalAmount.toLocaleString('es-AR')}</strong>
                   </div>
-                  <div className="flex justify-between pt-1 border-t border-slate-800">
-                    <span className="text-slate-400">Monto Abonado ({confirmedBooking.paymentMethod.toUpperCase()}):</span>
-                    <strong className="text-emerald-400">${confirmedBooking.amountPaid.toLocaleString('es-AR')}</strong>
+                  <div className="flex justify-between pt-1.5 border-t border-[var(--border-hairline)]">
+                    <span>Abonado ({confirmedBooking.paymentMethod.toUpperCase()}):</span>
+                    <strong className="font-mono text-[var(--accent-soft-text)] tabular-nums">${confirmedBooking.amountPaid.toLocaleString('es-AR')}</strong>
                   </div>
                   {confirmedBooking.balanceDue > 0 && (
-                    <div className="flex justify-between text-amber-300">
-                      <span>Saldo restante a pagar en la cancha:</span>
-                      <strong>${confirmedBooking.balanceDue.toLocaleString('es-AR')}</strong>
+                    <div className="flex justify-between text-[var(--night-cue)] font-medium">
+                      <span>Saldo restante en cancha:</span>
+                      <strong className="font-mono tabular-nums">${confirmedBooking.balanceDue.toLocaleString('es-AR')}</strong>
                     </div>
                   )}
                 </div>
               </div>
 
               {/* Payment Receipt Badge */}
-              <div className="max-w-md mx-auto p-4 bg-sky-950/30 border border-sky-500/30 rounded-2xl text-left space-y-2">
+              <div className="max-w-md mx-auto p-4 bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg text-left space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-sky-300 uppercase tracking-wider flex items-center gap-1.5">
-                    {confirmedBooking.paymentMethod === 'mercadopago' ? '💙 Pago Mercado Pago' : '🏦 Transferencia CBU / Banco'}
+                  <span className="text-xs font-semibold text-[var(--mp-text)] flex items-center gap-1.5">
+                    {confirmedBooking.paymentMethod === 'mercadopago' ? (
+                      <><CreditCard className="w-3.5 h-3.5" /><span>Mercado Pago</span></>
+                    ) : (
+                      <><Landmark className="w-3.5 h-3.5" /><span>Transferencia CBU / Banco</span></>
+                    )}
                   </span>
-                  <span className="text-[11px] bg-emerald-500/20 text-emerald-300 px-2.5 py-0.5 rounded-full font-bold">
-                    {confirmedBooking.paymentStatus === 'total_pagado' ? 'Total 100% Pagado' : confirmedBooking.status === 'confirmed' ? 'Seña 50% Abonada' : 'Pago Pendiente'}
+                  <span className="text-[11px] text-[var(--accent-soft-text)] font-semibold">
+                    {confirmedBooking.paymentStatus === 'total_pagado' ? 'Total 100% pagado' : confirmedBooking.status === 'confirmed' ? 'Seña 50% abonada' : 'Pago pendiente'}
                   </span>
                 </div>
-                <div className="text-xs text-slate-300 flex justify-between">
+                <div className="text-xs text-[var(--text-secondary)] flex justify-between">
                   <span>{confirmedBooking.paymentMethod === 'mercadopago' ? 'Destino:' : 'CBU / Alias:'}</span>
-                  <strong className="font-mono text-emerald-400 font-bold">
-                    {confirmedBooking.paymentMethod === 'mercadopago' 
+                  <strong className="font-mono text-[var(--text-primary)] font-bold">
+                    {confirmedBooking.paymentMethod === 'mercadopago'
                       ? (hasAutomaticMP ? (effectiveProfile.mpAccountNickname ? `@${effectiveProfile.mpAccountNickname}` : 'Checkout Pro Oficial') : (targetAlias || effectiveProfile.mpLink || 'Mercado Pago del Complejo'))
                       : (effectiveProfile.cbu || targetAlias || 'Cuenta Bancaria del Complejo')}
                   </strong>
                 </div>
               </div>
 
-              {/* Receipt Attachment Section ONLY for Manual/Offline Transfers (Alias/Link/CBU without automatic OAuth) */}
+              {/* Receipt Attachment Section ONLY for Manual/Offline Transfers */}
               {(!hasAutomaticMP || confirmedBooking.paymentMethod !== 'mercadopago') && (isWaitingForConfirmation || confirmedBooking.status === 'pending_payment' || confirmedBooking.status === 'awaiting_approval') && (
-                <div className="p-5 rounded-2xl max-w-md mx-auto bg-slate-800/50 border border-slate-700 space-y-4 shadow-xl">
+                <div className="p-5 rounded-lg max-w-md mx-auto bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-                      <Upload className="w-5 h-5" />
+                    <div className="w-9 h-9 rounded-lg bg-[var(--accent-soft)] flex items-center justify-center text-[var(--accent-soft-text)] shrink-0">
+                      <Upload className="w-4 h-4" />
                     </div>
                     <div className="text-left">
-                      <h4 className="text-sm font-bold text-white leading-tight">Adjuntar Comprobante de Pago</h4>
-                      <p className="text-[10px] text-slate-400 uppercase tracking-wider font-bold mt-0.5">Requerido para verificación manual</p>
+                      <h4 className="text-sm font-bold text-[var(--text-primary)] leading-tight">Adjuntar comprobante de pago</h4>
+                      <p className="text-[11px] text-[var(--text-muted)] mt-0.5">Requerido para verificación manual</p>
                     </div>
                   </div>
 
                   {!receiptImage ? (
-                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-700 rounded-xl hover:bg-slate-800 transition-colors cursor-pointer group">
+                    <label className="flex flex-col items-center justify-center w-full h-32 border border-dashed border-[var(--border-strong)] rounded-lg hover:bg-[var(--bg-subtle)] transition-colors cursor-pointer group">
                       <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                        <ImageIcon className="w-8 h-8 text-slate-500 mb-2 group-hover:text-emerald-400 transition-colors" />
-                        <p className="text-[11px] text-slate-400 font-bold group-hover:text-slate-300 transition-colors">Hacé clic para subir captura</p>
-                        <p className="text-[10px] text-slate-500 mt-1">JPG, PNG o PDF (Máx 2MB)</p>
+                        <ImageIcon className="w-7 h-7 text-[var(--text-muted)] mb-2 group-hover:text-[var(--accent-soft-text)] transition-colors" />
+                        <p className="text-xs text-[var(--text-primary)] font-medium">Hacé clic para subir captura</p>
+                        <p className="text-[11px] text-[var(--text-muted)] mt-0.5">JPG, PNG o WEBP (Máx. 2MB)</p>
                       </div>
-                      <input 
-                        type="file" 
-                        className="hidden" 
+                      <input
+                        type="file"
+                        className="hidden"
                         accept="image/jpeg,image/png,image/webp"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
@@ -1298,27 +1288,25 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                     </label>
                   ) : (
                     <div className="relative group">
-                      <img 
-                        src={receiptImage} 
-                        alt="Comprobante" 
-                        className="w-full h-32 object-cover rounded-xl border border-slate-600 shadow-inner"
+                      <img
+                        src={receiptImage}
+                        alt="Comprobante"
+                        className="w-full h-32 object-cover rounded-lg border border-[var(--border-hairline)]"
                       />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl">
-                        <button 
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
+                        <button
+                          type="button"
                           onClick={() => setReceiptImage(null)}
-                          className="px-3 py-1.5 bg-rose-600 text-white text-[10px] font-bold rounded-lg hover:bg-rose-500 transition-colors"
+                          className="px-3 py-1.5 bg-rose-600 text-white text-xs font-semibold rounded-lg hover:bg-rose-500 transition-colors cursor-pointer"
                         >
-                          Quitar y Cambiar
+                          Quitar y cambiar
                         </button>
-                      </div>
-                      <div className="absolute top-2 right-2 bg-emerald-500 text-slate-950 p-1 rounded-full shadow-lg">
-                        <Check className="w-3 h-3" />
                       </div>
                     </div>
                   )}
 
                   {receiptError && (
-                    <p className="text-[11px] text-rose-400 font-semibold">{receiptError}</p>
+                    <p className="text-xs text-rose-600 dark:text-rose-400 font-semibold">{receiptError}</p>
                   )}
 
                   <button
@@ -1327,10 +1315,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                     onClick={() => {
                       if (!receiptImage) return;
                       setIsSubmittingReceipt(true);
-                      
-                      // Transition to awaiting_approval
+
                       const updated = submitPaymentReceipt(
-                        confirmedBooking.bookingCode, 
+                        confirmedBooking.bookingCode,
                         receiptImage,
                         `REF-${confirmedBooking.paymentMethod.toUpperCase()}-${Date.now().toString().slice(-4)}`
                       );
@@ -1339,58 +1326,54 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                         setConfirmedBooking(updated);
                         setIsWaitingForConfirmation(false);
                       }
-                      
+
                       setTimeout(() => {
                         setIsSubmittingReceipt(false);
                         triggerWhatsAppSend(updated || confirmedBooking);
                       }, 800);
                     }}
-                    className="w-full py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                    className="w-full py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed text-[var(--accent-ink)] font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                   >
                     {isSubmittingReceipt ? (
                       <>
-                        <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                        <span>Enviando Comprobante...</span>
+                        <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                        <span>Enviando comprobante...</span>
                       </>
                     ) : (
                       <>
                         <FileCheck className="w-4 h-4" />
-                        <span>Confirmar y Enviar a Verificación</span>
+                        <span>Confirmar y enviar a verificación</span>
                       </>
                     )}
                   </button>
-                  
+
                   {confirmedBooking.status === 'awaiting_approval' && (
-                    <div className="flex items-center justify-center gap-2 text-emerald-400 font-bold text-[11px] animate-pulse">
-                      <CheckCircle className="w-3 h-3" />
+                    <div className="flex items-center justify-center gap-2 text-[var(--accent-soft-text)] font-semibold text-xs">
+                      <CheckCircle className="w-3.5 h-3.5" />
                       <span>Comprobante enviado con éxito. Pendiente de aprobación.</span>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Automatic WhatsApp Action Box (ONLY enabled after payment verification or real receipt upload) */}
-              <div className={`p-4 rounded-2xl max-w-md mx-auto space-y-3 ${
-                confirmedBooking.status === 'confirmed' ? 'bg-emerald-950/40 border border-emerald-500/40' : 'bg-amber-950/40 border border-amber-500/40'
-              }`}>
-                <div className={`flex items-center justify-center gap-2 font-bold text-sm ${
-                  confirmedBooking.status === 'confirmed' ? 'text-emerald-300' : 'text-amber-300'
-                }`}>
-                  <MessageCircle className="w-5 h-5" />
+              {/* Automatic WhatsApp Action Box */}
+              <div className="p-4 rounded-lg max-w-md mx-auto bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-3">
+                <div className="flex items-center justify-center gap-2 font-semibold text-sm text-[var(--text-primary)]">
+                  <MessageCircle className="w-4 h-4 text-[var(--accent-soft-text)]" />
                   <span>
                     {confirmedBooking.status === 'confirmed'
-                      ? 'Notificación por WhatsApp Generada'
+                      ? 'Notificación por WhatsApp lista'
                       : confirmedBooking.status === 'awaiting_approval'
-                      ? 'Avisar al Club por WhatsApp'
-                      : 'Comprobante Requerido para WhatsApp'}
+                      ? 'Avisar al club por WhatsApp'
+                      : 'Comprobante requerido para WhatsApp'}
                   </span>
                 </div>
-                <p className="text-xs text-slate-300 leading-relaxed text-center">
-                  {confirmedBooking.status === 'confirmed' 
-                    ? '¡Turno confirmado! Podés enviar el ticket oficial a tu WhatsApp o compartirlo con tus amigos:'
+                <p className="text-xs text-[var(--text-secondary)] leading-relaxed text-center">
+                  {confirmedBooking.status === 'confirmed'
+                    ? 'Turno confirmado. Podés enviar el comprobante a tu WhatsApp o compartirlo con tu equipo:'
                     : confirmedBooking.status === 'awaiting_approval'
-                    ? 'El club recibió tu comprobante. Podés apurar la verificación avisando también por WhatsApp:'
-                    : 'Por seguridad, debés adjuntar la captura real de tu transferencia arriba antes de enviar el aviso de comprobante por WhatsApp.'}
+                    ? 'El club recibió tu comprobante. Podés avisar también por WhatsApp:'
+                    : 'Adjuntá la captura de tu transferencia arriba antes de enviar el aviso por WhatsApp.'}
                 </p>
 
                 {(confirmedBooking.status === 'confirmed' || confirmedBooking.status === 'awaiting_approval') && (
@@ -1407,47 +1390,39 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                           window.open(url, '_blank');
                         }
                       }}
-                      className={`w-full sm:w-auto px-5 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition-all cursor-pointer ${
-                        confirmedBooking.status === 'confirmed' 
-                          ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/30' 
-                          : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/30'
-                      }`}
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
                     >
-                      <MessageCircle className="w-4 h-4 fill-slate-950" />
-                      <span>{confirmedBooking.status === 'confirmed' ? 'Abrir en WhatsApp' : 'Avisar Comprobante por WhatsApp'}</span>
+                      <MessageCircle className="w-4 h-4" />
+                      <span>{confirmedBooking.status === 'confirmed' ? 'Abrir en WhatsApp' : 'Avisar por WhatsApp'}</span>
                     </button>
 
                     <button
                       type="button"
                       onClick={copyWhatsAppText}
-                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                     >
-                      {copiedMessage ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                      <span>{copiedMessage ? '¡Mensaje Copiado!' : 'Copiar Texto'}</span>
+                      {copiedMessage ? <Check className="w-4 h-4 text-[var(--accent-soft-text)]" /> : <Copy className="w-4 h-4" />}
+                      <span>{copiedMessage ? 'Copiado' : 'Copiar texto'}</span>
                     </button>
                   </div>
                 )}
               </div>
 
-              {/* Final dismiss buttons */}
-              <div className="flex flex-col sm:flex-row gap-2 justify-center pt-2">
+              <div className="flex justify-center pt-1">
                 <button
                   type="button"
                   onClick={() => {
                     onClose();
                     setActiveTab('turnos');
                   }}
-                  className="px-8 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs cursor-pointer shadow-md shadow-emerald-500/20"
+                  className="px-6 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs cursor-pointer transition-colors"
                 >
-                  Listo, Volver a los Turnos
+                  Volver a los turnos
                 </button>
               </div>
-
             </div>
           )}
-
         </div>
-
       </div>
     </div>
   );

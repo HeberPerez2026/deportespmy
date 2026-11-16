@@ -2,20 +2,24 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Court } from '../types';
 import { BookingModal } from './BookingModal';
-import { 
-  Star, 
-  MapPin, 
-  Sparkles, 
-  Clock, 
-  Sun, 
-  Moon, 
-  Layers,
+import {
+  resolveCourtGallery,
+  SPORT_DISPLAY_LABELS,
+  FALLBACK_COURT_SVG,
+} from '../data/courtMedia';
+import {
+  formatSlotHour,
+  getNormalizedCourtSchedule,
+  parseSlotHourOrder,
+} from '../utils/scheduleHours';
+import {
+  Star,
   ChevronRight,
   ChevronLeft,
   PlusCircle,
   Search,
   Lock,
-  Building2
+  Building2,
 } from 'lucide-react';
 
 interface CourtCatalogProps {
@@ -24,22 +28,22 @@ interface CourtCatalogProps {
   complexNameOverride?: string;
 }
 
-export const CourtCatalog: React.FC<CourtCatalogProps> = ({ 
+export const CourtCatalog: React.FC<CourtCatalogProps> = ({
   onOpenAdminLogin,
   courtsOverride,
-  complexNameOverride
+  complexNameOverride,
 }) => {
-  const { 
-    courts, 
+  const {
+    courts,
     reviews,
-    selectedSport, 
-    selectedDate, 
+    selectedSport,
+    selectedDate,
     searchQuery,
     setSearchQuery,
     getSlotsForCourtAndDate,
     isAdminAuthenticated,
     setActiveTab,
-    businessProfile
+    businessProfile,
   } = useApp();
 
   const [activeBookingCourt, setActiveBookingCourt] = useState<Court | null>(null);
@@ -47,16 +51,14 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
   const [photoIndexByCourt, setPhotoIndexByCourt] = useState<Record<string, number>>({});
 
   const sourceCourts = courtsOverride ?? courts;
-  const activeComplexTitle = complexNameOverride || businessProfile.complexName || 'Instalaciones Deportivas';
+  const activeComplexTitle =
+    complexNameOverride || businessProfile.complexName || 'Complejos Habilitados';
 
-  // Filter courts by sport AND search query (when not overridden or when searching)
-  const filteredCourts = sourceCourts.filter(court => {
-    // 1. Sport filter
+  const filteredCourts = sourceCourts.filter((court) => {
     if (selectedSport !== 'all' && court.sport !== selectedSport) {
       return false;
     }
 
-    // 2. Search query filter (only apply global search when showing full catalog)
     if (!courtsOverride && searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       const nameMatch = court.name.toLowerCase().includes(q);
@@ -75,157 +77,156 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
     setSelectedInitialSlot(slotTime);
   };
 
-  const getSportBadge = (sport: string) => {
-    switch (sport) {
-      case 'futbol5': return { label: 'Fútbol 5', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' };
-      case 'futbol7': return { label: 'Fútbol 7', color: 'bg-teal-500/20 text-teal-300 border-teal-500/30' };
-      case 'padel': return { label: 'Pádel Panorámico', color: 'bg-blue-500/20 text-blue-300 border-blue-500/30' };
-      case 'tenis': return { label: 'Tenis Polvo', color: 'bg-amber-500/20 text-amber-300 border-amber-500/30' };
-      case 'basquet': return { label: 'Básquetbol / Parquet', color: 'bg-orange-500/20 text-orange-300 border-orange-500/30' };
-      default: return { label: sport, color: 'bg-slate-700 text-slate-300 border-slate-600' };
-    }
-  };
-
   return (
-    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
-      
+    <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
       {/* Section Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-600 mb-1">
-            <Layers className="w-4 h-4" />
-            <span>{activeComplexTitle}</span>
-          </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-heading">
-            Canchas y Horarios para el {selectedDate}
+      <div className="flex flex-col md:flex-row md:items-end justify-between pb-6 mb-8 border-b border-[var(--border-hairline)] gap-4">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-[var(--accent-soft-text)]">
+            {activeComplexTitle}
+          </p>
+          <h2 className="font-heading text-2xl sm:text-3xl font-extrabold text-[var(--text-primary)]">
+            Disponibilidad para el <span className="font-mono tabular-nums">{selectedDate}</span>
           </h2>
-          <p className="text-xs sm:text-sm text-slate-600 mt-1">
-            Hacé click en cualquier horario verde para iniciar tu reserva inmediata con confirmación automática.
+          <p className="text-sm text-[var(--text-secondary)]">
+            Seleccioná un horario libre para ver tarifas completas y confirmar tu reserva.
           </p>
         </div>
 
-        {/* Legend */}
+        {/* Clean Unboxed Legend */}
         {sourceCourts.length > 0 && (
-          <div className="flex items-center gap-3 sm:gap-4 text-xs font-semibold text-slate-600 bg-white px-4 py-2 rounded-2xl border border-slate-200 shadow-sm self-start md:self-auto">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded bg-emerald-500" /> Disponible
+          <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-[var(--text-secondary)] shrink-0">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-[var(--accent)]" />
+              Disponible
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded bg-slate-300" /> Ocupado
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-[var(--border-strong)]" />
+              Ocupado
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-500" /> Tarifa Noche c/Luz
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-[var(--night-cue)]" />
+              Tarifa nocturna c/luz
             </span>
           </div>
         )}
       </div>
 
-      {/* Case 1: Database has 0 courts registered yet */}
+      {/* Empty State 1: No courts in DB yet */}
       {sourceCourts.length === 0 ? (
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-8 sm:p-12 text-center max-w-2xl mx-auto space-y-5">
-          <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto shadow-inner">
-            <Building2 className="w-8 h-8" />
+        <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] p-8 sm:p-12 text-center max-w-2xl mx-auto space-y-5">
+          <div className="w-12 h-12 rounded-lg bg-[var(--accent-soft)] text-[var(--accent-soft-text)] flex items-center justify-center mx-auto">
+            <Building2 className="w-6 h-6" />
           </div>
 
           <div className="space-y-2">
-            <h3 className="text-xl sm:text-2xl font-black text-slate-900 font-heading">
+            <h3 className="font-heading text-2xl font-bold text-[var(--text-primary)]">
               Aún no hay canchas publicadas
             </h3>
-            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-lg mx-auto">
-              La plataforma está lista para que el administrador agregue sus canchas, superficies, fotos y tarifas personalizadas desde el panel de control.
+            <p className="text-sm text-[var(--text-secondary)] leading-relaxed max-w-lg mx-auto">
+              Cuando los administradores carguen sus espacios deportivos, superficies y tarifas desde el panel, aparecerán listados aquí para reservar en tiempo real.
             </p>
           </div>
 
-          <div className="pt-2">
+          <div className="pt-1">
             {isAdminAuthenticated ? (
               <button
+                type="button"
                 onClick={() => setActiveTab('admin')}
-                className="px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm inline-flex items-center gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer"
+                className="px-5 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs sm:text-sm inline-flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <PlusCircle className="w-4 h-4" />
-                <span>Agregar mi Primera Cancha en el Panel</span>
+                <span>Cargar primera cancha en el panel</span>
               </button>
             ) : (
               <button
+                type="button"
                 onClick={() => {
                   if (onOpenAdminLogin) onOpenAdminLogin();
                   else setActiveTab('admin');
                 }}
-                className="px-6 py-3 rounded-2xl bg-slate-900 hover:bg-emerald-600 text-white font-bold text-xs sm:text-sm inline-flex items-center gap-2 shadow-lg shadow-slate-900/20 transition-all cursor-pointer"
+                className="px-5 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs sm:text-sm inline-flex items-center gap-2 transition-colors cursor-pointer"
               >
-                <Lock className="w-4 h-4 text-emerald-400" />
-                <span>Ingresar como Administrador para Crear Canchas</span>
+                <Lock className="w-4 h-4" />
+                <span>Acceso Clubes para publicar canchas</span>
               </button>
             )}
           </div>
         </div>
       ) : filteredCourts.length === 0 ? (
-        /* Case 2: Courts exist, but filter or search yielded 0 results */
-        <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 text-center max-w-md mx-auto space-y-4">
-          <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center mx-auto">
-            <Search className="w-6 h-6" />
+        /* Empty State 2: Filter yielded 0 results */
+        <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] p-8 sm:p-10 text-center max-w-md mx-auto space-y-4">
+          <div className="w-11 h-11 rounded-lg bg-[var(--bg-subtle)] text-[var(--text-muted)] flex items-center justify-center mx-auto">
+            <Search className="w-5 h-5" />
           </div>
-          <h3 className="text-lg font-bold text-slate-900">
-            No se encontraron canchas
+          <h3 className="font-heading text-xl font-bold text-[var(--text-primary)]">
+            Sin resultados para tu búsqueda
           </h3>
-          <p className="text-xs text-slate-600">
-            No hay espacios deportivos que coincidan con "{searchQuery}" o con el deporte seleccionado.
+          <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+            No encontramos canchas que coincidan con &ldquo;{searchQuery}&rdquo; o con la disciplina elegida.
           </p>
           <button
+            type="button"
             onClick={() => setSearchQuery('')}
-            className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs cursor-pointer hover:bg-slate-800"
+            className="px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs cursor-pointer transition-colors"
           >
-            Ver Todas las Canchas
+            Mostrar todas las canchas
           </button>
         </div>
       ) : (
-        /* Case 3: Display filtered courts */
+        /* Courts Grid */
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {filteredCourts.map((court) => {
             const slots = getSlotsForCourtAndDate(court.id, selectedDate);
-            const availableSlotsCount = slots.filter(s => s.status === 'available').length;
-            const badge = getSportBadge(court.sport);
-            const gallery = (court.images && court.images.length > 0)
-              ? court.images
-              : [court.imageUrl || 'https://images.unsplash.com/photo-1529900245534-47fbf8204e61?auto=format&fit=crop&w=1200&q=80'];
+            const availableSlotsCount = slots.filter((s) => s.status === 'available').length;
+            const sportLabel = SPORT_DISPLAY_LABELS[court.sport] || court.sport;
+            const gallery = resolveCourtGallery(court.sport, court.images, court.imageUrl);
             const activePhotoIdx = (photoIndexByCourt[court.id] || 0) % gallery.length;
             const activePhoto = gallery[activePhotoIdx];
 
-            const courtReviews = reviews.filter(r => r.courtId === court.id);
-            const liveReviewCount = courtReviews.length > 0 ? courtReviews.length : (court.reviewCount || 0);
-            const liveRating = courtReviews.length > 0
-              ? courtReviews.reduce((s, r) => s + r.rating, 0) / courtReviews.length
-              : (court.rating || 0);
+            const courtReviews = reviews.filter((r) => r.courtId === court.id);
+            const liveReviewCount =
+              courtReviews.length > 0 ? courtReviews.length : court.reviewCount || 0;
+            const liveRating =
+              courtReviews.length > 0
+                ? courtReviews.reduce((s, r) => s + r.rating, 0) / courtReviews.length
+                : court.rating || 0;
+
+            const schedule = getNormalizedCourtSchedule(court);
+            const scheduleLabel = `${schedule.hora_inicio} a ${schedule.hora_fin} hs`;
 
             return (
-              <div 
-                key={court.id} 
-                className="bg-white rounded-3xl border border-slate-200/90 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col justify-between"
+              <article
+                key={court.id}
+                className="bg-[var(--bg-surface)] rounded-2xl border border-[var(--border-hairline)] overflow-hidden flex flex-col justify-between transition-all duration-150 hover:border-[var(--border-strong)] shadow-xs hover:shadow-md"
               >
                 <div>
-                  {/* Court Image Banner */}
-                  <div className="relative h-56 sm:h-64 overflow-hidden group bg-slate-900">
+                  {/* Court Media Header */}
+                  <div className="relative aspect-[16/10] overflow-hidden group bg-[var(--bg-subtle)]">
                     <img
                       src={activePhoto}
                       alt={court.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
                       loading="lazy"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).src = FALLBACK_COURT_SVG;
+                      }}
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-black/20" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
 
-                    {/* Photo Carousel Controls when multiple photos are attached */}
+                    {/* Photo Carousel Controls */}
                     {gallery.length > 1 && (
                       <>
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setPhotoIndexByCourt(prev => ({
+                            setPhotoIndexByCourt((prev) => ({
                               ...prev,
-                              [court.id]: (activePhotoIdx - 1 + gallery.length) % gallery.length
+                              [court.id]: (activePhotoIdx - 1 + gallery.length) % gallery.length,
                             }));
                           }}
-                          className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-slate-950/70 hover:bg-slate-950 text-white flex items-center justify-center border border-white/20 backdrop-blur-sm cursor-pointer transition-opacity"
+                          className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-black/65 hover:bg-black/85 text-white flex items-center justify-center cursor-pointer transition-colors"
                           aria-label="Foto anterior"
                         >
                           <ChevronLeft className="w-4 h-4" />
@@ -234,148 +235,108 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setPhotoIndexByCourt(prev => ({
+                            setPhotoIndexByCourt((prev) => ({
                               ...prev,
-                              [court.id]: (activePhotoIdx + 1) % gallery.length
+                              [court.id]: (activePhotoIdx + 1) % gallery.length,
                             }));
                           }}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-slate-950/70 hover:bg-slate-950 text-white flex items-center justify-center border border-white/20 backdrop-blur-sm cursor-pointer transition-opacity"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg bg-black/65 hover:bg-black/85 text-white flex items-center justify-center cursor-pointer transition-colors"
                           aria-label="Siguiente foto"
                         >
                           <ChevronRight className="w-4 h-4" />
                         </button>
-                        <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-slate-950/70 px-2 py-1 rounded-full backdrop-blur-sm">
-                          {gallery.map((_, idx) => (
-                            <button
-                              key={idx}
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPhotoIndexByCourt(prev => ({ ...prev, [court.id]: idx }));
-                              }}
-                              className={`w-1.5 h-1.5 rounded-full cursor-pointer transition-all ${
-                                idx === activePhotoIdx ? 'bg-emerald-400 w-3' : 'bg-white/50'
-                              }`}
-                              aria-label={`Ver foto ${idx + 1}`}
-                            />
-                          ))}
+                        <div className="absolute bottom-3.5 right-4 text-[11px] font-mono text-white/90 bg-black/60 px-2 py-0.5 rounded-md tabular-nums">
+                          {activePhotoIdx + 1}/{gallery.length}
                         </div>
                       </>
                     )}
 
-                    {/* Top Badges */}
-                    <div className="absolute top-4 left-4 flex flex-wrap gap-2">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold border backdrop-blur-md ${badge.color}`}>
-                        {badge.label}
+                    {/* Top Single Tag + Rating */}
+                    <div className="absolute top-3.5 left-4 right-4 flex items-center justify-between gap-2 text-xs">
+                      <span className="px-2.5 py-1 rounded-md bg-black/70 text-white font-semibold backdrop-blur-sm">
+                        {sportLabel} · {court.isIndoor ? 'Techada' : 'Aire libre'}
                       </span>
-                      <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-900/80 text-white backdrop-blur-md border border-slate-700">
-                        {court.isIndoor ? 'Techada' : 'Al Aire Libre'}
-                      </span>
-                    </div>
 
-                    {/* Rating Pill */}
-                    {liveReviewCount > 0 ? (
-                      <div className="absolute top-4 right-4 flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/85 text-amber-400 text-xs font-bold border border-slate-700 backdrop-blur-md">
-                        <Star className="w-3.5 h-3.5 fill-amber-400" />
-                        <span>{liveRating.toFixed(1)}</span>
-                        <span className="text-slate-400 text-[10px]">({liveReviewCount})</span>
-                      </div>
-                    ) : (
-                      <div className="absolute top-4 right-4 flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-900/85 text-emerald-400 text-[11px] font-bold border border-slate-700 backdrop-blur-md">
-                        <span>Nueva Cancha</span>
-                      </div>
-                    )}
-
-                    {/* Bottom Image Info */}
-                    <div className="absolute bottom-4 left-4 right-16 text-white">
-                      {court.establishment && (
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 block mb-0.5">
-                          {court.establishment}
+                      {liveReviewCount > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-black/70 text-amber-300 font-mono font-semibold backdrop-blur-sm tabular-nums">
+                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                          {liveRating.toFixed(1)} ({liveReviewCount})
                         </span>
                       )}
-                      <h3 className="text-xl font-bold font-heading drop-shadow-md">
+                    </div>
+
+                    {/* Bottom Court Title on Photo */}
+                    <div className="absolute bottom-3.5 left-4 right-16 text-white">
+                      {court.establishment && (
+                        <p className="text-xs font-medium text-white/80 mb-0.5">
+                          {court.establishment}
+                        </p>
+                      )}
+                      <h3 className="font-heading text-2xl font-bold leading-tight">
                         {court.name}
                       </h3>
-                      <p className="text-xs text-slate-200 flex items-center gap-2 mt-1 drop-shadow">
-                        <span>{court.surface}</span>
-                        <span>•</span>
-                        <span>{court.hasLighting ? 'Iluminación LED' : 'Luz natural'}</span>
+                      <p className="text-xs text-white/85 mt-0.5">
+                        {court.surface} · {court.hasLighting ? 'Iluminación LED' : 'Luz natural'}
                       </p>
                     </div>
                   </div>
 
-                  {/* Court Details Body */}
-                  <div className="p-5 sm:p-6 space-y-4">
-                    
-                    {/* Rates */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100 text-sm">
-                      <div className="space-y-0.5">
-                        <div className="text-xs text-slate-500 flex items-center gap-1">
-                          <Sun className="w-3.5 h-3.5 text-amber-500" />
-                          <span>Diurno:</span>
-                        </div>
-                        <span className="text-base font-extrabold text-slate-900">
-                          ${court.hourlyRateDay.toLocaleString('es-AR')}<span className="text-xs text-slate-500 font-normal">/h</span>
+                  {/* Card Content */}
+                  <div className="p-5 sm:p-6 space-y-5">
+                    {/* Rates Row (Tabular Numbers, No Pill Cluster) */}
+                    <div className="grid grid-cols-3 gap-3 pb-4 border-b border-[var(--border-hairline)]">
+                      <div>
+                        <span className="text-xs text-[var(--text-muted)] block">Tarifa diurna</span>
+                        <span className="font-mono text-base font-bold text-[var(--text-primary)] tabular-nums">
+                          ${court.hourlyRateDay.toLocaleString('es-AR')}
+                          <span className="text-xs font-normal text-[var(--text-muted)]">/h</span>
                         </span>
                       </div>
 
-                      <div className="space-y-0.5">
-                        <div className="text-xs text-slate-500 flex items-center gap-1">
-                          <Moon className="w-3.5 h-3.5 text-blue-500" />
-                          <span>Nocturno c/Luz:</span>
-                        </div>
-                        <span className="text-base font-extrabold text-slate-900">
-                          ${court.hourlyRateNight.toLocaleString('es-AR')}<span className="text-xs text-slate-500 font-normal">/h</span>
+                      <div>
+                        <span className="text-xs text-[var(--text-muted)] block">Nocturno c/luz</span>
+                        <span className="font-mono text-base font-bold text-[var(--text-primary)] tabular-nums">
+                          ${court.hourlyRateNight.toLocaleString('es-AR')}
+                          <span className="text-xs font-normal text-[var(--text-muted)]">/h</span>
                         </span>
                       </div>
 
                       <div className="text-right">
-                        <span className="text-xs text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100 block">
-                          Seña: {court.depositRequired || 50}% online
+                        <span className="text-xs text-[var(--text-muted)] block">Seña reserva</span>
+                        <span className="font-mono text-base font-bold text-[var(--accent-soft-text)] tabular-nums">
+                          {court.depositRequired || 50}%
                         </span>
                       </div>
                     </div>
 
-                    {/* Amenities Tag Cloud */}
+                    {/* Amenities as clean dot-separated editorial line */}
                     {court.amenities && court.amenities.length > 0 && (
-                      <div>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
-                          Comodidades Incluidas
-                        </span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {court.amenities.map((amenity, i) => (
-                            <span 
-                              key={i} 
-                              className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-xs font-medium border border-slate-200/60"
-                            >
-                              {amenity}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
+                      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+                        <span className="font-semibold text-[var(--text-primary)]">Incluye: </span>
+                        {court.amenities.join(' · ')}
+                      </p>
                     )}
 
-                    {/* Quick Slots Selector Strip */}
+                    {/* Quick Time Slots Strip (Amplitud horaria completa configurada por el admin) */}
                     <div>
-                      <div className="flex items-center justify-between text-xs mb-2">
-                        <span className="font-bold text-slate-700 flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5 text-emerald-600" />
-                          Turnos de Hoy ({availableSlotsCount} disponibles)
+                      <div className="flex items-center justify-between text-xs mb-2.5 gap-2">
+                        <span className="font-semibold text-[var(--text-primary)] tabular-nums">
+                          Horarios ({availableSlotsCount} libres · <span className="text-[var(--text-muted)] font-mono">{scheduleLabel}</span>)
                         </span>
-                        <button 
+                        <button
+                          type="button"
                           onClick={() => handleOpenBooking(court)}
-                          className="text-emerald-600 hover:text-emerald-700 font-semibold cursor-pointer"
+                          className="text-[var(--accent-soft-text)] hover:underline font-semibold cursor-pointer shrink-0"
                         >
-                          Ver todos
+                          Ver agenda completa
                         </button>
                       </div>
 
-                      {/* Mini slots preview */}
                       <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
-                        {slots.slice(0, 12).map((slot) => {
+                        {slots.map((slot) => {
                           const isAvailable = slot.status === 'available';
-                          const slotHour = parseInt(slot.startTime.split(':')[0], 10);
-                          const isNight = slotHour >= 18;
+                          const slotHourOrder = parseSlotHourOrder(slot.startTime);
+                          const isNight = slotHourOrder >= schedule.nightStartHour;
 
                           return (
                             <button
@@ -383,51 +344,48 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
                               type="button"
                               disabled={!isAvailable}
                               onClick={() => handleOpenBooking(court, slot.startTime)}
-                              className={`py-1.5 px-1 rounded-xl text-xs font-bold transition-all text-center border relative cursor-pointer ${
+                              className={`py-1.5 px-1 rounded-lg text-xs font-mono font-semibold transition-colors duration-150 text-center border relative tabular-nums ${
                                 !isAvailable
-                                  ? 'bg-slate-100 text-slate-400 border-slate-200 line-through cursor-not-allowed opacity-60'
-                                  : 'bg-emerald-50 hover:bg-emerald-500 hover:text-slate-950 text-emerald-800 border-emerald-200 hover:border-emerald-500 shadow-sm'
+                                  ? 'bg-[var(--bg-subtle)] text-[var(--text-muted)] border-transparent line-through cursor-not-allowed opacity-55'
+                                  : 'bg-[var(--accent-soft)] hover:bg-[var(--accent)] text-[var(--accent-soft-text)] hover:text-[var(--accent-ink)] border-[var(--border-hairline)] hover:border-[var(--accent)] cursor-pointer'
                               }`}
                             >
                               <span>{slot.startTime}</span>
                               {isNight && isAvailable && (
-                                <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-500" />
+                                <span
+                                  className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--night-cue)]"
+                                  title={`Tarifa nocturna con luz (desde ${formatSlotHour(schedule.nightStartHour)})`}
+                                />
                               )}
                             </button>
                           );
                         })}
                       </div>
                     </div>
-
                   </div>
                 </div>
 
-                {/* Bottom Card Footer */}
-                <div className="p-5 sm:p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-                  <div>
-                    <span className="text-xs text-slate-500 block">Confirmación directa:</span>
-                    <span className="text-xs font-bold text-emerald-700 flex items-center gap-1">
-                      WhatsApp Inmediato
-                    </span>
-                  </div>
+                {/* Card Footer */}
+                <div className="px-5 sm:px-6 py-4 bg-[var(--bg-elevated)] border-t border-[var(--border-hairline)] flex items-center justify-between gap-4">
+                  <span className="text-xs text-[var(--text-secondary)]">
+                    Confirmación y comprobante vía WhatsApp
+                  </span>
 
                   <button
                     type="button"
                     onClick={() => handleOpenBooking(court)}
-                    className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-emerald-600 text-white font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-colors cursor-pointer shadow-md hover:shadow-emerald-600/20"
+                    className="px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs sm:text-sm inline-flex items-center gap-1.5 transition-colors duration-150 whitespace-nowrap shrink-0 cursor-pointer"
                   >
-                    <span>Reservar Cancha</span>
+                    <span>Reservar</span>
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
-
-              </div>
+              </article>
             );
           })}
         </div>
       )}
 
-      {/* Booking Modal Popup */}
       {activeBookingCourt && (
         <BookingModal
           court={activeBookingCourt}
@@ -435,7 +393,6 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
           onClose={() => setActiveBookingCourt(null)}
         />
       )}
-
     </section>
   );
 };

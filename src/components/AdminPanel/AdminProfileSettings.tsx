@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { apiFetch, getApiBaseUrl, safeParseJsonResponse } from '../../utils/api';
+import { SocialFeedShowcase } from '../SocialFeedShowcase';
 import { 
   Building2, 
   CreditCard, 
@@ -13,9 +14,15 @@ import {
   Unlink,
   AlertCircle,
   Loader2,
-  Sparkles,
   PauseCircle,
-  PlayCircle
+  PlayCircle,
+  Landmark,
+  Share2,
+  Instagram,
+  Facebook,
+  Youtube,
+  Play,
+  Sparkles
 } from 'lucide-react';
 
 export const AdminProfileSettings: React.FC = () => {
@@ -33,6 +40,11 @@ export const AdminProfileSettings: React.FC = () => {
   const [mpLink, setMpLink] = useState(businessProfile.mpLink || '');
   const [mpAccessToken, setMpAccessToken] = useState(businessProfile.mpAccessToken || '');
   const [whatsappTemplate, setWhatsappTemplate] = useState(businessProfile.whatsappTemplate || '');
+  const [instagramUrl, setInstagramUrl] = useState(businessProfile.instagramUrl || '');
+  const [facebookUrl, setFacebookUrl] = useState(businessProfile.facebookUrl || '');
+  const [tiktokUrl, setTiktokUrl] = useState(businessProfile.tiktokUrl || '');
+  const [youtubeUrl, setYoutubeUrl] = useState(businessProfile.youtubeUrl || '');
+  const [socialFeedUrl, setSocialFeedUrl] = useState(businessProfile.socialFeedUrl || '');
 
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -137,6 +149,11 @@ export const AdminProfileSettings: React.FC = () => {
     setMpLink(businessProfile.mpLink || '');
     setMpAccessToken(businessProfile.mpAccessToken || '');
     setWhatsappTemplate(businessProfile.whatsappTemplate || '');
+    setInstagramUrl(businessProfile.instagramUrl || '');
+    setFacebookUrl(businessProfile.facebookUrl || '');
+    setTiktokUrl(businessProfile.tiktokUrl || '');
+    setYoutubeUrl(businessProfile.youtubeUrl || '');
+    setSocialFeedUrl(businessProfile.socialFeedUrl || '');
   }, [businessProfile]);
 
   const handleConnectMercadoPago = async () => {
@@ -217,7 +234,12 @@ export const AdminProfileSettings: React.FC = () => {
       welcomeNotes: welcomeNotes.trim(),
       mpLink: mpLink.trim(),
       mpAccessToken: mpAccessToken.trim(),
-      whatsappTemplate: whatsappTemplate.trim()
+      whatsappTemplate: whatsappTemplate.trim(),
+      instagramUrl: instagramUrl.trim(),
+      facebookUrl: facebookUrl.trim(),
+      tiktokUrl: tiktokUrl.trim(),
+      youtubeUrl: youtubeUrl.trim(),
+      socialFeedUrl: socialFeedUrl.trim()
     });
 
     setSavedSuccess(true);
@@ -242,43 +264,43 @@ export const AdminProfileSettings: React.FC = () => {
     <div className="space-y-6">
       
       {/* Header */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-[var(--bg-surface)] p-5 rounded-xl border border-[var(--border-hairline)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-blue-600 block mb-0.5">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-soft-text)] block mb-0.5">
             Configuración del Establecimiento
           </span>
-          <h2 className="text-xl font-extrabold text-slate-900 font-heading">
+          <h2 className="text-xl font-bold text-[var(--text-primary)] font-heading">
             Información del Administrador & Cobros Automáticos
           </h2>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-[var(--text-secondary)] mt-1">
             Vinculá tu cuenta de Mercado Pago en 1 clic para recibir pagos y confirmar turnos automáticamente sin intervención manual.
           </p>
         </div>
 
         {savedSuccess && (
-          <div className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold animate-bounce">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          <div className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/35 text-xs font-semibold">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
             <span>¡Datos guardados con éxito!</span>
           </div>
         )}
       </div>
 
-      {/* HERO CARD: MERCADO PAGO 1-CLICK OAUTH CONNECTION */}
-      <div className={`p-6 rounded-3xl border shadow-sm space-y-4 ${
+      {/* MERCADO PAGO 1-CLICK OAUTH CONNECTION */}
+      <div className={`p-6 rounded-xl border space-y-4 ${
         isMpConnected
-          ? 'bg-gradient-to-br from-emerald-50 via-white to-sky-50 border-emerald-200'
-          : 'bg-gradient-to-br from-sky-50 via-white to-blue-50 border-sky-200'
+          ? 'bg-[var(--bg-surface)] border-emerald-500/40'
+          : 'bg-[var(--bg-surface)] border-[var(--border-hairline)]'
       }`}>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-wider text-sky-700">
-              <Sparkles className="w-3.5 h-3.5 text-sky-500" />
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--mp-brand)]">
+              <CreditCard className="w-3.5 h-3.5" />
               <span>Cobro Automático por Complejo (OAuth)</span>
             </div>
-            <h3 className="text-lg font-extrabold text-slate-900 font-heading">
+            <h3 className="text-lg font-bold text-[var(--text-primary)] font-heading">
               {isMpConnected ? 'Cuenta de Mercado Pago Vinculada' : 'Conectá tu Mercado Pago en 1 Clic'}
             </h3>
-            <p className="text-xs text-slate-600 max-w-2xl leading-relaxed">
+            <p className="text-xs text-[var(--text-secondary)] max-w-2xl leading-relaxed">
               {isMpConnected
                 ? 'Cada reserva de tus canchas se cobra directamente en tu cuenta de Mercado Pago y el turno se confirma automáticamente al aprobarse el pago.'
                 : 'Autorizá tu cuenta personal o comercial de Mercado Pago sin copiar tokens ni configurar claves técnicas. Los pagos irán directo a tu cuenta.'}
@@ -289,7 +311,7 @@ export const AdminProfileSettings: React.FC = () => {
             <button
               type="button"
               onClick={handleDisconnectMercadoPago}
-              className="px-4 py-2.5 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center gap-2 transition-colors cursor-pointer self-start sm:self-center shrink-0"
+              className="px-4 py-2 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/35 font-semibold text-xs flex items-center gap-2 transition-colors cursor-pointer self-start sm:self-center shrink-0"
             >
               <Unlink className="w-4 h-4" />
               <span>Desconectar Cuenta</span>
@@ -299,7 +321,7 @@ export const AdminProfileSettings: React.FC = () => {
               type="button"
               disabled={isConnectingMP}
               onClick={handleConnectMercadoPago}
-              className="px-5 py-3 rounded-2xl bg-sky-500 hover:bg-sky-400 disabled:opacity-60 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-sky-500/25 transition-all cursor-pointer self-start sm:self-center shrink-0"
+              className="px-5 py-2.5 rounded-lg bg-[var(--mp-brand)] hover:opacity-90 disabled:opacity-60 text-white font-semibold text-xs sm:text-sm flex items-center gap-2 transition-opacity cursor-pointer self-start sm:self-center shrink-0"
             >
               {isConnectingMP ? (
                 <>
@@ -317,23 +339,23 @@ export const AdminProfileSettings: React.FC = () => {
         </div>
 
         {isMpConnected && (
-          <div className="bg-white/90 border border-emerald-200 rounded-2xl p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
             <div>
-              <span className="text-[10px] font-bold uppercase text-slate-400 block">Cuenta Conectada</span>
-              <strong className="text-slate-900 font-bold">
+              <span className="text-[10px] font-semibold uppercase text-[var(--text-muted)] block">Cuenta Conectada</span>
+              <strong className="text-[var(--text-primary)] font-bold">
                 {businessProfile.mpAccountNickname || businessProfile.ownerName || 'Usuario Mercado Pago'}
               </strong>
             </div>
             <div>
-              <span className="text-[10px] font-bold uppercase text-slate-400 block">Email / ID MP</span>
-              <span className="font-mono text-slate-700 font-semibold">
+              <span className="text-[10px] font-semibold uppercase text-[var(--text-muted)] block">Email / ID MP</span>
+              <span className="font-mono text-[var(--text-secondary)] font-semibold">
                 {businessProfile.mpAccountEmail || `ID ${businessProfile.mpUserId || 'Vinculado'}`}
               </span>
             </div>
             <div>
-              <span className="text-[10px] font-bold uppercase text-slate-400 block">Estado de Automatización</span>
-              <span className="inline-flex items-center gap-1 text-emerald-700 font-extrabold">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+              <span className="text-[10px] font-semibold uppercase text-[var(--text-muted)] block">Estado de Automatización</span>
+              <span className="inline-flex items-center gap-1 text-emerald-600 font-bold">
+                <CheckCircle2 className="w-3.5 h-3.5" />
                 Checkout Pro + Webhook Activo
               </span>
             </div>
@@ -341,38 +363,38 @@ export const AdminProfileSettings: React.FC = () => {
         )}
 
         {oauthSuccessNotice && (
-          <div className="p-3 rounded-xl bg-emerald-100 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+          <div className="p-3 rounded-lg bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 text-xs font-semibold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{oauthSuccessNotice}</span>
           </div>
         )}
 
         {oauthError && (
-          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <div className="p-3 rounded-lg bg-rose-500/15 border border-rose-500/35 text-rose-200 text-xs font-semibold flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
             <span>{oauthError}</span>
           </div>
         )}
 
         {!oauthServerConfigured && !isMpConnected && (
-          <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="p-3.5 rounded-lg bg-amber-500/15 border border-amber-500/35 text-amber-200 text-xs flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
               <p className="font-bold">Faltan configurar las credenciales OAuth de la plataforma</p>
-              <p className="text-[11px] text-amber-800">
+              <p className="text-[11px] text-amber-200/90">
                 El servidor{oauthDiag?.host ? ` (${oauthDiag.host}${oauthDiag.vercelEnv ? ` · ${oauthDiag.vercelEnv}` : ''})` : ''} reporta:{' '}
-                <code className="font-mono bg-amber-100 px-1 rounded">
+                <code className="font-mono bg-amber-500/20 px-1 rounded">
                   MP_CLIENT_ID: {oauthDiag?.hasClientId ? 'OK' : 'FALTA'}
                 </code>{' '}
                 ·{' '}
-                <code className="font-mono bg-amber-100 px-1 rounded">
+                <code className="font-mono bg-amber-500/20 px-1 rounded">
                   MP_CLIENT_SECRET: {oauthDiag?.hasClientSecret ? 'OK' : 'FALTA'}
                 </code>
                 .
                 {oauthDiag?.detectedEnvKeys && (
                   <>
                     {' '}Claves detectadas:{' '}
-                    <code className="font-mono bg-amber-100 px-1 rounded">
+                    <code className="font-mono bg-amber-500/20 px-1 rounded">
                       {oauthDiag.detectedEnvKeys.length > 0 ? oauthDiag.detectedEnvKeys.join(', ') : 'ninguna'}
                     </code>
                     .
@@ -386,14 +408,14 @@ export const AdminProfileSettings: React.FC = () => {
       </div>
 
       {/* PAYMENT METHODS STATUS & PAUSE CONTROLS */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+      <div className="bg-[var(--bg-surface)] p-6 rounded-xl border border-[var(--border-hairline)] space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[var(--border-hairline)] pb-3">
           <div>
-            <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-indigo-600" />
+            <h3 className="font-bold text-[var(--text-primary)] text-sm flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-[var(--accent)]" />
               <span>Control de Medios de Pago (Pausar / Activar en Reservas)</span>
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
               Si necesitás suspender temporalmente un medio de cobro, los jugadores verán el método marcado como <strong>Suspendido</strong> y no podrán operar con él.
             </p>
           </div>
@@ -402,18 +424,21 @@ export const AdminProfileSettings: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
           {/* Mercado Pago Pause Card */}
           <div className={`p-4 rounded-2xl border flex items-center justify-between gap-3 ${
-            isMpPaused ? 'bg-rose-50/70 border-rose-200' : 'bg-emerald-50/50 border-emerald-200'
+            isMpPaused ? 'bg-rose-500/10 border-rose-500/35' : 'bg-emerald-500/10 border-emerald-500/35'
           }`}>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="font-extrabold text-slate-900">💙 Mercado Pago</span>
+                <span className="font-bold text-[var(--text-primary)] inline-flex items-center gap-1.5">
+                  <CreditCard className="w-3.5 h-3.5 text-sky-400" />
+                  Mercado Pago
+                </span>
                 <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                  isMpPaused ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                  isMpPaused ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'
                 }`}>
                   {isMpPaused ? 'Pausado / Suspendido' : 'Activo'}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-600">
+              <p className="text-[11px] text-[var(--text-secondary)]">
                 {isMpPaused
                   ? 'Los jugadores ven Mercado Pago como suspendido y no pueden pagar por este medio.'
                   : 'Habilitado en el modal de reserva (según OAuth o Alias/Link configurado).'}
@@ -425,7 +450,7 @@ export const AdminProfileSettings: React.FC = () => {
               onClick={() => handleTogglePause('mp')}
               className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors ${
                 isMpPaused
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-[#090D12]'
                   : 'bg-rose-600 hover:bg-rose-500 text-white'
               }`}
             >
@@ -436,18 +461,21 @@ export const AdminProfileSettings: React.FC = () => {
 
           {/* Bank Transfer / CBU Pause Card */}
           <div className={`p-4 rounded-2xl border flex items-center justify-between gap-3 ${
-            isTransferPaused ? 'bg-rose-50/70 border-rose-200' : 'bg-emerald-50/50 border-emerald-200'
+            isTransferPaused ? 'bg-rose-500/10 border-rose-500/35' : 'bg-emerald-500/10 border-emerald-500/35'
           }`}>
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <span className="font-extrabold text-slate-900">🏦 Transferencia CBU / Banco</span>
+                <span className="font-bold text-[var(--text-primary)] inline-flex items-center gap-1.5">
+                  <Landmark className="w-3.5 h-3.5 text-amber-400" />
+                  Transferencia CBU / Banco
+                </span>
                 <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                  isTransferPaused ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'
+                  isTransferPaused ? 'bg-rose-500/20 text-rose-300' : 'bg-emerald-500/20 text-emerald-300'
                 }`}>
                   {isTransferPaused ? 'Pausado / Suspendido' : 'Activo'}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-600">
+              <p className="text-[11px] text-[var(--text-secondary)]">
                 {isTransferPaused
                   ? 'Las transferencias bancarias están suspendidas y bloqueadas para los jugadores.'
                   : 'Disponible siempre que hayas cargado tu CBU o Alias abajo.'}
@@ -459,7 +487,7 @@ export const AdminProfileSettings: React.FC = () => {
               onClick={() => handleTogglePause('transfer')}
               className={`px-3.5 py-2 rounded-xl font-bold text-xs flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors ${
                 isTransferPaused
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-[#090D12]'
                   : 'bg-rose-600 hover:bg-rose-500 text-white'
               }`}
             >
@@ -473,87 +501,87 @@ export const AdminProfileSettings: React.FC = () => {
       <form onSubmit={handleSubmit} className="space-y-6">
         
         {/* Section 1: Complex & Administrator Identity */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center gap-2 font-bold text-slate-900 text-sm border-b border-slate-100 pb-3">
-            <Building2 className="w-4 h-4 text-blue-600" />
+        <div className="bg-[var(--bg-surface)] p-6 rounded-xl border border-[var(--border-hairline)] space-y-4">
+          <div className="flex items-center gap-2 font-bold text-[var(--text-primary)] text-sm border-b border-[var(--border-hairline)] pb-3">
+            <Building2 className="w-4 h-4 text-[var(--accent)]" />
             <span>Identidad del Complejo Deportivo</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Nombre y Apellido del Responsable</label>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1">Nombre y Apellido del Responsable</label>
               <input
                 type="text"
                 required
                 value={ownerName}
                 onChange={(e) => setOwnerName(e.target.value)}
                 placeholder="Ej: Marcelo Gallardo"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs text-[var(--text-primary)]"
               />
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Nombre Comercial del Complejo / Club</label>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1">Nombre Comercial del Complejo / Club</label>
               <input
                 type="text"
                 required
                 value={complexName}
                 onChange={(e) => setComplexName(e.target.value)}
                 placeholder="Ej: Complejo Deportivo Costanera PMY"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs text-[var(--text-primary)]"
               />
             </div>
           </div>
         </div>
 
         {/* Section 2: Financial Details for Transfer / CBU Fallback */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center gap-2 font-bold text-slate-900 text-sm border-b border-slate-100 pb-3">
-            <CreditCard className="w-4 h-4 text-emerald-600" />
+        <div className="bg-[var(--bg-surface)] p-6 rounded-xl border border-[var(--border-hairline)] space-y-4">
+          <div className="flex items-center gap-2 font-bold text-[var(--text-primary)] text-sm border-b border-[var(--border-hairline)] pb-3">
+            <CreditCard className="w-4 h-4 text-[var(--accent)]" />
             <span>Transferencia Bancaria / CBU & Alias (Alternativa manual)</span>
           </div>
 
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-[var(--text-secondary)]">
             Si además ofrecés transferencia manual por CBU o Alias, completá estos datos para que el jugador pueda transferir y subir su comprobante.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Alias de Mercado Pago / Banco</label>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1">Alias de Mercado Pago / Banco</label>
               <input
                 type="text"
                 value={alias}
                 onChange={(e) => setAlias(e.target.value)}
                 placeholder="Ej: DEPORTES.PMY.MP"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono font-bold text-emerald-700"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs font-mono font-bold text-[var(--accent-soft-text)]"
               />
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 block mb-1">CBU / CVU Bancario (22 dígitos)</label>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1">CBU / CVU Bancario (22 dígitos)</label>
               <input
                 type="text"
                 value={cbu}
                 onChange={(e) => setCbu(e.target.value)}
                 placeholder="Ej: 0000003100012345678901"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono text-slate-800"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs font-mono text-[var(--text-primary)]"
               />
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Titular de la Cuenta</label>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1">Titular de la Cuenta</label>
               <input
                 type="text"
                 value={accountHolder}
                 onChange={(e) => setAccountHolder(e.target.value)}
                 placeholder="Ej: Deportes Puerto Madryn SRL"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs text-[var(--text-primary)]"
               />
             </div>
 
             <div className="sm:col-span-3">
-              <label className="font-bold text-slate-700 block mb-1 flex items-center gap-1.5">
-                <ExternalLink className="w-3.5 h-3.5 text-sky-600" />
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1 flex items-center gap-1.5">
+                <ExternalLink className="w-3.5 h-3.5 text-[var(--mp-brand)]" />
                 <span>Link Personal de Mercado Pago (Opcional)</span>
               </label>
               <input
@@ -561,13 +589,13 @@ export const AdminProfileSettings: React.FC = () => {
                 value={mpLink}
                 onChange={(e) => setMpLink(e.target.value)}
                 placeholder="Ej: https://link.mercadopago.com.ar/micomplejo"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono text-slate-800"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs font-mono text-[var(--text-primary)]"
               />
             </div>
 
-            <details className="sm:col-span-3 pt-2 border-t border-slate-100">
-              <summary className="text-[11px] font-bold text-slate-500 cursor-pointer hover:text-slate-700 flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
+            <details className="sm:col-span-3 pt-2 border-t border-[var(--border-hairline)]">
+              <summary className="text-[11px] font-semibold text-[var(--text-muted)] cursor-pointer hover:text-[var(--text-primary)] flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5" />
                 <span>Opciones avanzadas (Token manual solo si no usás el botón de 1 clic)</span>
               </summary>
               <div className="mt-2">
@@ -576,7 +604,7 @@ export const AdminProfileSettings: React.FC = () => {
                   value={mpAccessToken}
                   onChange={(e) => setMpAccessToken(e.target.value)}
                   placeholder="APP_USR-... (se completa automáticamente al conectar con OAuth)"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs font-mono text-slate-800"
+                  className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs font-mono text-[var(--text-primary)]"
                 />
               </div>
             </details>
@@ -584,86 +612,191 @@ export const AdminProfileSettings: React.FC = () => {
         </div>
 
         {/* Section 3: Contact & Address Details */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center gap-2 font-bold text-slate-900 text-sm border-b border-slate-100 pb-3">
-            <MessageCircle className="w-4 h-4 text-teal-600" />
+        <div className="bg-[var(--bg-surface)] p-6 rounded-xl border border-[var(--border-hairline)] space-y-4">
+          <div className="flex items-center gap-2 font-bold text-[var(--text-primary)] text-sm border-b border-[var(--border-hairline)] pb-3">
+            <MessageCircle className="w-4 h-4 text-[var(--accent)]" />
             <span>Contacto, WhatsApp & Ubicación del Complejo</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Número de WhatsApp (con código de país)</label>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1">Número de WhatsApp (con código de país)</label>
               <input
                 type="text"
                 required
                 value={whatsappNumber}
                 onChange={(e) => setWhatsappNumber(e.target.value)}
                 placeholder="Ej: +5492804567890"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs text-[var(--text-primary)] font-mono"
               />
-              <span className="text-[10px] text-slate-400 mt-0.5 block">Desde este número se abrirán las notificaciones a los jugadores</span>
+              <span className="text-[10px] text-[var(--text-muted)] mt-0.5 block">Desde este número se abrirán las notificaciones a los jugadores</span>
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Correo Electrónico de Contacto</label>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1">Correo Electrónico de Contacto</label>
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="reservas@deportespmy.com.ar"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs text-[var(--text-primary)]"
               />
             </div>
 
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Dirección Física en Puerto Madryn</label>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1">Dirección Física en Puerto Madryn</label>
               <input
                 type="text"
                 required
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 placeholder="Ej: Boulevard Brown 1420 (Costanera frente al mar)"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs text-[var(--text-primary)]"
               />
             </div>
           </div>
 
           <div>
-            <label className="font-bold text-slate-700 block mb-1">Instrucciones o Aclaraciones para el Jugador</label>
+            <label className="font-semibold text-[var(--text-secondary)] block mb-1">Instrucciones o Aclaraciones para el Jugador</label>
             <textarea
               rows={2}
               value={welcomeNotes}
               onChange={(e) => setWelcomeNotes(e.target.value)}
               placeholder="Ej: Presentarse 10 minutos antes. Contamos con vestuarios con agua caliente, alquiler de paletas y buffet..."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+              className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs text-[var(--text-primary)]"
             />
-            <span className="text-[10px] text-slate-400 mt-0.5 block">Este texto se agregará automáticamente al final de cada confirmación de WhatsApp</span>
+            <span className="text-[10px] text-[var(--text-muted)] mt-0.5 block">Este texto se agregará automáticamente al final de cada confirmación de WhatsApp</span>
           </div>
 
           <div>
-            <label className="font-bold text-slate-700 block mb-1 flex items-center justify-between">
+            <label className="font-semibold text-[var(--text-secondary)] block mb-1 flex items-center justify-between">
               <span>Plantilla Personalizada del Mensaje de WhatsApp</span>
-              <span className="text-[10px] text-slate-400 font-normal">Variables: {'{nombre}, {complejo}, {cancha}, {fecha}, {inicio}, {fin}, {codigo}, {total}, {abonado}, {saldo}, {alias}, {direccion}'}</span>
+              <span className="text-[10px] text-[var(--text-muted)] font-normal">Variables: {'{nombre}, {complejo}, {cancha}, {fecha}, {inicio}, {fin}, {codigo}, {total}, {abonado}, {saldo}, {alias}, {direccion}'}</span>
             </label>
             <textarea
               rows={4}
               value={whatsappTemplate}
               onChange={(e) => setWhatsappTemplate(e.target.value)}
               placeholder="Ej: *¡Hola {nombre}!* Tu reserva en *{complejo}* para la cancha *{cancha}* el {fecha} de {inicio} a {fin} hs está confirmada. Código: #{codigo}. Total: {total}. Abonado: {abonado}. Saldo restante: {saldo}. Alias: {alias}. Dirección: {direccion}."
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-800 font-mono"
+              className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-3 text-xs text-[var(--text-primary)] font-mono"
             />
-            <span className="text-[10px] text-slate-400 mt-0.5 block">
+            <span className="text-[10px] text-[var(--text-muted)] mt-0.5 block">
               Si dejás este campo vacío, el sistema utilizará la plantilla profesional predeterminada.
             </span>
           </div>
+        </div>
+
+        {/* Section 4: Social Media Links & Live Feed Embed */}
+        <div className="bg-[var(--bg-surface)] p-6 rounded-xl border border-[var(--border-hairline)] space-y-4">
+          <div className="flex items-center gap-2 font-bold text-[var(--text-primary)] text-sm border-b border-[var(--border-hairline)] pb-3">
+            <Share2 className="w-4 h-4 text-[var(--accent)]" />
+            <span>Redes Sociales &amp; Feed en Vivo del Complejo</span>
+          </div>
+
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+            Vinculá las cuentas oficiales de tu complejo para que aparezcan en el directorio de complejos y dentro de tu perfil público con acceso directo y publicación destacada en vivo.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1 flex items-center gap-1.5">
+                <Instagram className="w-3.5 h-3.5 text-pink-600" />
+                <span>Instagram (URL o @usuario)</span>
+              </label>
+              <input
+                type="text"
+                value={instagramUrl}
+                onChange={(e) => setInstagramUrl(e.target.value)}
+                placeholder="Ej: @complejocostanera o https://instagram.com/..."
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs text-[var(--text-primary)]"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1 flex items-center gap-1.5">
+                <Facebook className="w-3.5 h-3.5 text-blue-600" />
+                <span>Facebook (URL de la página)</span>
+              </label>
+              <input
+                type="text"
+                value={facebookUrl}
+                onChange={(e) => setFacebookUrl(e.target.value)}
+                placeholder="Ej: https://www.facebook.com/micomplejo"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs text-[var(--text-primary)]"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1 flex items-center gap-1.5">
+                <Play className="w-3.5 h-3.5 text-[var(--text-primary)]" />
+                <span>TikTok (URL o @usuario)</span>
+              </label>
+              <input
+                type="text"
+                value={tiktokUrl}
+                onChange={(e) => setTiktokUrl(e.target.value)}
+                placeholder="Ej: @complejo.pmy o https://tiktok.com/@..."
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs text-[var(--text-primary)]"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1 flex items-center gap-1.5">
+                <Youtube className="w-3.5 h-3.5 text-rose-600" />
+                <span>YouTube (Canal o video institucional)</span>
+              </label>
+              <input
+                type="text"
+                value={youtubeUrl}
+                onChange={(e) => setYoutubeUrl(e.target.value)}
+                placeholder="Ej: https://www.youtube.com/@micomplejo"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs text-[var(--text-primary)]"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span>Publicación, Reel o Feed Destacado para Incrustar en Vivo (Opcional)</span>
+              </label>
+              <input
+                type="text"
+                value={socialFeedUrl}
+                onChange={(e) => setSocialFeedUrl(e.target.value)}
+                placeholder="Pegá el link de un post/reel de Instagram, página de Facebook o video/short de YouTube"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs font-mono text-[var(--text-primary)]"
+              />
+              <span className="text-[10px] text-[var(--text-muted)] mt-1 block">
+                Si dejás este campo vacío y cargaste Instagram/Facebook arriba, mostraremos automáticamente tu perfil vinculado.
+              </span>
+            </div>
+          </div>
+
+          {(instagramUrl || facebookUrl || tiktokUrl || youtubeUrl || socialFeedUrl) && (
+            <div className="pt-2">
+              <p className="text-[11px] font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">
+                Vista previa en perfil del complejo:
+              </p>
+              <SocialFeedShowcase
+                profile={{
+                  instagramUrl,
+                  facebookUrl,
+                  tiktokUrl,
+                  youtubeUrl,
+                  socialFeedUrl,
+                }}
+                complexName={complexName || 'Tu Complejo'}
+              />
+            </div>
+          )}
         </div>
 
         {/* Submit Bar */}
         <div className="flex items-center justify-end gap-3 pt-2">
           <button
             type="submit"
-            className="px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-blue-600/25 transition-all cursor-pointer"
+            className="px-6 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-fg)] font-semibold text-xs sm:text-sm flex items-center gap-2 transition-colors cursor-pointer"
           >
             <Save className="w-4 h-4" />
             <span>Guardar Información del Administrador</span>

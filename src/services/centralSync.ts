@@ -8,6 +8,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { Booking, Review, Court, BusinessProfile, AdminUser, DeveloperContact } from '../types';
+import { normalizeCourtSchedule } from '../utils/scheduleHours';
 
 export enum OperationType {
   CREATE = 'create',
@@ -66,7 +67,7 @@ export const subscribeToCourts = (
       collection(db, path),
       (snapshot) => {
         const list: Court[] = [];
-        snapshot.forEach((d) => list.push({ ...(d.data() as Court), id: d.id }));
+        snapshot.forEach((d) => list.push(normalizeCourtSchedule({ ...(d.data() as Court), id: d.id })));
         onUpdate(list);
       },
       (error) => {
@@ -232,7 +233,12 @@ export const subscribeToBusinessProfile = (
             mpConnectedAt: data.mpConnectedAt || '',
             whatsappTemplate: data.whatsappTemplate || '',
             mpPaused: Boolean(data.mpPaused),
-            transferPaused: Boolean(data.transferPaused)
+            transferPaused: Boolean(data.transferPaused),
+            instagramUrl: data.instagramUrl || '',
+            facebookUrl: data.facebookUrl || '',
+            tiktokUrl: data.tiktokUrl || '',
+            youtubeUrl: data.youtubeUrl || '',
+            socialFeedUrl: data.socialFeedUrl || ''
           });
         } else if (profileKey) {
           // If a new admin does not have a profile saved yet, return 100% empty fields
@@ -258,7 +264,12 @@ export const subscribeToBusinessProfile = (
             mpConnectedAt: '',
             whatsappTemplate: '',
             mpPaused: false,
-            transferPaused: false
+            transferPaused: false,
+            instagramUrl: '',
+            facebookUrl: '',
+            tiktokUrl: '',
+            youtubeUrl: '',
+            socialFeedUrl: ''
           });
         }
       },

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Lock, ShieldCheck, X, KeyRound, AlertCircle, User } from 'lucide-react';
+import { ShieldCheck, X, KeyRound, AlertCircle, User } from 'lucide-react';
 
 interface AdminLoginModalProps {
   isOpen: boolean;
@@ -8,7 +8,11 @@ interface AdminLoginModalProps {
   onLoginSuccess: () => void;
 }
 
-export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClose, onLoginSuccess }) => {
+export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
+  isOpen,
+  onClose,
+  onLoginSuccess,
+}) => {
   const { loginAdmin } = useApp();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -36,67 +40,65 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 text-white rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
-        
-        {/* Top Header */}
-        <div className="flex justify-between items-start pb-3 border-b border-slate-800">
+    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] text-[var(--text-primary)] rounded-xl max-w-sm w-full p-6 shadow-xl space-y-5">
+        <div className="flex justify-between items-start pb-3 border-b border-[var(--border-hairline)]">
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-lg bg-[var(--accent-soft)] text-[var(--accent-soft-text)] flex items-center justify-center">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-base font-heading">Acceso al Panel</h3>
-              <p className="text-[11px] text-slate-400">DeportesPMY • Identificación</p>
+              <h3 className="font-heading font-bold text-xl leading-tight">Acceso Clubes</h3>
+              <p className="text-xs text-[var(--text-muted)]">Panel de gestión DeportesPMY</p>
             </div>
           </div>
-          <button 
+          <button
+            type="button"
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 cursor-pointer"
+            className="text-[var(--text-muted)] hover:text-[var(--text-primary)] p-1 rounded-lg hover:bg-[var(--bg-subtle)] cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Clean Login Form: Only Username and Password */}
-        <form onSubmit={handleSubmit} className="space-y-3.5 text-xs">
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           <div>
-            <label className="block text-slate-300 font-semibold mb-1 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-slate-400" />
-              Nombre de Usuario
+            <label className="block text-[var(--text-primary)] font-semibold mb-1.5 flex items-center gap-1.5">
+              <User className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+              Nombre de usuario
             </label>
             <input
               type="text"
               required
               autoFocus
-              placeholder="Ingresá tu usuario..."
+              placeholder="Ingresá tu usuario"
               value={username}
               onChange={(e) => {
                 setUsername(e.target.value);
                 if (errorMsg) setErrorMsg(null);
               }}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg px-3.5 py-2.5 text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
             />
           </div>
 
           <div>
-            <label className="block text-slate-300 font-semibold mb-1 flex items-center gap-1.5">
-              <KeyRound className="w-3.5 h-3.5 text-blue-400" />
+            <label className="block text-[var(--text-primary)] font-semibold mb-1.5 flex items-center gap-1.5">
+              <KeyRound className="w-3.5 h-3.5 text-[var(--text-muted)]" />
               Contraseña
             </label>
             <input
               type="password"
               required
-              placeholder="Ingresá tu contraseña..."
+              placeholder="Ingresá tu contraseña"
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
                 if (errorMsg) setErrorMsg(null);
               }}
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg px-3.5 py-2.5 text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
             />
             {errorMsg && (
-              <p className="text-rose-400 text-[11px] mt-1.5 flex items-center gap-1 font-semibold">
+              <p className="text-rose-600 dark:text-rose-400 text-xs mt-2 flex items-center gap-1 font-semibold">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                 {errorMsg}
               </p>
@@ -107,19 +109,18 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({ isOpen, onClos
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold cursor-pointer transition-colors"
+              className="flex-1 py-2.5 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-semibold cursor-pointer transition-colors"
             >
               Cancelar
             </button>
             <button
               type="submit"
-              className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold cursor-pointer shadow-lg shadow-blue-600/30 transition-colors"
+              className="flex-1 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold cursor-pointer transition-colors"
             >
-              Ingresar al Panel
+              Ingresar
             </button>
           </div>
         </form>
-
       </div>
     </div>
   );

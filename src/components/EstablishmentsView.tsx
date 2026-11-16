@@ -3,7 +3,14 @@ import { useApp } from '../context/AppContext';
 import { BusinessProfile, Court, Review, SportType } from '../types';
 import { CourtCatalog } from './CourtCatalog';
 import { ReviewsSection } from './ReviewsSection';
+import { SocialFeedShowcase } from './SocialFeedShowcase';
 import { EMPTY_BUSINESS_PROFILE, getIsoDate } from '../data/mockData';
+import {
+  resolveCourtCoverImage,
+  SPORT_DEFAULT_IMAGES,
+  SPORT_DISPLAY_LABELS,
+  FALLBACK_COURT_SVG,
+} from '../data/courtMedia';
 import {
   Building2,
   MapPin,
@@ -14,12 +21,8 @@ import {
   ArrowLeft,
   Search,
   X,
-  Calendar as CalendarIcon,
   MessageCircle,
-  CreditCard,
-  Landmark,
-  Layers,
-  Lock
+  Lock,
 } from 'lucide-react';
 
 interface EstablishmentsViewProps {
@@ -33,6 +36,7 @@ interface EstablishmentItem {
   whatsappNumber: string;
   email: string;
   welcomeNotes: string;
+  profile: BusinessProfile;
   courts: Court[];
   reviews: Review[];
   avgRating: number | null;
@@ -42,22 +46,6 @@ interface EstablishmentItem {
   mpAvailable: boolean;
   transferAvailable: boolean;
 }
-
-const SPORT_LABELS: Record<SportType, { label: string; emoji: string }> = {
-  futbol5: { label: 'Fútbol 5', emoji: '⚽' },
-  futbol7: { label: 'Fútbol 7', emoji: '⚽' },
-  padel: { label: 'Pádel', emoji: '🎾' },
-  tenis: { label: 'Tenis', emoji: '🎾' },
-  basquet: { label: 'Básquet', emoji: '🏀' },
-};
-
-const FALLBACK_COVERS: Record<SportType, string> = {
-  futbol5: 'https://images.unsplash.com/photo-1529900245534-47fbf8204e61?auto=format&fit=crop&w=1200&q=80',
-  futbol7: 'https://images.unsplash.com/photo-1556056504-5c7696c4c28d?auto=format&fit=crop&w=1200&q=80',
-  padel: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=1200&q=80',
-  tenis: 'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=1200&q=80',
-  basquet: 'https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=1200&q=80',
-};
 
 const normalizeKey = (val?: string | null): string =>
   (val || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
@@ -83,7 +71,6 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
   const [estSportFilter, setEstSportFilter] = useState<SportType | 'all'>('all');
   const [detailSubTab, setDetailSubTab] = useState<'canchas' | 'opiniones'>('canchas');
 
-  // Group active sports centers across admins & courts
   const establishments = useMemo<EstablishmentItem[]>(() => {
     const groups = new Map<
       string,
@@ -101,7 +88,6 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
       admins.filter((a) => !a.isActive).map((a) => normalizeKey(a.username))
     );
 
-    // 1. Seed entries from active standard admins (so configured complexes appear even before adding courts)
     admins
       .filter((a) => a.isActive && a.role === 'admin')
       .forEach((adm) => {
@@ -118,7 +104,6 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
         });
       });
 
-    // 2. Assign every court to its owning establishment group
     courts.forEach((court) => {
       const ownerKey = normalizeKey(getAdminIdForCourt(court) || court.adminId);
       if (ownerKey && inactiveAdminKeys.has(ownerKey)) return;
@@ -128,7 +113,10 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
 
       if (!groups.has(key)) {
         const matchedAdmin = admins.find((a) => normalizeKey(a.username) === ownerKey);
-        const prof = (ownerKey && profilesByAdmin[ownerKey]) || profilesByAdmin['default'] || EMPTY_BUSINESS_PROFILE;
+        const prof =
+          (ownerKey && profilesByAdmin[ownerKey]) ||
+          profilesByAdmin['default'] ||
+          EMPTY_BUSINESS_PROFILE;
         groups.set(key, {
           key,
           profile: prof,
@@ -151,7 +139,6 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
         ''
       ).trim();
 
-      // Hide unconfigured empty shells that have neither a name nor courts
       if (!name && grp.courts.length === 0) return;
 
       const courtIds = new Set(grp.courts.map((c) => c.id));
@@ -168,10 +155,9 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
       const minPrice = prices.length > 0 ? Math.min(...prices) : null;
 
       const firstCourt = grp.courts[0];
-      const coverImage =
-        firstCourt?.images?.[0] ||
-        firstCourt?.imageUrl ||
-        (firstCourt ? FALLBACK_COVERS[firstCourt.sport] : FALLBACK_COVERS.futbol5);
+      const coverImage = firstCourt
+        ? resolveCourtCoverImage(firstCourt.sport, firstCourt.images, firstCourt.imageUrl)
+        : SPORT_DEFAULT_IMAGES.futbol5;
 
       const mpAvailable =
         !grp.profile.mpPaused &&
@@ -192,6 +178,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
         whatsappNumber: grp.profile.whatsappNumber?.trim() || grp.adminPhone || '',
         email: grp.profile.email?.trim() || grp.adminEmail || '',
         welcomeNotes: grp.profile.welcomeNotes?.trim() || '',
+        profile: grp.profile,
         courts: grp.courts,
         reviews: estReviews,
         avgRating,
@@ -243,7 +230,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
   };
 
   // ============================================================================
-  // VIEW B: INSIDE A SPECIFIC ESTABLISHMENT (100% scoped to this center only)
+  // VIEW B: INSIDE A SPECIFIC ESTABLISHMENT
   // ============================================================================
   if (selectedEst) {
     const todayStr = getIsoDate(0);
@@ -255,101 +242,93 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
         )}`
       : null;
 
+    const paymentMethodsList: string[] = [];
+    if (selectedEst.mpAvailable) paymentMethodsList.push('Mercado Pago');
+    if (selectedEst.transferAvailable) paymentMethodsList.push('Transferencia CBU/Alias');
+
     return (
-      <div className="min-h-screen bg-slate-50">
-        {/* Establishment Dedicated Hero Header */}
-        <div className="relative bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 text-white border-b border-emerald-900/40">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5">
-            {/* Back button */}
+      <div className="min-h-screen bg-[var(--bg-canvas)]">
+        {/* Establishment Header */}
+        <div className="bg-[var(--bg-surface)] border-b border-[var(--border-hairline)]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
             <div>
               <button
                 type="button"
                 onClick={handleBackToDirectory}
-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold cursor-pointer transition-colors"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
               >
-                <ArrowLeft className="w-4 h-4 text-emerald-400" />
-                <span>Volver a Establecimientos</span>
+                <ArrowLeft className="w-4 h-4" />
+                <span>Volver al directorio de complejos</span>
               </button>
             </div>
 
-            {/* Complex Main Info Card */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center bg-slate-900/90 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-2xl">
-              <div className="lg:col-span-4 h-48 sm:h-52 rounded-2xl overflow-hidden bg-slate-950 border border-slate-800 relative">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
+              <div className="lg:col-span-4 aspect-[16/10] rounded-xl overflow-hidden bg-[var(--bg-subtle)] border border-[var(--border-hairline)] relative">
                 <img
                   src={selectedEst.coverImage}
                   alt={selectedEst.name}
                   className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = FALLBACK_COURT_SVG;
+                  }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-transparent to-transparent" />
-                <span className="absolute bottom-3 left-3 px-2.5 py-1 rounded-full bg-emerald-500/90 text-slate-950 text-[11px] font-black">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                <span className="absolute bottom-3 left-3 px-2.5 py-1 rounded-md bg-black/70 text-white text-xs font-semibold tabular-nums">
                   {selectedEst.courts.length}{' '}
-                  {selectedEst.courts.length === 1 ? 'Cancha disponible' : 'Canchas disponibles'}
+                  {selectedEst.courts.length === 1 ? 'cancha' : 'canchas'}
                 </span>
               </div>
 
               <div className="lg:col-span-8 space-y-4">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5 mb-1">
-                      <Building2 className="w-3.5 h-3.5" />
-                      Centro Deportivo Habilitado
-                    </span>
-                    <h1 className="text-2xl sm:text-3xl font-black font-heading text-white">
+                    <p className="text-xs font-semibold text-[var(--accent-soft-text)] mb-1">
+                      Complejo deportivo habilitado
+                    </p>
+                    <h1 className="font-heading text-3xl sm:text-4xl font-extrabold text-[var(--text-primary)] leading-tight">
                       {selectedEst.name}
                     </h1>
-                    <p className="text-xs sm:text-sm text-slate-300 flex items-center gap-1.5 mt-1">
-                      <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <p className="text-sm text-[var(--text-secondary)] flex items-center gap-1.5 mt-1">
+                      <MapPin className="w-4 h-4 text-[var(--text-muted)] shrink-0" />
                       <span>{selectedEst.address}</span>
                     </p>
                   </div>
 
                   {selectedEst.avgRating !== null ? (
-                    <div className="flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 px-3 py-1.5 rounded-2xl">
-                      <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                      <span className="text-sm font-black text-amber-300">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--bg-subtle)] border border-[var(--border-hairline)] text-xs font-semibold tabular-nums">
+                      <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
+                      <span className="text-[var(--text-primary)] font-mono">
                         {selectedEst.avgRating.toFixed(1)}
                       </span>
-                      <span className="text-xs text-slate-300">
+                      <span className="text-[var(--text-muted)]">
                         ({selectedEst.reviews.length}{' '}
                         {selectedEst.reviews.length === 1 ? 'opinión' : 'opiniones'})
                       </span>
                     </div>
                   ) : (
-                    <span className="px-3 py-1.5 rounded-2xl bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-300">
-                      Sin opiniones aún
-                    </span>
+                    <span className="text-xs text-[var(--text-muted)]">Sin opiniones aún</span>
                   )}
                 </div>
 
                 {selectedEst.welcomeNotes && (
-                  <p className="text-xs sm:text-sm text-slate-300 bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3 leading-relaxed">
+                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed max-w-3xl">
                     {selectedEst.welcomeNotes}
                   </p>
                 )}
 
-                {/* Sports & Contact Row */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {selectedEst.sports.map((sp) => (
-                      <span
-                        key={sp}
-                        className="px-2.5 py-1 rounded-xl bg-slate-800 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1"
-                      >
-                        <span>{SPORT_LABELS[sp]?.emoji}</span>
-                        <span>{SPORT_LABELS[sp]?.label || sp}</span>
-                      </span>
-                    ))}
-                    {selectedEst.mpAvailable && (
-                      <span className="px-2.5 py-1 rounded-xl bg-sky-500/15 text-sky-300 border border-sky-500/30 text-[11px] font-bold flex items-center gap-1">
-                        <CreditCard className="w-3 h-3" />
-                        Mercado Pago
-                      </span>
+                <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-[var(--border-hairline)] text-xs">
+                  <div className="space-y-1 text-[var(--text-secondary)]">
+                    {selectedEst.sports.length > 0 && (
+                      <p>
+                        <span className="font-semibold text-[var(--text-primary)]">Disciplinas: </span>
+                        {selectedEst.sports.map((sp) => SPORT_DISPLAY_LABELS[sp] || sp).join(' · ')}
+                      </p>
                     )}
-                    {selectedEst.transferAvailable && (
-                      <span className="px-2.5 py-1 rounded-xl bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[11px] font-bold flex items-center gap-1">
-                        <Landmark className="w-3 h-3" />
-                        Transferencia CBU/Alias
-                      </span>
+                    {paymentMethodsList.length > 0 && (
+                      <p>
+                        <span className="font-semibold text-[var(--text-primary)]">Cobros habilitados: </span>
+                        {paymentMethodsList.join(' · ')}
+                      </p>
                     )}
                   </div>
 
@@ -359,18 +338,18 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                         href={waHref}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs inline-flex items-center gap-1.5 shadow-md cursor-pointer"
+                        className="px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer whitespace-nowrap"
                       >
                         <MessageCircle className="w-3.5 h-3.5" />
-                        <span>WhatsApp del Complejo</span>
+                        <span>WhatsApp del complejo</span>
                       </a>
                     )}
                     {selectedEst.email && (
                       <a
                         href={`mailto:${selectedEst.email}`}
-                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs inline-flex items-center gap-1.5"
+                        className="px-3.5 py-2 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-canvas)] hover:border-[var(--border-strong)] text-[var(--text-primary)] font-medium text-xs inline-flex items-center gap-1.5 transition-colors"
                       >
-                        <Mail className="w-3.5 h-3.5 text-slate-400" />
+                        <Mail className="w-3.5 h-3.5 text-[var(--text-muted)]" />
                         <span>{selectedEst.email}</span>
                       </a>
                     )}
@@ -379,46 +358,43 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
               </div>
             </div>
 
-            {/* Scoped Sub-navigation Tabs inside Establishment */}
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-2 bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800">
+            {/* Clean Sub-navigation Underline Tabs + Date Picker */}
+            <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t border-[var(--border-hairline)]">
+              <div className="flex items-center gap-6 text-sm">
                 <button
                   type="button"
                   onClick={() => setDetailSubTab('canchas')}
-                  className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer transition-all ${
+                  className={`py-2 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
                     detailSubTab === 'canchas'
-                      ? 'bg-emerald-500 text-slate-950 shadow-md'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                      ? 'border-[var(--accent)] text-[var(--text-primary)] font-semibold'
+                      : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
-                  <Layers className="w-4 h-4" />
-                  <span>Canchas y Turnos ({selectedEst.courts.length})</span>
+                  Canchas y turnos ({selectedEst.courts.length})
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setDetailSubTab('opiniones')}
-                  className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer transition-all ${
+                  className={`py-2 border-b-2 transition-colors cursor-pointer whitespace-nowrap ${
                     detailSubTab === 'opiniones'
-                      ? 'bg-emerald-500 text-slate-950 shadow-md'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                      ? 'border-[var(--accent)] text-[var(--text-primary)] font-semibold'
+                      : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                   }`}
                 >
-                  <Star className="w-4 h-4" />
-                  <span>Opiniones de este Centro ({selectedEst.reviews.length})</span>
+                  Opiniones ({selectedEst.reviews.length})
                 </button>
               </div>
 
               {detailSubTab === 'canchas' && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <CalendarIcon className="w-4 h-4 text-emerald-400 hidden sm:inline" />
+                <div className="flex items-center gap-1.5 text-xs">
                   <button
                     type="button"
                     onClick={() => setSelectedDate(todayStr)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer border ${
+                    className={`px-3 py-1.5 rounded-lg font-semibold border cursor-pointer transition-colors ${
                       selectedDate === todayStr
-                        ? 'bg-emerald-500 text-slate-950 border-emerald-400'
-                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)]'
+                        : 'bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                     }`}
                   >
                     Hoy
@@ -426,10 +402,10 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                   <button
                     type="button"
                     onClick={() => setSelectedDate(tomorrowStr)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer border ${
+                    className={`px-3 py-1.5 rounded-lg font-semibold border cursor-pointer transition-colors ${
                       selectedDate === tomorrowStr
-                        ? 'bg-emerald-500 text-slate-950 border-emerald-400'
-                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)]'
+                        : 'bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                     }`}
                   >
                     Mañana
@@ -439,7 +415,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                     value={selectedDate}
                     min={todayStr}
                     onChange={(e) => setSelectedDate(e.target.value)}
-                    className="py-1.5 px-2.5 text-xs font-bold rounded-xl bg-slate-800 text-slate-200 border border-slate-700 cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                    className="py-1.5 px-2.5 text-xs font-mono rounded-lg bg-[var(--bg-canvas)] text-[var(--text-primary)] border border-[var(--border-hairline)] cursor-pointer focus:outline-none focus:border-[var(--accent)]"
                     title="Elegir fecha"
                   />
                 </div>
@@ -448,35 +424,34 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
           </div>
         </div>
 
-        {/* Scoped Body Content: ONLY this establishment's courts or reviews */}
+        {/* Scoped Body Content */}
         {detailSubTab === 'canchas' ? (
           <div>
             {selectedEst.sports.length > 1 && (
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 flex flex-wrap items-center gap-2">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setSelectedSport('all')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
                     selectedSport === 'all'
-                      ? 'bg-slate-900 text-white border-slate-900'
-                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                      ? 'bg-[var(--accent-soft)] text-[var(--accent-soft-text)] border-[var(--accent)]'
+                      : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                   }`}
                 >
-                  Todos ({selectedEst.courts.length})
+                  Todas ({selectedEst.courts.length})
                 </button>
                 {selectedEst.sports.map((sp) => (
                   <button
                     key={sp}
                     type="button"
                     onClick={() => setSelectedSport(sp)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border cursor-pointer flex items-center gap-1 ${
+                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
                       selectedSport === sp
-                        ? 'bg-slate-900 text-white border-slate-900'
-                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                        ? 'bg-[var(--accent-soft)] text-[var(--accent-soft-text)] border-[var(--accent)]'
+                        : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                     }`}
                   >
-                    <span>{SPORT_LABELS[sp]?.emoji}</span>
-                    <span>{SPORT_LABELS[sp]?.label || sp}</span>
+                    {SPORT_DISPLAY_LABELS[sp] || sp}
                   </button>
                 ))}
               </div>
@@ -487,6 +462,10 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
               courtsOverride={selectedEst.courts}
               complexNameOverride={selectedEst.name}
             />
+
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+              <SocialFeedShowcase profile={selectedEst.profile} complexName={selectedEst.name} />
+            </div>
           </div>
         ) : (
           <ReviewsSection
@@ -502,72 +481,68 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
   // VIEW A: ALL ESTABLISHMENTS DIRECTORY
   // ============================================================================
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Directory Header Banner */}
-      <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950 text-white border-b border-emerald-900/30">
+    <div className="min-h-screen bg-[var(--bg-canvas)]">
+      {/* Editorial Directory Header */}
+      <div className="bg-[var(--bg-surface)] border-b border-[var(--border-hairline)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10 space-y-6">
-          <div className="space-y-2">
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold">
-              <Building2 className="w-3.5 h-3.5" />
-              Guía de Complejos Deportivos
-            </span>
-            <h1 className="text-2xl sm:text-4xl font-black font-heading">
+          <div className="space-y-2 max-w-2xl">
+            <p className="text-xs font-semibold text-[var(--accent-soft-text)]">
+              Guía de clubes en Puerto Madryn
+            </p>
+            <h1 className="font-heading text-3xl sm:text-4xl font-extrabold text-[var(--text-primary)] leading-tight">
               Establecimientos y Centros Deportivos
             </h1>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-2xl">
-              Elegí un complejo deportivo para ver exclusivamente sus canchas, fotos, horarios disponibles, ubicación y opiniones de jugadores.
+            <p className="text-sm text-[var(--text-secondary)]">
+              Ingresá a cada complejo para consultar exclusivamente sus canchas, fotos, ubicación y reseñas verificadas de jugadores.
             </p>
           </div>
 
-          {/* Search and Sport Filters */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-5 space-y-4 shadow-xl">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                <Search className="w-4 h-4 text-emerald-400" />
-              </div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-center pt-2">
+            <div className="lg:col-span-5 relative">
+              <Search className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
                 type="text"
                 value={estSearch}
                 onChange={(e) => setEstSearch(e.target.value)}
-                placeholder="Buscar establecimiento por nombre, dirección o cancha..."
-                className="w-full pl-10 pr-10 py-2.5 text-xs sm:text-sm bg-slate-950/80 border border-slate-700 rounded-2xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+                placeholder="Buscar complejo por nombre o dirección..."
+                className="w-full h-11 pl-10 pr-9 text-sm bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
               />
               {estSearch && (
                 <button
                   type="button"
                   onClick={() => setEstSearch('')}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-white cursor-pointer"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+                  aria-label="Limpiar búsqueda"
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
             </div>
 
-            <div className="flex flex-wrap gap-1.5">
+            <div className="lg:col-span-7 flex flex-wrap gap-1.5">
               <button
                 type="button"
                 onClick={() => setEstSportFilter('all')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border cursor-pointer transition-all ${
+                className={`px-3 py-2 rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
                   estSportFilter === 'all'
-                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                    ? 'bg-[var(--accent-soft)] text-[var(--accent-soft-text)] border-[var(--accent)]'
+                    : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                 }`}
               >
-                Todos los Centros ({establishments.length})
+                Todos ({establishments.length})
               </button>
-              {(Object.keys(SPORT_LABELS) as SportType[]).map((sp) => (
+              {(Object.keys(SPORT_DISPLAY_LABELS) as SportType[]).map((sp) => (
                 <button
                   key={sp}
                   type="button"
                   onClick={() => setEstSportFilter(sp)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold border cursor-pointer flex items-center gap-1.5 transition-all ${
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
                     estSportFilter === sp
-                      ? 'bg-emerald-500 text-slate-950 border-emerald-400 font-bold'
-                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                      ? 'bg-[var(--accent-soft)] text-[var(--accent-soft-text)] border-[var(--accent)]'
+                      : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                   }`}
                 >
-                  <span>{SPORT_LABELS[sp].emoji}</span>
-                  <span>{SPORT_LABELS[sp].label}</span>
+                  {SPORT_DISPLAY_LABELS[sp]}
                 </button>
               ))}
             </div>
@@ -576,44 +551,48 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
       </div>
 
       {/* Establishments Grid */}
-      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         {establishments.length === 0 ? (
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8 sm:p-12 text-center max-w-2xl mx-auto space-y-5">
-            <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
-              <Building2 className="w-8 h-8" />
+          <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] p-8 sm:p-12 text-center max-w-2xl mx-auto space-y-5">
+            <div className="w-12 h-12 rounded-lg bg-[var(--accent-soft)] text-[var(--accent-soft-text)] flex items-center justify-center mx-auto">
+              <Building2 className="w-6 h-6" />
             </div>
             <div className="space-y-2">
-              <h3 className="text-xl sm:text-2xl font-black text-slate-900 font-heading">
+              <h3 className="font-heading text-2xl font-bold text-[var(--text-primary)]">
                 Aún no hay establecimientos registrados
               </h3>
-              <p className="text-xs sm:text-sm text-slate-600 max-w-lg mx-auto">
-                Cuando los administradores configuren su complejo y publiquen canchas, aparecerán listados aquí para que los jugadores puedan ingresar a cada centro deportivo.
+              <p className="text-sm text-[var(--text-secondary)] max-w-lg mx-auto">
+                Cuando los administradores configuren su complejo y publiquen canchas, aparecerán listados aquí para ingresar a cada sede.
               </p>
             </div>
             {isAdminAuthenticated ? (
               <button
+                type="button"
                 onClick={() => setActiveTab('admin')}
-                className="px-6 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm inline-flex items-center gap-2 cursor-pointer"
+                className="px-5 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs sm:text-sm inline-flex items-center gap-2 cursor-pointer"
               >
                 <Building2 className="w-4 h-4" />
                 <span>Ir al Panel de Administración</span>
               </button>
             ) : (
               <button
+                type="button"
                 onClick={() => (onOpenAdminLogin ? onOpenAdminLogin() : setActiveTab('admin'))}
-                className="px-6 py-3 rounded-2xl bg-slate-900 hover:bg-emerald-600 text-white font-bold text-xs sm:text-sm inline-flex items-center gap-2 cursor-pointer"
+                className="px-5 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs sm:text-sm inline-flex items-center gap-2 cursor-pointer"
               >
-                <Lock className="w-4 h-4 text-emerald-400" />
-                <span>Acceso Administrador</span>
+                <Lock className="w-4 h-4" />
+                <span>Acceso Clubes</span>
               </button>
             )}
           </div>
         ) : filteredEstablishments.length === 0 ? (
-          <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 text-center max-w-md mx-auto space-y-4">
-            <Search className="w-8 h-8 text-slate-400 mx-auto" />
-            <h3 className="text-lg font-bold text-slate-900">No se encontraron establecimientos</h3>
-            <p className="text-xs text-slate-600">
-              Probá limpiando la búsqueda o eligiendo otro deporte.
+          <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] p-8 sm:p-10 text-center max-w-md mx-auto space-y-4">
+            <Search className="w-7 h-7 text-[var(--text-muted)] mx-auto" />
+            <h3 className="font-heading text-xl font-bold text-[var(--text-primary)]">
+              No se encontraron establecimientos
+            </h3>
+            <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+              Probá limpiando la búsqueda o seleccionando otro deporte.
             </p>
             <button
               type="button"
@@ -621,124 +600,122 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                 setEstSearch('');
                 setEstSportFilter('all');
               }}
-              className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs cursor-pointer"
+              className="px-4 py-2 rounded-lg bg-[var(--accent)] text-[var(--accent-ink)] font-semibold text-xs cursor-pointer"
             >
-              Ver Todos los Establecimientos
+              Ver todos los complejos
             </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredEstablishments.map((est) => (
-              <div
-                key={est.key}
-                onClick={() => handleEnterEstablishment(est.key)}
-                className="bg-white rounded-3xl border border-slate-200/90 shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden flex flex-col justify-between cursor-pointer group"
-              >
-                <div>
-                  {/* Cover Photo */}
-                  <div className="relative h-48 bg-slate-900 overflow-hidden">
-                    <img
-                      src={est.coverImage}
-                      alt={est.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                      loading="lazy"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent" />
+            {filteredEstablishments.map((est) => {
+              const paymentInfo = [
+                est.mpAvailable ? 'Mercado Pago' : '',
+                est.transferAvailable ? 'Transferencia CBU/Alias' : '',
+              ]
+                .filter(Boolean)
+                .join(' · ');
 
-                    <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
-                      <span className="px-2.5 py-1 rounded-full bg-slate-950/80 text-emerald-300 text-[11px] font-bold border border-emerald-500/30 backdrop-blur-sm">
-                        {est.courts.length} {est.courts.length === 1 ? 'Cancha' : 'Canchas'}
-                      </span>
-                    </div>
-
-                    {est.avgRating !== null && (
-                      <div className="absolute top-3 right-3 flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-950/85 text-amber-400 text-xs font-bold border border-slate-700 backdrop-blur-sm">
-                        <Star className="w-3.5 h-3.5 fill-amber-400" />
-                        <span>{est.avgRating.toFixed(1)}</span>
-                        <span className="text-[10px] text-slate-400">({est.reviews.length})</span>
-                      </div>
-                    )}
-
-                    <div className="absolute bottom-3 left-4 right-4 text-white">
-                      <h3 className="text-lg font-extrabold font-heading leading-tight drop-shadow">
-                        {est.name}
-                      </h3>
-                      <p className="text-xs text-slate-200 flex items-center gap-1 mt-1 truncate">
-                        <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                        <span className="truncate">{est.address}</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Body */}
-                  <div className="p-5 space-y-3">
-                    {est.sports.length > 0 ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {est.sports.map((sp) => (
-                          <span
-                            key={sp}
-                            className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 text-[11px] font-semibold border border-slate-200/70"
-                          >
-                            {SPORT_LABELS[sp]?.emoji} {SPORT_LABELS[sp]?.label || sp}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-500">Complejo en configuración de canchas.</p>
-                    )}
-
-                    {est.welcomeNotes && (
-                      <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-                        {est.welcomeNotes}
-                      </p>
-                    )}
-
-                    <div className="flex flex-wrap gap-1.5 pt-1">
-                      {est.mpAvailable && (
-                        <span className="px-2 py-0.5 rounded-md bg-sky-50 text-sky-700 border border-sky-200 text-[10px] font-bold">
-                          Mercado Pago
-                        </span>
-                      )}
-                      {est.transferAvailable && (
-                        <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold">
-                          Transferencia CBU/Alias
-                        </span>
-                      )}
-                      {est.whatsappNumber && (
-                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-semibold flex items-center gap-1">
-                          <Phone className="w-2.5 h-2.5" />
-                          {est.whatsappNumber}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer */}
-                <div className="px-5 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+              return (
+                <article
+                  key={est.key}
+                  onClick={() => handleEnterEstablishment(est.key)}
+                  className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] hover:border-[var(--border-strong)] transition-colors duration-150 overflow-hidden flex flex-col justify-between cursor-pointer group"
+                >
                   <div>
-                    {est.minPrice !== null ? (
-                      <>
-                        <span className="text-[10px] text-slate-500 block uppercase font-bold">
-                          Turnos desde
+                    <div className="relative aspect-[16/10] bg-[var(--bg-subtle)] overflow-hidden">
+                      <img
+                        src={est.coverImage}
+                        alt={est.name}
+                        className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                        loading="lazy"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = FALLBACK_COURT_SVG;
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+
+                      <div className="absolute top-3 left-3.5 right-3.5 flex items-center justify-between text-xs">
+                        <span className="px-2.5 py-1 rounded-md bg-black/70 text-white font-semibold tabular-nums">
+                          {est.courts.length} {est.courts.length === 1 ? 'cancha' : 'canchas'}
                         </span>
-                        <span className="text-sm font-black text-slate-900">
-                          ${est.minPrice.toLocaleString('es-AR')}
-                          <span className="text-[11px] font-normal text-slate-500">/h</span>
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-xs text-slate-500 font-semibold">Ver perfil del centro</span>
-                    )}
+
+                        {est.avgRating !== null && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-black/70 text-amber-300 font-mono font-semibold tabular-nums">
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                            {est.avgRating.toFixed(1)} ({est.reviews.length})
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="absolute bottom-3.5 left-4 right-4 text-white">
+                        <h3 className="font-heading text-xl font-bold leading-tight">
+                          {est.name}
+                        </h3>
+                        <p className="text-xs text-white/85 flex items-center gap-1 mt-1 truncate">
+                          <MapPin className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{est.address}</span>
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="p-5 space-y-2.5 text-xs">
+                      {est.sports.length > 0 ? (
+                        <p className="font-semibold text-[var(--text-primary)]">
+                          {est.sports.map((sp) => SPORT_DISPLAY_LABELS[sp] || sp).join(' · ')}
+                        </p>
+                      ) : (
+                        <p className="text-[var(--text-muted)]">Complejo en configuración</p>
+                      )}
+
+                      {est.welcomeNotes && (
+                        <p className="text-[var(--text-secondary)] line-clamp-2 leading-relaxed">
+                          {est.welcomeNotes}
+                        </p>
+                      )}
+
+                      {(paymentInfo || est.whatsappNumber) && (
+                        <div className="pt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[var(--text-muted)]">
+                          {paymentInfo && <span>{paymentInfo}</span>}
+                          {est.whatsappNumber && (
+                            <span className="inline-flex items-center gap-1 font-mono">
+                              <Phone className="w-3 h-3" />
+                              {est.whatsappNumber}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      <SocialFeedShowcase profile={est.profile} complexName={est.name} compact />
+                    </div>
                   </div>
 
-                  <span className="px-4 py-2 rounded-xl bg-slate-900 group-hover:bg-emerald-600 text-white font-bold text-xs inline-flex items-center gap-1.5 transition-colors">
-                    <span>Ingresar</span>
-                    <ChevronRight className="w-4 h-4" />
-                  </span>
-                </div>
-              </div>
-            ))}
+                  <div className="px-5 py-4 bg-[var(--bg-elevated)] border-t border-[var(--border-hairline)] flex items-center justify-between">
+                    <div>
+                      {est.minPrice !== null ? (
+                        <>
+                          <span className="text-[11px] text-[var(--text-muted)] block">
+                            Turnos desde
+                          </span>
+                          <span className="font-mono text-sm font-bold text-[var(--text-primary)] tabular-nums">
+                            ${est.minPrice.toLocaleString('es-AR')}
+                            <span className="text-xs font-normal text-[var(--text-muted)]">/h</span>
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-[var(--text-secondary)] font-medium">
+                          Ver perfil del complejo
+                        </span>
+                      )}
+                    </div>
+
+                    <span className="px-3.5 py-2 rounded-lg bg-[var(--accent)] group-hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs inline-flex items-center gap-1 transition-colors">
+                      <span>Ingresar</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </span>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
       </section>

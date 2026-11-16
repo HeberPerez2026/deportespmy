@@ -78,6 +78,11 @@
         "hasLighting": { "type": "boolean" },
         "hourlyRateDay": { "type": "number" },
         "hourlyRateNight": { "type": "number" },
+        "hora_inicio": { "type": "string", "maxLength": 10 },
+        "hora_fin": { "type": "string", "maxLength": 10 },
+        "openHour": { "type": "number" },
+        "closeHour": { "type": "number" },
+        "nightStartHour": { "type": "number" },
         "depositRequired": { "type": "number" },
         "imageUrl": { "type": "string", "maxLength": 350000 },
         "images": { "type": "array", "description": "Gallery of attached court photos" },
@@ -91,7 +96,7 @@
     },
     "BusinessProfile": {
       "title": "BusinessProfile",
-      "description": "Administrator business contact, CBU/Alias, Mercado Pago OAuth and address details",
+      "description": "Administrator business contact, CBU/Alias, Mercado Pago OAuth, social feeds and address details",
       "type": "object",
       "properties": {
         "ownerName": { "type": "string", "maxLength": 128 },
@@ -115,7 +120,12 @@
         "mpTokenExpiresAt": { "type": "string", "maxLength": 64 },
         "mpConnectedAt": { "type": "string", "maxLength": 64 },
         "mpPaused": { "type": "boolean" },
-        "transferPaused": { "type": "boolean" }
+        "transferPaused": { "type": "boolean" },
+        "instagramUrl": { "type": "string", "maxLength": 256 },
+        "facebookUrl": { "type": "string", "maxLength": 256 },
+        "tiktokUrl": { "type": "string", "maxLength": 256 },
+        "youtubeUrl": { "type": "string", "maxLength": 256 },
+        "socialFeedUrl": { "type": "string", "maxLength": 500 }
       }
     },
     "DeveloperContact": {

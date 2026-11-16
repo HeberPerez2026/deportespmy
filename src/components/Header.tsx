@@ -1,282 +1,133 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useApp } from '../context/AppContext';
-import { 
-  Calendar, 
-  ShieldCheck, 
-  Star, 
-  Menu, 
-  X, 
-  RefreshCw, 
-  MapPin, 
-  Lock, 
-  LogOut, 
-  Crown,
-  Building2
-} from 'lucide-react';
+import { ShieldCheck, LogOut } from 'lucide-react';
 
 interface HeaderProps {
   onOpenAdminLogin: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ onOpenAdminLogin }) => {
-  const { 
-    activeTab, 
-    setActiveTab, 
-    isSyncing, 
-    cloudConnected,
+  const {
+    activeTab,
+    setActiveTab,
     isAdminAuthenticated,
-    isSuperAdmin,
-    currentAdminUser,
-    businessProfile,
     logoutAdmin,
-    refreshFromCloud,
-    setSelectedEstablishmentKey
+    setSelectedEstablishmentKey,
   } = useApp();
 
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const handleGoHome = () => {
+    setSelectedEstablishmentKey(null);
+    setActiveTab('turnos');
+  };
 
-  const handleNavClick = (tabId: string) => {
-    if (tabId === 'establecimientos') {
-      setSelectedEstablishmentKey(null);
+  const handleAdminAction = () => {
+    if (isAdminAuthenticated && activeTab === 'admin') {
+      logoutAdmin();
+      return;
     }
-    setActiveTab(tabId);
-    setMobileMenuOpen(false);
+    if (isAdminAuthenticated) {
+      setActiveTab('admin');
+      return;
+    }
+    onOpenAdminLogin();
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-white shadow-xl">
-      
-      {/* Top micro-bar with location, domain & live cloud sync */}
-      <div className="bg-slate-950 px-4 py-1.5 text-xs text-slate-400 border-b border-slate-800/80 flex flex-wrap justify-between items-center gap-2">
-        <div className="flex items-center gap-3">
-          <span className="flex items-center gap-1 text-emerald-400 font-medium">
-            <MapPin className="w-3.5 h-3.5" />
-            {businessProfile.address || 'Puerto Madryn, Chubut'}
-          </span>
-          <span className="hidden sm:inline-block text-slate-600">|</span>
-          <span className="hidden sm:inline-block text-slate-400 font-mono">
-            deportespmy.com.ar
-          </span>
-        </div>
-
-        {/* Live Cloud DB Sync Badge */}
-        <div className="flex items-center gap-2 ml-auto">
-          {isAdminAuthenticated && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-              {isSuperAdmin ? <Crown className="w-3 h-3 text-amber-400" /> : <ShieldCheck className="w-3 h-3 text-blue-400" />}
-              <span>{isSuperAdmin ? 'SuperAdmin' : 'Admin'}: {currentAdminUser?.username}</span>
-            </span>
-          )}
-
-          <button 
-            onClick={() => refreshFromCloud()}
-            className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-slate-800/90 hover:bg-slate-750 text-[11px] cursor-pointer transition-colors"
-            title="Sincronización en tiempo real con la nube"
-          >
-            <span className={`w-2 h-2 rounded-full ${isSyncing ? 'bg-amber-400 animate-ping' : cloudConnected ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-            <span className="text-slate-300">
-              {isSyncing ? 'Sincronizando...' : cloudConnected ? 'Nube en Tiempo Real' : 'Modo Offline'}
-            </span>
-            <RefreshCw className={`w-2.5 h-2.5 text-slate-400 ${isSyncing ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Main navigation row */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          
-          {/* Logo & Brand */}
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => handleNavClick(isAdminAuthenticated ? 'admin' : 'turnos')}
-              className="flex items-center gap-2.5 text-left group focus:outline-none cursor-pointer"
+    <header className="sticky top-0 z-40 bg-[#090D12]/95 backdrop-blur-md border-b border-[#2A313C] text-[#F3F4F6]">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+        {/* Logo mejorado + DeportesPMY */}
+        <button
+          type="button"
+          onClick={handleGoHome}
+          className="flex items-center gap-3 text-left cursor-pointer group shrink-0 focus:outline-none"
+        >
+          <span className="relative w-10 h-10 flex items-center justify-center shrink-0">
+            <svg
+              viewBox="0 0 44 44"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="w-10 h-10 transition-transform duration-200 group-hover:scale-105"
+              aria-hidden="true"
             >
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:scale-105 transition-transform">
-                <span className="text-xl font-black text-white tracking-tighter">PMY</span>
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="font-heading font-extrabold text-xl tracking-tight text-white group-hover:text-emerald-400 transition-colors">
-                    Deportes<span className="text-emerald-400">PMY</span>
-                  </span>
-                  {isAdminAuthenticated ? (
-                    <span className="bg-blue-500/20 text-blue-300 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border border-blue-500/30">
-                      Panel Gestión
-                    </span>
-                  ) : (
-                    <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider border border-emerald-500/30">
-                      Turnos
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-400 tracking-wide font-medium">
-                  {businessProfile.complexName || 'Reserva Online de Canchas'}
-                </p>
-              </div>
-            </button>
-          </div>
+              <defs>
+                <linearGradient id="dpmyShieldGrad" x1="4" y1="4" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="var(--accent-bright)" />
+                  <stop offset="100%" stopColor="var(--accent-secondary)" />
+                </linearGradient>
+              </defs>
+              {/* Escudo atlético angular */}
+              <path
+                d="M22 2.5L38.5 8.2V21.5C38.5 31.2 31.3 38.4 22 41.5C12.7 38.4 5.5 31.2 5.5 21.5V8.2L22 2.5Z"
+                fill="#161B22"
+                stroke="url(#dpmyShieldGrad)"
+                strokeWidth="2.4"
+              />
+              {/* Campo deportivo estilizado interior */}
+              <rect
+                x="11.5"
+                y="12"
+                width="21"
+                height="16.5"
+                rx="3"
+                stroke="url(#dpmyShieldGrad)"
+                strokeWidth="1.75"
+                opacity="0.9"
+              />
+              {/* Línea de mediocampo y círculo central */}
+              <line
+                x1="22"
+                y1="12"
+                x2="22"
+                y2="28.5"
+                stroke="url(#dpmyShieldGrad)"
+                strokeWidth="1.5"
+                opacity="0.75"
+              />
+              <circle
+                cx="22"
+                cy="20.25"
+                r="3.2"
+                fill="url(#dpmyShieldGrad)"
+              />
+              {/* Destello de movimiento */}
+              <path
+                d="M15 33.2L22 36L29 33.2"
+                stroke="var(--accent-bright)"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
 
-          {/* Desktop Navigation Links */}
-          <nav className="hidden lg:flex items-center gap-1.5">
-            {isAdminAuthenticated ? (
-              /* ADMIN MODE: Exclusively in admin mode, player navigation is blocked */
-              <div className="flex items-center gap-2">
-                <span className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-blue-900/40 text-blue-300 border border-blue-500/30 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-blue-400" />
-                  <span>Panel Administrador</span>
-                </span>
-              </div>
-            ) : (
-              /* PLAYER MODE: Standard navigation */
-              <>
-                <button
-                  onClick={() => handleNavClick('turnos')}
-                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    activeTab === 'turnos' 
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                  }`}
-                >
-                  <Calendar className="w-4 h-4" />
-                  Reservar Turno
-                </button>
+          <span className="font-heading text-xl sm:text-[22px] font-extrabold tracking-tight text-white">
+            Deportes<span style={{ color: 'var(--accent-bright)' }}>PMY</span>
+          </span>
+        </button>
 
-                <button
-                  onClick={() => handleNavClick('establecimientos')}
-                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    activeTab === 'establecimientos' 
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                  }`}
-                >
-                  <Building2 className="w-4 h-4" />
-                  Establecimientos
-                </button>
-
-                <button
-                  onClick={() => handleNavClick('valoraciones')}
-                  className={`px-3.5 py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 cursor-pointer ${
-                    activeTab === 'valoraciones' 
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm' 
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                  }`}
-                >
-                  <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                  Opiniones
-                </button>
-              </>
-            )}
-          </nav>
-
-          {/* Top Right Action: Admin / Logout / Login */}
-          <div className="flex items-center gap-3">
-            {isAdminAuthenticated ? (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={logoutAdmin}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-950 text-slate-300 hover:text-rose-300 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                  title="Cerrar Sesión Administrador"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Salir</span>
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={onOpenAdminLogin}
-                className="px-3.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:border-slate-600 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
-              >
-                <Lock className="w-3.5 h-3.5 text-blue-400" />
-                <span>Acceso Administrador</span>
-              </button>
-            )}
-
-            {/* Mobile Hamburger toggle */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white hover:bg-slate-700"
-              aria-label="Abrir menú"
-            >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
-          </div>
-
-        </div>
-      </div>
-
-      {/* Mobile dropdown menu */}
-      {mobileMenuOpen && (
-        <div className="lg:hidden bg-slate-900 border-b border-slate-800 px-4 pt-2 pb-4 space-y-2">
-          {isAdminAuthenticated ? (
-            <div className="space-y-2">
-              <button
-                onClick={() => handleNavClick('admin')}
-                className="w-full text-left px-3 py-2.5 rounded-lg text-sm font-bold bg-blue-600 text-white flex items-center gap-2.5"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                Panel de Administración
-              </button>
-
-              <button
-                onClick={() => {
-                  logoutAdmin();
-                  setMobileMenuOpen(false);
-                }}
-                className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-rose-300 hover:bg-slate-800 flex items-center gap-2"
-              >
-                <LogOut className="w-4 h-4" />
-                Cerrar Sesión Administrador
-              </button>
-            </div>
+        {/* Único botón derecho: Acceso Administrador / Cerrar Sesión */}
+        <button
+          type="button"
+          onClick={handleAdminAction}
+          className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer shrink-0 border ${
+            isAdminAuthenticated && activeTab === 'admin'
+              ? 'bg-rose-500/15 hover:bg-rose-600 text-rose-200 hover:text-white border-rose-500/40'
+              : 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] border-transparent shadow-sm'
+          }`}
+        >
+          {isAdminAuthenticated && activeTab === 'admin' ? (
+            <>
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Cerrar Sesión</span>
+            </>
           ) : (
             <>
-              <button
-                onClick={() => handleNavClick('turnos')}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2.5 ${
-                  activeTab === 'turnos' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                <Calendar className="w-4 h-4 text-emerald-400" />
-                Reservar Turnos
-              </button>
-
-              <button
-                onClick={() => handleNavClick('establecimientos')}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2.5 ${
-                  activeTab === 'establecimientos' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                <Building2 className="w-4 h-4 text-emerald-400" />
-                Establecimientos
-              </button>
-
-              <button
-                onClick={() => handleNavClick('valoraciones')}
-                className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold flex items-center gap-2.5 ${
-                  activeTab === 'valoraciones' ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-200 hover:bg-slate-800'
-                }`}
-              >
-                <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                Opiniones de Jugadores
-              </button>
-
-              <div className="pt-2 border-t border-slate-800">
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    onOpenAdminLogin();
-                  }}
-                  className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold text-blue-300 bg-slate-800 flex items-center gap-2"
-                >
-                  <Lock className="w-3.5 h-3.5" />
-                  Acceso Administrador
-                </button>
-              </div>
+              <ShieldCheck className="w-4 h-4" />
+              <span>{isAdminAuthenticated ? 'Panel Administrador' : 'Acceso Administrador'}</span>
             </>
           )}
-        </div>
-      )}
+        </button>
+      </div>
     </header>
   );
 };

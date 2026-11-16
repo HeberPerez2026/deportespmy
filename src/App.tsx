@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { ThemeProvider, useTheme, COLOR_PALETTES } from './context/ThemeContext';
 import { apiFetch, safeParseJsonResponse } from './utils/api';
 import { Header } from './components/Header';
 import { HeroBanner } from './components/HeroBanner';
@@ -9,7 +10,7 @@ import { ReviewsSection } from './components/ReviewsSection';
 import { AdminDashboard } from './components/AdminPanel/AdminDashboard';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { Footer } from './components/Footer';
-import { CheckCircle, AlertCircle, MessageCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, AlertCircle, MessageCircle, Loader2, Lock, Calendar, Building2, Star, Palette } from 'lucide-react';
 
 const MainContent: React.FC = () => {
   const { 
@@ -20,8 +21,10 @@ const MainContent: React.FC = () => {
     confirmBookingPayment, 
     businessProfile,
     courts,
-    getBusinessProfileForCourt
+    getBusinessProfileForCourt,
+    setSelectedEstablishmentKey
   } = useApp();
+  const { palette, setPalette } = useTheme();
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
 
   // Mercado Pago Return state
@@ -37,7 +40,6 @@ const MainContent: React.FC = () => {
   const [verifyingPayment, setVerifyingPayment] = useState<boolean>(false);
 
   useEffect(() => {
-    // Check if user is returning from Mercado Pago Checkout Pro
     const params = new URLSearchParams(window.location.search);
     const payment = params.get('payment');
     const status = params.get('status');
@@ -52,7 +54,6 @@ const MainContent: React.FC = () => {
     const hasReturnParams = Boolean(payment || status || collectionStatus || bookingCode);
     if (!hasReturnParams) return;
 
-    // If opened inside Checkout Pro popup window, notify the parent BookingModal and close automatically
     if (window.opener && !window.opener.closed) {
       try {
         window.opener.postMessage({
@@ -80,7 +81,6 @@ const MainContent: React.FC = () => {
       return;
     }
 
-    // Same-tab / mobile redirect: verify payment cleanly against backend Mercado Pago API
     let cancelled = false;
     setVerifyingPayment(true);
 
@@ -134,93 +134,166 @@ const MainContent: React.FC = () => {
 
   const avgRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1) : '5.0';
   const headingText = reviews.length > 0 
-    ? `★ ${avgRating} estrellas en ${reviews.length} ${reviews.length === 1 ? 'partido calificado' : 'partidos jugados'}`
-    : '¡Sé el primero en calificar tu partido y dejar tu opinión!';
+    ? `${avgRating} de 5 en ${reviews.length} ${reviews.length === 1 ? 'partido calificado' : 'partidos jugados'}`
+    : 'Compartí tu opinión después del partido';
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-emerald-500 selection:text-slate-950">
-      
-      {/* Header with Player Navigation & Top-Right Admin Login */}
-      <Header
-        onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
-      />
+    <div className="min-h-screen flex flex-col bg-[var(--bg-canvas)] text-[var(--text-primary)]">
+      <Header onOpenAdminLogin={() => setIsAdminLoginOpen(true)} />
 
-      {/* Main Body */}
+      {/* Barra secundaria limpia de navegación y selector de color */}
+      <div className="bg-[var(--bg-surface)] border-b border-[var(--border-hairline)]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex flex-wrap items-center justify-between gap-3">
+          {!isAdminAuthenticated ? (
+            <nav className="flex items-center gap-1.5 overflow-x-auto" aria-label="Navegación principal">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedEstablishmentKey(null);
+                  setActiveTab('turnos');
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  activeTab === 'turnos'
+                    ? 'bg-[var(--accent)] text-[var(--accent-ink)] shadow-xs'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]'
+                }`}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Turnos</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('establecimientos')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  activeTab === 'establecimientos'
+                    ? 'bg-[var(--accent)] text-[var(--accent-ink)] shadow-xs'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]'
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>Complejos</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('valoraciones')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  activeTab === 'valoraciones'
+                    ? 'bg-[var(--accent)] text-[var(--accent-ink)] shadow-xs'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]'
+                }`}
+              >
+                <Star className="w-3.5 h-3.5" />
+                <span>Opiniones</span>
+              </button>
+            </nav>
+          ) : (
+            <span className="text-xs font-semibold text-[var(--text-secondary)]">
+              Sesión administrativa activa
+            </span>
+          )}
+
+          {/* Selector de color del tema clásico */}
+          <div className="flex items-center gap-2 ml-auto">
+            <span className="text-[11px] font-medium text-[var(--text-muted)] hidden sm:inline-flex items-center gap-1">
+              <Palette className="w-3.5 h-3.5" />
+              <span>Color:</span>
+            </span>
+            <div className="flex items-center gap-1.5 bg-[var(--bg-subtle)] px-2 py-1 rounded-full border border-[var(--border-hairline)]">
+              {COLOR_PALETTES.map((p) => {
+                const isSelected = palette === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setPalette(p.id)}
+                    title={`${p.name} — ${p.description}`}
+                    aria-label={`Color ${p.name}`}
+                    className={`w-5 h-5 rounded-full cursor-pointer transition-transform ${
+                      isSelected ? 'scale-110 ring-2 ring-[#F3F4F6] ring-offset-2 ring-offset-[#161B22]' : 'opacity-80 hover:opacity-100 hover:scale-105'
+                    }`}
+                    style={{
+                      background: `linear-gradient(135deg, ${p.swatchPrimary} 0%, ${p.swatchSecondary} 100%)`,
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+
       <main className="flex-1">
-        
-        {/* EXCLUSIVE ADMIN VIEW: WHEN LOGGED IN AS ADMIN, STRICTLY LOCK TO ADMIN PANEL */}
         {isAdminAuthenticated ? (
           <AdminDashboard />
         ) : (
           <>
-            {/* PLAYER VIEW 1: RESERVAS & HERO */}
             {activeTab === 'turnos' && (
               <>
                 <HeroBanner />
                 <CourtCatalog onOpenAdminLogin={() => setIsAdminLoginOpen(true)} />
-                
-                {/* Quick Community Reviews preview teaser */}
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                  <div className="bg-gradient-to-r from-emerald-900 via-slate-900 to-teal-950 text-white rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl border border-emerald-900/40">
-                    <div className="space-y-1 text-center sm:text-left">
-                      <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
-                        Comunidad Deportiva de Puerto Madryn
+
+                {/* Community Reviews Band */}
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+                  <div className="bg-[var(--bg-surface)] rounded-2xl p-6 sm:p-8 flex flex-col sm:flex-row sm:items-center justify-between gap-6 border border-[var(--border-hairline)] shadow-xs">
+                    <div className="space-y-1.5">
+                      <span className="text-xs font-semibold text-[var(--accent-soft-text)] block">
+                        Comunidad deportiva · Puerto Madryn
                       </span>
-                      <h3 className="text-xl sm:text-2xl font-black font-heading">
+                      <h3 className="font-heading text-2xl font-bold text-[var(--text-primary)] tabular-nums">
                         {headingText}
                       </h3>
-                      <p className="text-xs text-slate-300 max-w-lg">
-                        Conocé las opiniones de jugadores reales sobre el estado del césped, la iluminación y la atención del buffet.
+                      <p className="text-xs sm:text-sm text-[var(--text-secondary)] max-w-xl">
+                        Leé evaluaciones reales de jugadores sobre superficie, iluminación LED, vestuarios y puntualidad en cada complejo.
                       </p>
                     </div>
                     <button
+                      type="button"
                       onClick={() => setActiveTab('valoraciones')}
-                      className="px-6 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs sm:text-sm whitespace-nowrap shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                      className="px-5 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs sm:text-sm whitespace-nowrap shrink-0 transition-colors cursor-pointer shadow-xs"
                     >
-                      Ver Todas las Opiniones
+                      Explorar opiniones
                     </button>
                   </div>
                 </div>
               </>
             )}
 
-            {/* PLAYER VIEW 2: ESTABLECIMIENTOS & CENTROS DEPORTIVOS */}
             {activeTab === 'establecimientos' && (
               <EstablishmentsView onOpenAdminLogin={() => setIsAdminLoginOpen(true)} />
             )}
 
-            {/* PLAYER VIEW 4: OPINIONES Y VALORACIONES */}
             {activeTab === 'valoraciones' && (
               <ReviewsSection />
             )}
 
-            {/* UN-AUTHENTICATED ADMIN LOGIN PROMPT */}
             {activeTab === 'admin' && (
-              <div className="max-w-md mx-auto my-16 p-8 bg-white rounded-3xl border border-slate-200 shadow-xl text-center space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto">
-                  <span className="text-xl">🔒</span>
+              <div className="max-w-md mx-auto my-16 p-8 bg-[var(--bg-surface)] rounded-2xl border border-[var(--border-hairline)] text-center space-y-4 shadow-xs">
+                <div className="w-11 h-11 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-soft-text)] flex items-center justify-center mx-auto">
+                  <Lock className="w-5 h-5" />
                 </div>
-                <h3 className="text-lg font-bold text-slate-900">Requiere Acceso de Administrador</h3>
-                <p className="text-xs text-slate-600">
+                <h3 className="font-heading text-2xl font-bold text-[var(--text-primary)]">
+                  Acceso para complejos
+                </h3>
+                <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
                   Este apartado contiene la gestión exclusiva de canchas, tarifas, caja y agenda.
                 </p>
                 <button
+                  type="button"
                   onClick={() => setIsAdminLoginOpen(true)}
-                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer shadow-md"
+                  className="px-5 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs sm:text-sm cursor-pointer transition-colors"
                 >
-                  Ingresar Contraseña de Admin
+                  Ingresar con usuario y clave
                 </button>
               </div>
             )}
           </>
         )}
-
       </main>
 
-      {/* Footer */}
-      <Footer onOpenAdminLogin={() => setIsAdminLoginOpen(true)} />
+      <Footer />
 
-      {/* Admin Login Modal */}
       <AdminLoginModal
         isOpen={isAdminLoginOpen}
         onClose={() => setIsAdminLoginOpen(false)}
@@ -229,26 +302,25 @@ const MainContent: React.FC = () => {
 
       {/* Verificando Pago Mercado Pago Overlay */}
       {verifyingPayment && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-sky-500/40 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-5 text-white">
-            <div className="w-16 h-16 rounded-full bg-sky-500/20 text-sky-400 border border-sky-500/40 flex items-center justify-center mx-auto">
-              <Loader2 className="w-8 h-8 animate-spin" />
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl p-6 sm:p-8 max-w-md w-full shadow-xl text-center space-y-5 text-[var(--text-primary)]">
+            <div className="w-14 h-14 rounded-full bg-[var(--mp-soft)] text-[var(--mp-text)] flex items-center justify-center mx-auto">
+              <Loader2 className="w-7 h-7 animate-spin" />
             </div>
             <div className="space-y-1.5">
-              <span className="text-xs font-bold uppercase tracking-wider text-sky-400 block">
-                Confirmación Automática
+              <span className="text-xs font-semibold text-[var(--mp-text)] block">
+                Confirmación automática
               </span>
-              <h3 className="text-xl font-black font-heading text-white">
-                Verificando tu pago con Mercado Pago...
+              <h3 className="font-heading text-2xl font-bold">
+                Verificando tu pago con Mercado Pago
               </h3>
-              <p className="text-xs text-slate-300">
-                Estamos validando la transacción en tiempo real para confirmar tu turno automáticamente.
+              <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+                Estamos validando la operación para confirmar tu turno automáticamente.
               </p>
             </div>
-            <div className="space-y-2.5 p-4 bg-slate-950 rounded-2xl border border-slate-800">
-              <div className="h-3 bg-slate-800 rounded-full animate-pulse w-3/4 mx-auto" />
-              <div className="h-3 bg-slate-800 rounded-full animate-pulse w-1/2 mx-auto" />
-              <div className="h-3 bg-slate-800 rounded-full animate-pulse w-2/3 mx-auto" />
+            <div className="space-y-2.5 p-4 bg-[var(--bg-canvas)] rounded-lg border border-[var(--border-hairline)]">
+              <div className="h-2.5 bg-[var(--bg-subtle)] rounded animate-pulse w-3/4 mx-auto" />
+              <div className="h-2.5 bg-[var(--bg-subtle)] rounded animate-pulse w-1/2 mx-auto" />
             </div>
           </div>
         </div>
@@ -256,58 +328,62 @@ const MainContent: React.FC = () => {
 
       {/* Mercado Pago Payment Success Modal */}
       {paymentSuccessModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-5 animate-in fade-in zoom-in duration-200 text-white">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
-              <CheckCircle className="w-10 h-10" />
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl p-6 sm:p-8 max-w-md w-full shadow-xl text-center space-y-5 text-[var(--text-primary)]">
+            <div className="w-14 h-14 rounded-full bg-[var(--accent-soft)] text-[var(--accent-soft-text)] flex items-center justify-center mx-auto">
+              <CheckCircle className="w-8 h-8" />
             </div>
 
             <div className="space-y-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 block">
-                ¡Pago Acreditado con Éxito!
+              <span className="text-xs font-semibold text-[var(--accent-soft-text)] block">
+                Pago acreditado con éxito
               </span>
-              <h3 className="text-2xl font-black font-heading text-white">
-                Turno Confirmado #{paymentSuccessModal.bookingCode}
+              <h3 className="font-heading text-2xl font-bold">
+                Turno confirmado <span className="font-mono">#{paymentSuccessModal.bookingCode}</span>
               </h3>
-              <p className="text-xs text-slate-300">
+              <p className="text-xs text-[var(--text-secondary)]">
                 Tu pago a través de Mercado Pago fue procesado correctamente.
               </p>
             </div>
 
-            <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-left space-y-2 text-xs text-slate-300">
+            <div className="p-4 bg-[var(--bg-canvas)] rounded-lg border border-[var(--border-hairline)] text-left space-y-2 text-xs text-[var(--text-secondary)]">
               <div className="flex justify-between">
                 <span>Cancha:</span>
-                <strong className="text-white">{paymentSuccessModal.courtName}</strong>
+                <strong className="text-[var(--text-primary)]">{paymentSuccessModal.courtName}</strong>
               </div>
               {paymentSuccessModal.date && (
                 <div className="flex justify-between">
-                  <span>Fecha y Hora:</span>
-                  <strong className="text-white">{paymentSuccessModal.date} {paymentSuccessModal.time ? `(${paymentSuccessModal.time} hs)` : ''}</strong>
+                  <span>Fecha y hora:</span>
+                  <strong className="font-mono text-[var(--text-primary)] tabular-nums">
+                    {paymentSuccessModal.date} {paymentSuccessModal.time ? `(${paymentSuccessModal.time} hs)` : ''}
+                  </strong>
                 </div>
               )}
-              <div className="flex justify-between pt-1 border-t border-slate-800">
+              <div className="flex justify-between pt-2 border-t border-[var(--border-hairline)]">
                 <span>Comprobante MP:</span>
-                <span className="font-mono text-emerald-400 font-bold">{paymentSuccessModal.paymentId}</span>
+                <span className="font-mono text-[var(--accent-soft-text)] font-bold">
+                  {paymentSuccessModal.paymentId}
+                </span>
               </div>
             </div>
 
-            <div className="space-y-2 pt-2">
+            <div className="space-y-2 pt-1">
               {(() => {
                 const matchedCourt = courts.find(c => c.name.toLowerCase() === paymentSuccessModal.courtName.toLowerCase());
                 const modalProfile = getBusinessProfileForCourt(matchedCourt);
                 const targetPhone = (modalProfile.whatsappNumber || businessProfile.whatsappNumber || '').replace(/\D/g, '');
                 const shareText = `¡Hola! Acabo de abonar mi turno #${paymentSuccessModal.bookingCode} en ${paymentSuccessModal.courtName} para el ${paymentSuccessModal.date || 'día programado'} por Mercado Pago. Ref: ${paymentSuccessModal.paymentId}`;
                 const waUrl = targetPhone ? `https://wa.me/${targetPhone}?text=${encodeURIComponent(shareText)}` : `https://wa.me/?text=${encodeURIComponent(shareText)}`;
-                
+
                 return (
                   <a
                     href={waUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 transition-all cursor-pointer"
+                    className="w-full py-2.5 px-4 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                   >
-                    <MessageCircle className="w-4 h-4 fill-slate-950" />
-                    <span>{targetPhone ? 'Avisar al Club por WhatsApp' : 'Compartir Comprobante por WhatsApp'}</span>
+                    <MessageCircle className="w-4 h-4" />
+                    <span>{targetPhone ? 'Avisar al club por WhatsApp' : 'Compartir comprobante por WhatsApp'}</span>
                   </a>
                 );
               })()}
@@ -315,9 +391,9 @@ const MainContent: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setPaymentSuccessModal(null)}
-                className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs transition-colors cursor-pointer"
               >
-                Cerrar y Ver Canchas
+                Cerrar y volver a las canchas
               </button>
             </div>
           </div>
@@ -326,40 +402,41 @@ const MainContent: React.FC = () => {
 
       {/* Mercado Pago Payment Failure Modal */}
       {paymentFailureModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl text-center space-y-4 text-white">
-            <div className="w-14 h-14 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center mx-auto">
-              <AlertCircle className="w-8 h-8" />
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl p-6 sm:p-8 max-w-md w-full shadow-xl text-center space-y-4 text-[var(--text-primary)]">
+            <div className="w-12 h-12 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto">
+              <AlertCircle className="w-7 h-7" />
             </div>
 
             <div className="space-y-1">
-              <h3 className="text-xl font-bold font-heading text-white">
+              <h3 className="font-heading text-2xl font-bold">
                 El pago no fue completado
               </h3>
-              <p className="text-xs text-slate-300">
-                La operación en Mercado Pago no se completó o fue rechazada. El turno se encuentra disponible para volver a intentarlo cuando desees.
+              <p className="text-xs sm:text-sm text-[var(--text-secondary)]">
+                La operación en Mercado Pago no se completó o fue rechazada. El horario sigue disponible para reintentarlo.
               </p>
             </div>
 
             <button
               type="button"
               onClick={() => setPaymentFailureModal(null)}
-              className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-colors cursor-pointer"
+              className="w-full py-2.5 px-4 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs transition-colors cursor-pointer"
             >
               Entendido
             </button>
           </div>
         </div>
       )}
-
     </div>
   );
 };
 
 export default function App() {
   return (
-    <AppProvider>
-      <MainContent />
-    </AppProvider>
+    <ThemeProvider>
+      <AppProvider>
+        <MainContent />
+      </AppProvider>
+    </ThemeProvider>
   );
 }

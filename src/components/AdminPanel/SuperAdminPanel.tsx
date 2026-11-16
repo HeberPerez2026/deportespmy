@@ -14,7 +14,6 @@ import {
   Phone,
   Lock,
   Globe,
-  Code2,
   Check,
   Save,
   AlertTriangle,
@@ -106,12 +105,12 @@ export const SuperAdminPanel: React.FC = () => {
 
   if (!isSuperAdmin) {
     return (
-      <div className="bg-white p-8 rounded-3xl border border-slate-200 text-center max-w-md mx-auto space-y-3">
-        <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
+      <div className="bg-[var(--bg-surface)] p-8 rounded-xl border border-[var(--border-hairline)] text-center max-w-md mx-auto space-y-3">
+        <div className="w-12 h-12 rounded-xl bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto">
           <Crown className="w-6 h-6" />
         </div>
-        <h3 className="text-base font-bold text-slate-900">Sección Exclusiva para SuperAdministradores</h3>
-        <p className="text-xs text-slate-600">
+        <h3 className="text-base font-bold text-[var(--text-primary)]">Sección Exclusiva para SuperAdministradores</h3>
+        <p className="text-xs text-[var(--text-secondary)]">
           Iniciá sesión con la cuenta de SuperAdmin para crear, modificar, suspender o borrar administradores.
         </p>
       </div>
@@ -122,23 +121,23 @@ export const SuperAdminPanel: React.FC = () => {
     <div className="space-y-8">
       
       {/* Header bar */}
-      <div className="bg-gradient-to-r from-slate-950 via-indigo-950 to-slate-900 text-white p-6 sm:p-7 rounded-3xl border border-indigo-900/40 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-[var(--bg-surface)] text-[var(--text-primary)] p-6 sm:p-7 rounded-xl border border-[var(--border-hairline)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-amber-400 mb-1">
+          <div className="flex items-center gap-2 text-xs font-semibold text-[var(--accent-soft-text)] mb-1">
             <Crown className="w-4 h-4" />
-            <span>Panel Maestro • Nivel SuperAdmin</span>
+            <span>Panel Maestro · SuperAdmin</span>
           </div>
-          <h2 className="text-xl sm:text-2xl font-black font-heading">
+          <h2 className="font-heading text-2xl font-bold">
             Gestión de Administradores de Complejos
           </h2>
-          <p className="text-xs text-slate-300 mt-1 max-w-xl">
-            Creá, modificá, suspendé o eliminá las cuentas de administrador. Cada administrador administra y crea las canchas de su propio complejo deportivo.
+          <p className="text-xs text-[var(--text-secondary)] mt-1 max-w-xl">
+            Creá, modificá, suspendé o eliminá las cuentas de administrador. Cada administrador gestiona las canchas de su complejo deportivo.
           </p>
         </div>
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="px-5 py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-500/20 transition-all self-start sm:self-auto"
+          className="px-5 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-fg)] font-semibold text-xs sm:text-sm flex items-center gap-2 cursor-pointer transition-colors self-start sm:self-auto"
         >
           <UserPlus className="w-4 h-4" />
           <span>Crear Cuenta de Admin</span>
@@ -146,58 +145,58 @@ export const SuperAdminPanel: React.FC = () => {
       </div>
 
       {/* Admins Table / Grid */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+      <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] overflow-hidden">
+        <div className="p-5 border-b border-[var(--border-hairline)] flex items-center justify-between">
           <div>
-            <h3 className="font-bold text-sm text-slate-900">
+            <h3 className="font-bold text-sm text-[var(--text-primary)]">
               Cuentas de Administrador Registradas ({admins.length})
             </h3>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
               Estas cuentas se encargan de dar de alta canchas, gestionar reservas y cobrar
             </p>
           </div>
-          <span className="text-xs text-slate-500 font-mono">
+          <span className="text-xs text-[var(--text-muted)] font-mono">
             Firestore Sync Activo
           </span>
         </div>
 
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-[var(--border-hairline)]">
           {admins.map((admin) => (
             <div 
               key={admin.id}
-              className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/80 transition-colors"
+              className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-[var(--bg-elevated)]/60 transition-colors"
             >
               <div className="flex items-start sm:items-center gap-3">
-                <div className={`w-11 h-11 rounded-2xl flex items-center justify-center text-sm font-black shrink-0 ${
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-sm font-black shrink-0 ${
                   admin.role === 'superadmin' 
-                    ? 'bg-amber-100 text-amber-800' 
-                    : 'bg-blue-100 text-blue-800'
+                    ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30' 
+                    : 'bg-[var(--accent-soft)] text-[var(--accent-soft-text)] border border-[var(--accent)]/30'
                 }`}>
-                  {admin.role === 'superadmin' ? <Crown className="w-5 h-5 text-amber-600" /> : admin.username.slice(0, 2).toUpperCase()}
+                  {admin.role === 'superadmin' ? <Crown className="w-5 h-5 text-amber-400" /> : admin.username.slice(0, 2).toUpperCase()}
                 </div>
 
                 <div className="space-y-0.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h4 className="font-bold text-sm text-slate-900">{admin.fullName || admin.username}</h4>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                    <h4 className="font-bold text-sm text-[var(--text-primary)]">{admin.fullName || admin.username}</h4>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
                       admin.role === 'superadmin' 
-                        ? 'bg-amber-100 text-amber-800 border border-amber-300' 
-                        : 'bg-blue-100 text-blue-800 border border-blue-200'
+                        ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30' 
+                        : 'bg-[var(--bg-subtle)] text-[var(--text-secondary)]'
                     }`}>
                       {admin.role}
                     </span>
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      admin.isActive ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                      admin.isActive ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
                     }`}>
                       {admin.isActive ? 'Activo' : 'Suspendido'}
                     </span>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
-                    <span className="font-mono text-slate-700">Usuario: <strong>{admin.username}</strong></span>
-                    <span className="font-mono text-slate-500">Clave: <strong className="text-slate-800">{admin.password}</strong></span>
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--text-secondary)]">
+                    <span className="font-mono">Usuario: <strong className="text-[var(--text-primary)]">{admin.username}</strong></span>
+                    <span className="font-mono">Clave: <strong className="text-[var(--text-primary)]">{admin.password}</strong></span>
                     {admin.assignedComplex && (
-                      <span className="text-emerald-700 font-semibold">• Complejo: {admin.assignedComplex}</span>
+                      <span className="text-[var(--accent-soft-text)] font-semibold">• Complejo: {admin.assignedComplex}</span>
                     )}
                     {admin.phone && <span>• Tel: {admin.phone}</span>}
                     {admin.email && <span>• {admin.email}</span>}
@@ -218,8 +217,8 @@ export const SuperAdminPanel: React.FC = () => {
                       onClick={() => toggleAdminPaymentPause(admin.username, 'mp')}
                       className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-colors cursor-pointer flex items-center gap-1 ${
                         mpPaused
-                          ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
-                          : 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100'
+                          ? 'bg-rose-500/15 text-rose-300 border-rose-500/35 hover:bg-rose-500/25'
+                          : 'bg-sky-500/15 text-sky-300 border-sky-500/35 hover:bg-sky-500/25'
                       }`}
                       title="Pausar o reactivar Mercado Pago de este complejo"
                     >
@@ -231,8 +230,8 @@ export const SuperAdminPanel: React.FC = () => {
                       onClick={() => toggleAdminPaymentPause(admin.username, 'transfer')}
                       className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-colors cursor-pointer flex items-center gap-1 ${
                         transferPaused
-                          ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          ? 'bg-rose-500/15 text-rose-300 border-rose-500/35 hover:bg-rose-500/25'
+                          : 'bg-[var(--bg-subtle)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:bg-[var(--bg-elevated)]'
                       }`}
                       title="Pausar o reactivar Transferencia CBU de este complejo"
                     >
@@ -242,7 +241,7 @@ export const SuperAdminPanel: React.FC = () => {
 
                     <button
                       onClick={() => setEditingAdmin(admin)}
-                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer flex items-center gap-1"
+                      className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/35 hover:bg-sky-500/25 transition-colors cursor-pointer flex items-center gap-1"
                       title="Modificar datos o clave del administrador"
                     >
                       <Edit3 className="w-3.5 h-3.5" />
@@ -253,8 +252,8 @@ export const SuperAdminPanel: React.FC = () => {
                       onClick={() => toggleAdminUserStatus(admin.id)}
                       className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
                         admin.isActive 
-                          ? 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'
-                          : 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                          ? 'bg-amber-500/15 text-amber-300 border-amber-500/35 hover:bg-amber-500/25'
+                          : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35 hover:bg-emerald-500/25'
                       }`}
                     >
                       {admin.isActive ? 'Suspender' : 'Reactivar'}
@@ -262,7 +261,7 @@ export const SuperAdminPanel: React.FC = () => {
 
                     <button
                       onClick={() => setDeleteConfirmId(admin.id)}
-                      className="p-1.5 rounded-xl text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors cursor-pointer"
+                      className="p-1.5 rounded-xl text-rose-400 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/35 transition-colors cursor-pointer"
                       title="Eliminar este administrador permanentemente"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -276,24 +275,23 @@ export const SuperAdminPanel: React.FC = () => {
       </div>
 
       {/* DEVELOPER FOOTER CONTACT CONFIGURATION (EDITABLE BY SUPERADMIN) */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 sm:p-7 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+      <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] p-6 sm:p-7 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[var(--border-hairline)]">
           <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-indigo-600 mb-0.5">
-              <Code2 className="w-4 h-4" />
-              <span>Personalización del Desarrollador</span>
-            </div>
-            <h3 className="text-lg font-bold text-slate-900 font-heading">
+            <p className="text-xs font-semibold text-[var(--accent-soft-text)] mb-0.5">
+              Personalización de soporte
+            </p>
+            <h3 className="text-lg font-bold text-[var(--text-primary)] font-heading">
               Datos de Contacto del Desarrollador (Pie de Página)
             </h3>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[var(--text-secondary)]">
               Modificá los datos que se muestran en el pie de página reducido de la plataforma.
             </p>
           </div>
 
           {devSavedSuccess && (
-            <div className="px-3.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <div className="px-3.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-xs font-bold flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               <span>¡Guardado con éxito!</span>
             </div>
           )}
@@ -301,32 +299,32 @@ export const SuperAdminPanel: React.FC = () => {
 
         <form onSubmit={handleSaveDeveloperContact} className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
           <div>
-            <label className="font-bold text-slate-700 block mb-1">Nombre o Empresa Desarrolladora</label>
+            <label className="font-bold text-[var(--text-secondary)] block mb-1">Nombre o Empresa Desarrolladora</label>
             <input
               type="text"
               required
               value={devName}
               onChange={(e) => setDevName(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+              className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
               placeholder="Ej: Estudio de Desarrollo Web PMY"
             />
           </div>
 
           <div>
-            <label className="font-bold text-slate-700 block mb-1">Rol / Especialidad</label>
+            <label className="font-bold text-[var(--text-secondary)] block mb-1">Rol / Especialidad</label>
             <input
               type="text"
               required
               value={devRole}
               onChange={(e) => setDevRole(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+              className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
               placeholder="Ej: Desarrollo de Software & Soporte Técnico"
             />
           </div>
 
           <div>
-            <label className="font-bold text-slate-700 block mb-1 flex items-center gap-1">
-              <Phone className="w-3.5 h-3.5 text-emerald-600" />
+            <label className="font-bold text-[var(--text-secondary)] block mb-1 flex items-center gap-1">
+              <Phone className="w-3.5 h-3.5 text-emerald-400" />
               <span>WhatsApp de Soporte / Contacto</span>
             </label>
             <input
@@ -334,14 +332,14 @@ export const SuperAdminPanel: React.FC = () => {
               required
               value={devWhatsapp}
               onChange={(e) => setDevWhatsapp(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+              className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
               placeholder="+54 9 280 412-3456"
             />
           </div>
 
           <div>
-            <label className="font-bold text-slate-700 block mb-1 flex items-center gap-1">
-              <Mail className="w-3.5 h-3.5 text-blue-600" />
+            <label className="font-bold text-[var(--text-secondary)] block mb-1 flex items-center gap-1">
+              <Mail className="w-3.5 h-3.5 text-sky-400" />
               <span>Correo Electrónico de Contacto</span>
             </label>
             <input
@@ -349,21 +347,21 @@ export const SuperAdminPanel: React.FC = () => {
               required
               value={devEmail}
               onChange={(e) => setDevEmail(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+              className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
               placeholder="soporte@deportespmy.com.ar"
             />
           </div>
 
           <div className="md:col-span-2">
-            <label className="font-bold text-slate-700 block mb-1 flex items-center gap-1">
-              <Globe className="w-3.5 h-3.5 text-slate-600" />
+            <label className="font-bold text-[var(--text-secondary)] block mb-1 flex items-center gap-1">
+              <Globe className="w-3.5 h-3.5 text-[var(--text-muted)]" />
               <span>Sitio Web / Portfolio (Opcional)</span>
             </label>
             <input
               type="url"
               value={devWeb}
               onChange={(e) => setDevWeb(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+              className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
               placeholder="https://deportespmy.com.ar"
             />
           </div>
@@ -371,7 +369,7 @@ export const SuperAdminPanel: React.FC = () => {
           <div className="md:col-span-2 flex justify-end pt-2">
             <button
               type="submit"
-              className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 cursor-pointer shadow-md transition-colors"
+              className="px-6 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs flex items-center gap-2 cursor-pointer shadow-md transition-colors"
             >
               <Save className="w-4 h-4" />
               <span>Guardar Contacto del Desarrollador</span>
@@ -382,25 +380,25 @@ export const SuperAdminPanel: React.FC = () => {
 
       {/* CONFIRM DELETE MODAL */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
               <AlertTriangle className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">¿Eliminar este administrador?</h3>
-            <p className="text-xs text-slate-600">
+            <h3 className="text-base font-bold text-[var(--text-primary)]">¿Eliminar este administrador?</h3>
+            <p className="text-xs text-[var(--text-secondary)]">
               Esta cuenta ya no podrá acceder al panel de administración.
             </p>
             <div className="flex justify-center gap-2 pt-2">
               <button
                 onClick={() => setDeleteConfirmId(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs"
+                className="px-4 py-2 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 onClick={() => handleDelete(deleteConfirmId)}
-                className="px-5 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-500"
+                className="px-5 py-2 rounded-lg bg-rose-600 text-white font-bold text-xs hover:bg-rose-500 cursor-pointer"
               >
                 Eliminar
               </button>
@@ -411,102 +409,102 @@ export const SuperAdminPanel: React.FC = () => {
 
       {/* CREATE ADMIN MODAL */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-slate-900 my-8">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-[var(--text-primary)] my-8">
+            <div className="flex justify-between items-center pb-3 border-b border-[var(--border-hairline)]">
               <div>
-                <h3 className="text-base font-bold font-heading text-slate-900">
+                <h3 className="text-base font-bold font-heading text-[var(--text-primary)] uppercase tracking-wide">
                   Nueva Cuenta de Administrador
                 </h3>
-                <p className="text-xs text-slate-500">Definí los accesos para el nuevo administrador</p>
+                <p className="text-xs text-[var(--text-muted)]">Definí los accesos para el nuevo administrador</p>
               </div>
-              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setIsAddModalOpen(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleCreateAdmin} className="space-y-3 text-xs">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Nombre de Usuario (Login)</label>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">Nombre de Usuario (Login)</label>
                 <input
                   type="text"
                   required
                   placeholder="Ej: admin_madryn"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 lowercase font-mono"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] lowercase font-mono focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Contraseña</label>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">Contraseña</label>
                 <input
                   type="text"
                   required
                   placeholder="Contraseña de acceso"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Nombre y Apellido del Titular</label>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">Nombre y Apellido del Titular</label>
                 <input
                   type="text"
                   required
                   placeholder="Ej: Marcos Rodríguez"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Establecimiento / Complejo Asignado</label>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">Establecimiento / Complejo Asignado</label>
                 <input
                   type="text"
                   placeholder="Ej: Complejo Playa Grande"
                   value={assignedComplex}
                   onChange={(e) => setAssignedComplex(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Email</label>
+                  <label className="font-bold text-[var(--text-secondary)] block mb-1">Email</label>
                   <input
                     type="email"
                     placeholder="admin@complejo.com"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                   />
                 </div>
 
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">WhatsApp</label>
+                  <label className="font-bold text-[var(--text-secondary)] block mb-1">WhatsApp</label>
                   <input
                     type="text"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
                   />
                 </div>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border-hairline)]">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 font-bold text-xs"
+                  className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md"
+                  className="px-6 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs shadow-md cursor-pointer"
                 >
                   Crear Administrador
                 </button>
@@ -518,109 +516,109 @@ export const SuperAdminPanel: React.FC = () => {
 
       {/* EDIT / MODIFY ADMIN MODAL */}
       {editingAdmin && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-slate-900 my-8">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-[var(--text-primary)] my-8">
+            <div className="flex justify-between items-center pb-3 border-b border-[var(--border-hairline)]">
               <div>
-                <h3 className="text-base font-bold font-heading text-slate-900">
+                <h3 className="text-base font-bold font-heading text-[var(--text-primary)] uppercase tracking-wide">
                   Modificar Cuenta de Administrador
                 </h3>
-                <p className="text-xs text-slate-500">Editá los accesos o datos del usuario</p>
+                <p className="text-xs text-[var(--text-muted)]">Editá los accesos o datos del usuario</p>
               </div>
-              <button onClick={() => setEditingAdmin(null)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setEditingAdmin(null)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSaveEditAdmin} className="space-y-3 text-xs">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Nombre de Usuario</label>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">Nombre de Usuario</label>
                 <input
                   type="text"
                   required
                   value={editingAdmin.username}
                   onChange={(e) => setEditingAdmin({ ...editingAdmin, username: e.target.value.toLowerCase().trim() })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Contraseña</label>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">Contraseña</label>
                 <input
                   type="text"
                   required
                   value={editingAdmin.password}
                   onChange={(e) => setEditingAdmin({ ...editingAdmin, password: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Nombre y Apellido del Titular</label>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">Nombre y Apellido del Titular</label>
                 <input
                   type="text"
                   required
                   value={editingAdmin.fullName}
                   onChange={(e) => setEditingAdmin({ ...editingAdmin, fullName: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Complejo Asignado</label>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">Complejo Asignado</label>
                 <input
                   type="text"
                   value={editingAdmin.assignedComplex || ''}
                   onChange={(e) => setEditingAdmin({ ...editingAdmin, assignedComplex: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Email</label>
+                  <label className="font-bold text-[var(--text-secondary)] block mb-1">Email</label>
                   <input
                     type="email"
                     value={editingAdmin.email || ''}
                     onChange={(e) => setEditingAdmin({ ...editingAdmin, email: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                   />
                 </div>
 
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">WhatsApp</label>
+                  <label className="font-bold text-[var(--text-secondary)] block mb-1">WhatsApp</label>
                   <input
                     type="text"
                     value={editingAdmin.phone || ''}
                     onChange={(e) => setEditingAdmin({ ...editingAdmin, phone: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Estado de la Cuenta</label>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">Estado de la Cuenta</label>
                 <select
                   value={editingAdmin.isActive ? 'active' : 'suspended'}
                   onChange={(e) => setEditingAdmin({ ...editingAdmin, isActive: e.target.value === 'active' })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 >
                   <option value="active">Activo (Puede ingresar al panel)</option>
                   <option value="suspended">Suspendido (Acceso bloqueado)</option>
                 </select>
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border-hairline)]">
                 <button
                   type="button"
                   onClick={() => setEditingAdmin(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 font-bold text-xs"
+                  className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md"
+                  className="px-6 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs shadow-md cursor-pointer"
                 >
                   Guardar Modificaciones
                 </button>

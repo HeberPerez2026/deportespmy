@@ -38,7 +38,12 @@ export const DEFAULT_BUSINESS_PROFILE: BusinessProfile = {
   mpConnectedAt: '',
   whatsappTemplate: '',
   mpPaused: false,
-  transferPaused: false
+  transferPaused: false,
+  instagramUrl: '',
+  facebookUrl: '',
+  tiktokUrl: '',
+  youtubeUrl: '',
+  socialFeedUrl: ''
 };
 
 export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
@@ -63,7 +68,12 @@ export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
   mpConnectedAt: '',
   whatsappTemplate: '',
   mpPaused: false,
-  transferPaused: false
+  transferPaused: false,
+  instagramUrl: '',
+  facebookUrl: '',
+  tiktokUrl: '',
+  youtubeUrl: '',
+  socialFeedUrl: ''
 };
 
 // Default Developer Contact for footer, editable by SuperAdmin

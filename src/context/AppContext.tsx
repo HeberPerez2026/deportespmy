@@ -48,6 +48,13 @@ import {
   fetchAllCollectionDocs
 } from '../services/centralSync';
 import { testFirestoreConnection } from '../firebase';
+import {
+  formatSlotHour,
+  getCourtHoursRange,
+  getNormalizedCourtSchedule,
+  normalizeCourtSchedule,
+  parseSlotHourOrder,
+} from '../utils/scheduleHours';
 
 interface BookingInput {
   courtId: string;
@@ -192,7 +199,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [courts, setCourts] = useState<Court[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.COURTS);
-      return saved ? JSON.parse(saved) : INITIAL_COURTS;
+      const parsed: Court[] = saved ? JSON.parse(saved) : INITIAL_COURTS;
+      return parsed.map((c) => normalizeCourtSchedule(c));
     } catch {
       return INITIAL_COURTS;
     }
@@ -471,12 +479,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetchAllCollectionDocs<AdminUser>('admins')
       ]);
 
-      setCourts(remoteCourts);
+      const normalizedCourts = remoteCourts.map((c) => normalizeCourtSchedule(c));
+      setCourts(normalizedCourts);
       setBookings(remoteBookings);
       setReviews(remoteReviews);
       if (remoteAdmins.length > 0) setAdmins(remoteAdmins);
 
-      localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(remoteCourts));
+      localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(normalizedCourts));
       localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(remoteBookings));
       localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(remoteReviews));
 
@@ -492,14 +501,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Add Court Action (starts with 0 rating until players leave reviews)
   const addCourt = useCallback(async (courtData: Omit<Court, 'id' | 'rating' | 'reviewCount'>): Promise<Court> => {
     const adminKey = currentAdminUser ? currentAdminUser.username : 'heberperez1984';
-    const newCourt: Court = {
+    const newCourt: Court = normalizeCourtSchedule({
       ...courtData,
       id: `cancha-${Date.now()}`,
       rating: 0,
       reviewCount: 0,
       adminId: adminKey,
       establishment: courtData.establishment || businessProfile.complexName || 'DeportesPMY'
-    };
+    });
 
     const nextCourts = [...courts, newCourt];
     setCourts(nextCourts);
@@ -530,10 +539,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Update Court Action
   const updateCourt = useCallback(async (updatedCourt: Court) => {
-    const nextCourts = courts.map(c => c.id === updatedCourt.id ? updatedCourt : c);
+    const normalized = normalizeCourtSchedule(updatedCourt);
+    const nextCourts = courts.map(c => c.id === normalized.id ? normalized : c);
     setCourts(nextCourts);
     localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(nextCourts));
-    await saveCourtToFirestore(updatedCourt);
+    await saveCourtToFirestore(normalized);
   }, [courts]);
 
   // Update Business Profile Action
@@ -848,16 +858,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const courtProfile = getBusinessProfileForCourt(court);
     const ownerAdminId = getAdminIdForCourt(court) || normalizeAdminKey(currentAdminUser?.username) || 'admin';
     const bookingStatus = input.status || 'confirmed';
-    const endTime = calculateEndTime(input.startTime, input.durationMinutes);
+    const fixedDurationMinutes = 60;
+    const endTime = calculateEndTime(input.startTime, fixedDurationMinutes);
 
-    // Prevent double booking on overlapping active slots
-    const startH = parseInt(input.startTime.split(':')[0], 10);
-    const endH = startH + Math.ceil(input.durationMinutes / 60);
+    // Prevent double booking on overlapping active slots (midnight-safe order)
+    const startH = parseSlotHourOrder(input.startTime);
+    const endH = startH + 1;
     const hasCollision = bookings.some(b => {
       if (b.courtId !== input.courtId || b.date !== input.date) return false;
       if (b.status !== 'confirmed' && b.status !== 'pending_payment' && b.status !== 'awaiting_approval') return false;
-      const bStart = parseInt(b.startTime.split(':')[0], 10);
-      const bEnd = parseInt(b.endTime.split(':')[0], 10) || (bStart + 1);
+      const bStart = parseSlotHourOrder(b.startTime);
+      const rawEnd = parseSlotHourOrder(b.endTime);
+      const bEnd = rawEnd > bStart ? rawEnd : bStart + Math.max(1, Math.ceil((b.durationMinutes || 60) / 60));
       return startH < bEnd && endH > bStart;
     });
     if (hasCollision) {
@@ -909,7 +921,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       date: input.date,
       startTime: input.startTime,
       endTime,
-      durationMinutes: input.durationMinutes,
+      durationMinutes: fixedDurationMinutes,
       clientName: input.clientName,
       clientPhone: input.clientPhone,
       clientEmail: input.clientEmail,
@@ -1227,11 +1239,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [bookings]);
 
   // Block a slot
-  const blockTimeSlot = useCallback((courtId: string, date: string, startTime: string, durationMinutes: number, reason: string) => {
+  const blockTimeSlot = useCallback((courtId: string, date: string, startTime: string, _durationMinutes: number, reason: string) => {
     const court = courts.find(c => c.id === courtId);
     if (!court) return;
 
-    const endTime = calculateEndTime(startTime, durationMinutes);
+    const fixedDurationMinutes = 60;
+    const endTime = calculateEndTime(startTime, fixedDurationMinutes);
     const blockedBooking: Booking = {
       id: `block-${Date.now()}`,
       bookingCode: `BLOQ-${Math.floor(100 + Math.random() * 900)}`,
@@ -1242,7 +1255,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       date,
       startTime,
       endTime,
-      durationMinutes,
+      durationMinutes: fixedDurationMinutes,
       clientName: `[BLOQUEADO: ${reason}]`,
       clientPhone: businessProfile.whatsappNumber,
       clientEmail: businessProfile.email,
@@ -1303,15 +1316,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     saveReviewReplyToFirestore(reviewId, adminReply);
   }, [reviews]);
 
-  // Generate Slots for a Court on a specific Date
+  // Generate Slots for a Court on a specific Date using court's custom open/close hours
   const getSlotsForCourtAndDate = useCallback((courtId: string, date: string): TimeSlot[] => {
     const court = courts.find(c => c.id === courtId);
     if (!court) return [];
 
-    const hours = [
-      '09:00', '10:00', '11:00', '12:00', '13:00', '14:00',
-      '15:00', '16:00', '17:00', '18:00', '19:00', '20:00', '21:00', '22:00', '23:00'
-    ];
+    const { openHour, closeHour, nightStartHour } = getNormalizedCourtSchedule(court);
+    const hourOrders: number[] = [];
+    for (let h = openHour; h <= closeHour; h++) {
+      hourOrders.push(h);
+    }
 
     const activeBookings = bookings.filter(b => {
       if (b.courtId !== courtId || b.date !== date) return false;
@@ -1319,16 +1333,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     });
 
-    return hours.map((hour) => {
-      const hourNum = parseInt(hour.split(':')[0], 10);
-      const isNight = hourNum >= 18;
+    return hourOrders.map((hourNum) => {
+      const hourStr = formatSlotHour(hourNum);
+      const isNight = hourNum >= nightStartHour;
       const price = isNight ? court.hourlyRateNight : court.hourlyRateDay;
-      const endTime = `${(hourNum + 1).toString().padStart(2, '0')}:00`;
+      const endTime = formatSlotHour(hourNum + 1);
 
       // Check if slot overlaps with any active booking
       const matchingBooking = activeBookings.find(b => {
-        const bStartHour = parseInt(b.startTime.split(':')[0], 10);
-        const bEndHour = parseInt(b.endTime.split(':')[0], 10);
+        const bStartHour = parseSlotHourOrder(b.startTime);
+        const rawEndHour = parseSlotHourOrder(b.endTime);
+        const bEndHour = rawEndHour > bStartHour
+          ? rawEndHour
+          : bStartHour + Math.max(1, Math.ceil((b.durationMinutes || 60) / 60));
         return hourNum >= bStartHour && hourNum < bEndHour;
       });
 
@@ -1347,10 +1364,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
 
       return {
-        id: `${courtId}-${date}-${hour}`,
+        id: `${courtId}-${date}-${hourStr}`,
         courtId,
         date,
-        startTime: hour,
+        startTime: hourStr,
         endTime,
         price,
         status,
@@ -1373,8 +1390,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const totalBookings = monthBookings.length;
     const totalHoursPlayed = Math.round(monthBookings.reduce((sum, b) => sum + (b.durationMinutes || 60) / 60, 0) * 10) / 10;
 
-    // Average occupancy rate across days in month & complex courts (15 slots/day)
-    const maxSlotsPerMonth = Math.max(1, sourceCourts.length * 15 * 30);
+    // Average occupancy rate across days in month & dynamic complex court hours
+    const dailyTotalSlots = sourceCourts.reduce((acc, c) => acc + getCourtHoursRange(c).length, 0);
+    const maxSlotsPerMonth = Math.max(1, dailyTotalSlots * 30);
     const averageOccupancyRate = totalBookings > 0
       ? Math.min(100, Math.round((totalBookings / maxSlotsPerMonth) * 100))
       : 0;

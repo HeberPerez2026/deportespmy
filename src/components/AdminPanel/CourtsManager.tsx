@@ -2,18 +2,27 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Court, SportType } from '../../types';
 import { processImageUpload } from '../../utils/imageUpload';
+import { SPORT_DEFAULT_IMAGES, resolveCourtCoverImage, FALLBACK_COURT_SVG } from '../../data/courtMedia';
+import {
+  DEFAULT_HORA_INICIO,
+  DEFAULT_HORA_FIN,
+  DEFAULT_NIGHT_START_HOUR,
+  OPEN_HOUR_OPTIONS,
+  CLOSE_HOUR_OPTIONS,
+  NIGHT_START_HOUR_OPTIONS,
+  formatSlotHour,
+  parseSlotHourOrder,
+  getNormalizedCourtSchedule,
+} from '../../utils/scheduleHours';
 import { 
   Layers, 
   Edit3, 
   Trash2,
-  Check, 
   X, 
   Sun, 
   Moon, 
+  Clock,
   Plus,
-  Building2,
-  Image as ImageIcon,
-  CheckCircle2,
   AlertTriangle,
   Upload,
   Loader2,
@@ -25,31 +34,31 @@ const SPORT_OPTIONS: { id: SportType; label: string; defaultSurface: string; def
     id: 'futbol5', 
     label: 'Fútbol 5', 
     defaultSurface: 'Césped Sintético Forbex 50mm',
-    defaultImg: 'https://images.unsplash.com/photo-1529900245534-47fbf8204e61?auto=format&fit=crop&w=1200&q=80'
+    defaultImg: SPORT_DEFAULT_IMAGES.futbol5
   },
   { 
     id: 'futbol7', 
     label: 'Fútbol 7', 
     defaultSurface: 'Césped Sintético Monofilamento FIFA',
-    defaultImg: 'https://images.unsplash.com/photo-1556056504-5c7696c4c28d?auto=format&fit=crop&w=1200&q=80'
+    defaultImg: SPORT_DEFAULT_IMAGES.futbol7
   },
   { 
     id: 'padel', 
     label: 'Pádel Panorámico', 
     defaultSurface: 'Césped Texturado Azul WPT + Vidrio 12mm',
-    defaultImg: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?auto=format&fit=crop&w=1200&q=80'
+    defaultImg: SPORT_DEFAULT_IMAGES.padel
   },
   { 
     id: 'tenis', 
     label: 'Tenis Polvo de Ladrillo', 
     defaultSurface: 'Polvo de Ladrillo Batido Tradicional',
-    defaultImg: 'https://images.unsplash.com/photo-1595435934249-5df7ed86e1c0?auto=format&fit=crop&w=1200&q=80'
+    defaultImg: SPORT_DEFAULT_IMAGES.tenis
   },
   { 
     id: 'basquet', 
     label: 'Básquetbol / Parquet', 
     defaultSurface: 'Piso Flotante de Madera Guatambú',
-    defaultImg: 'https://images.unsplash.com/photo-1546519638-68e109498ffc?auto=format&fit=crop&w=1200&q=80'
+    defaultImg: SPORT_DEFAULT_IMAGES.basquet
   },
 ];
 
@@ -69,7 +78,10 @@ export const CourtsManager: React.FC = () => {
   const [hasLighting, setHasLighting] = useState(true);
   const [hourlyRateDay, setHourlyRateDay] = useState(18000);
   const [hourlyRateNight, setHourlyRateNight] = useState(24000);
-  const [depositRequired, setDepositRequired] = useState(50);
+  const [horaInicio, setHoraInicio] = useState<string>(DEFAULT_HORA_INICIO);
+  const [horaFin, setHoraFin] = useState<string>(DEFAULT_HORA_FIN);
+  const [nightStartHour, setNightStartHour] = useState<number>(DEFAULT_NIGHT_START_HOUR);
+  const [depositRequired] = useState(50);
   const [imageUrl, setImageUrl] = useState(SPORT_OPTIONS[0].defaultImg);
   const [attachedImages, setAttachedImages] = useState<string[]>([]);
   const [newImageUrlInput, setNewImageUrlInput] = useState('');
@@ -78,7 +90,7 @@ export const CourtsManager: React.FC = () => {
   const [editImageUrlInput, setEditImageUrlInput] = useState('');
   const [editUploadingImage, setEditUploadingImage] = useState(false);
   const [editImageError, setEditImageError] = useState<string | null>(null);
-  const [description, setDescription] = useState('Cancha acondicionada para alta competencia con excelente iluminación LED y cerramientos de seguridad.');
+  const [description] = useState('Cancha acondicionada para alta competencia con excelente iluminación LED y cerramientos de seguridad.');
   const [amenitiesInput, setAmenitiesInput] = useState('Pelotas oficiales, Chalecos limpios, Vestuarios con agua caliente, Marcador digital');
 
   const handleSportChange = (newSport: SportType) => {
@@ -233,6 +245,9 @@ export const CourtsManager: React.FC = () => {
     const finalGallery = attachedImages.length > 0 ? attachedImages : [imageUrl.trim()].filter(Boolean);
     const primaryImage = finalGallery[0] || SPORT_OPTIONS[0].defaultImg;
 
+    const openNum = parseSlotHourOrder(horaInicio);
+    const closeNum = Math.max(openNum, parseSlotHourOrder(horaFin));
+
     await addCourt({
       name: name.trim(),
       establishment: establishment.trim(),
@@ -242,6 +257,11 @@ export const CourtsManager: React.FC = () => {
       hasLighting,
       hourlyRateDay: Number(hourlyRateDay),
       hourlyRateNight: Number(hourlyRateNight),
+      hora_inicio: formatSlotHour(openNum),
+      hora_fin: formatSlotHour(closeNum),
+      openHour: openNum,
+      closeHour: closeNum,
+      nightStartHour,
       depositRequired: Number(depositRequired),
       imageUrl: primaryImage,
       ...(attachedImages.length > 0 ? { images: attachedImages } : {}),
@@ -252,6 +272,9 @@ export const CourtsManager: React.FC = () => {
 
     setIsAddModalOpen(false);
     setName('');
+    setHoraInicio(DEFAULT_HORA_INICIO);
+    setHoraFin(DEFAULT_HORA_FIN);
+    setNightStartHour(DEFAULT_NIGHT_START_HOUR);
     setAttachedImages([]);
     setNewImageUrlInput('');
     setImageUploadError(null);
@@ -271,20 +294,24 @@ export const CourtsManager: React.FC = () => {
     setDeleteConfirmId(null);
   };
 
+  const newOpenNum = parseSlotHourOrder(horaInicio);
+  const newCloseNum = Math.max(newOpenNum, parseSlotHourOrder(horaFin));
+  const newSlotsPerDay = Math.max(1, newCloseNum - newOpenNum + 1);
+
   return (
     <div className="space-y-6">
       
       {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[var(--bg-surface)] p-5 rounded-xl border border-[var(--border-hairline)]">
         <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-blue-600 block mb-0.5">
+          <span className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-soft-text)] block mb-0.5">
             Configuración de Canchas
           </span>
-          <h2 className="text-xl font-extrabold text-slate-900 font-heading">
-            Gestión de Instalaciones & Tarifas Horarias
+          <h2 className="text-xl font-bold text-[var(--text-primary)] font-heading">
+            Gestión de Instalaciones, Rango Horario & Tarifas
           </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Agregá, editá o eliminá canchas fácilmente. Los cambios se sincronizan en vivo en la web de jugadores.
+          <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+            Definí la hora de inicio y cierre de cada cancha (turnos de 1 hora). La grilla y el catálogo mostrarán solo ese rango operativo.
           </p>
         </div>
 
@@ -293,7 +320,7 @@ export const CourtsManager: React.FC = () => {
             setEstablishment(businessProfile.complexName || 'Complejo Puerto Madryn');
             setIsAddModalOpen(true);
           }}
-          className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-md shadow-emerald-600/20 transition-all self-start sm:self-auto"
+          className="px-4 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs sm:text-sm flex items-center gap-2 cursor-pointer transition-colors self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           <span>Agregar Nueva Cancha</span>
@@ -302,15 +329,15 @@ export const CourtsManager: React.FC = () => {
 
       {/* Courts Cards Grid */}
       {courts.length === 0 ? (
-        <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-12 text-center max-w-lg mx-auto space-y-3">
-          <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
-            <Layers className="w-7 h-7" />
+        <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] p-8 sm:p-12 text-center max-w-lg mx-auto space-y-3">
+          <div className="w-12 h-12 rounded-xl bg-[var(--accent-soft)] text-[var(--accent-soft-text)] flex items-center justify-center mx-auto">
+            <Layers className="w-6 h-6" />
           </div>
-          <h3 className="text-lg font-bold text-slate-900 font-heading">
+          <h3 className="text-lg font-bold text-[var(--text-primary)] font-heading">
             No hay canchas registradas en este momento
           </h3>
-          <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
-            Hacé clic en el botón superior <strong>"Agregar Nueva Cancha"</strong> para cargar tu primera cancha, definir el deporte, las tarifas por hora y los servicios disponibles.
+          <p className="text-xs text-[var(--text-secondary)] max-w-sm mx-auto leading-relaxed">
+            Hacé clic en el botón superior <strong>"Agregar Nueva Cancha"</strong> para cargar tu primera cancha, definir el rango horario operativo y las tarifas por hora.
           </p>
         </div>
       ) : (
@@ -318,77 +345,91 @@ export const CourtsManager: React.FC = () => {
           {courts.map((court) => (
             <div 
               key={court.id}
-              className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-shadow"
+              className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] overflow-hidden flex flex-col justify-between transition-colors"
             >
               <div>
-                <div className="relative h-44 bg-slate-900">
+                <div className="relative h-44 bg-[#090D12]">
                   <img
-                    src={court.imageUrl || 'https://images.unsplash.com/photo-1529900245534-47fbf8204e61?auto=format&fit=crop&w=1200&q=80'}
+                    src={resolveCourtCoverImage(court.sport, court.images, court.imageUrl)}
                     alt={court.name}
                     className="w-full h-full object-cover"
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).src = FALLBACK_COURT_SVG;
+                    }}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
                   
-                  <span className="absolute top-3 left-3 bg-slate-900/90 text-white text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider border border-slate-700">
+                  <span className="absolute top-3 left-3 bg-black/75 text-white text-[10px] font-semibold px-2.5 py-0.5 rounded-md uppercase tracking-wider">
                     {court.sport}
                   </span>
 
-                  <span className={`absolute top-3 right-3 text-[10px] font-bold px-2.5 py-1 rounded-full ${court.status === 'active' ? 'bg-emerald-500 text-slate-950' : 'bg-rose-500 text-white'}`}>
+                  <span className={`absolute top-3 right-3 text-[10px] font-bold px-2.5 py-0.5 rounded-md ${court.status === 'active' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-rose-600 text-white'}`}>
                     {court.status === 'active' ? 'En Servicio' : 'Mantenimiento'}
                   </span>
 
                   <div className="absolute bottom-3 left-3 right-3 text-white">
                     {court.establishment && (
-                      <span className="text-[10px] font-bold uppercase text-emerald-400 block">
+                      <span className="text-[10px] font-semibold uppercase text-[var(--accent-soft-text)] block">
                         {court.establishment}
                       </span>
                     )}
-                    <h3 className="font-bold text-sm font-heading">{court.name}</h3>
-                    <p className="text-[11px] text-slate-300">{court.surface}</p>
+                    <h3 className="font-bold text-base font-heading">{court.name}</h3>
+                    <p className="text-[11px] text-[#CBD5E1]">{court.surface}</p>
                   </div>
                 </div>
 
                 <div className="p-4 space-y-3 text-xs">
-                  <div className="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                  <div className="grid grid-cols-2 gap-2 bg-[var(--bg-subtle)] p-2.5 rounded-lg border border-[var(--border-hairline)]">
                     <div>
-                      <span className="text-slate-500 block text-[10px] flex items-center gap-1">
-                        <Sun className="w-3 h-3 text-amber-500" /> Tarifa Diurna:
+                      <span className="text-[var(--text-muted)] block text-[10px] flex items-center gap-1">
+                        <Sun className="w-3 h-3 text-amber-400" /> Tarifa Diurna
                       </span>
-                      <strong className="text-slate-900 text-sm font-bold">
+                      <strong className="text-[var(--text-primary)] font-mono text-sm font-bold tabular-nums">
                         ${court.hourlyRateDay.toLocaleString('es-AR')}
                       </strong>
                     </div>
                     <div>
-                      <span className="text-slate-500 block text-[10px] flex items-center gap-1">
-                        <Moon className="w-3 h-3 text-blue-500" /> Nocturna c/Luz:
+                      <span className="text-[var(--text-muted)] block text-[10px] flex items-center gap-1">
+                        <Moon className="w-3 h-3 text-sky-400" /> Nocturna c/Luz
                       </span>
-                      <strong className="text-slate-900 text-sm font-bold">
+                      <strong className="text-[var(--text-primary)] font-mono text-sm font-bold tabular-nums">
                         ${court.hourlyRateNight.toLocaleString('es-AR')}
                       </strong>
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-slate-600 line-clamp-2">
+                  {(() => {
+                    const sched = getNormalizedCourtSchedule(court);
+                    return (
+                      <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[var(--accent-soft)] text-[var(--accent-soft-text)] font-medium text-[11px] tabular-nums">
+                        <span className="inline-flex items-center gap-1 font-semibold">
+                          <Clock className="w-3.5 h-3.5" />
+                          {sched.hora_inicio} a {sched.hora_fin} hs
+                        </span>
+                        <span className="font-mono text-[10px]">
+                          Noche {formatSlotHour(sched.nightStartHour)}+
+                        </span>
+                      </div>
+                    );
+                  })()}
+
+                  <p className="text-[11px] text-[var(--text-secondary)] line-clamp-2">
                     {court.description}
                   </p>
 
                   {court.amenities && court.amenities.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {court.amenities.slice(0, 4).map((a, i) => (
-                        <span key={i} className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-600">
-                          {a}
-                        </span>
-                      ))}
-                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)] line-clamp-1">
+                      {court.amenities.slice(0, 4).join(' · ')}
+                    </p>
                   )}
                 </div>
               </div>
 
               {/* Action Buttons: Edit and Delete */}
-              <div className="p-3.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+              <div className="p-3.5 bg-[var(--bg-elevated)] border-t border-[var(--border-hairline)] flex items-center justify-between gap-2">
                 <button
                   onClick={() => setDeleteConfirmId(court.id)}
-                  className="px-3 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
                   title="Eliminar esta cancha"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
@@ -397,7 +438,7 @@ export const CourtsManager: React.FC = () => {
 
                 <button
                   onClick={() => setEditingCourt(court)}
-                  className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-colors"
+                  className="px-3.5 py-1.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
                 >
                   <Edit3 className="w-3.5 h-3.5" />
                   <span>Editar</span>
@@ -410,25 +451,25 @@ export const CourtsManager: React.FC = () => {
 
       {/* CONFIRM DELETE MODAL */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
               <AlertTriangle className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">¿Eliminar esta cancha?</h3>
-            <p className="text-xs text-slate-600">
+            <h3 className="text-lg font-bold text-[var(--text-primary)] font-heading">¿Eliminar esta cancha?</h3>
+            <p className="text-xs text-[var(--text-secondary)]">
               Esta acción eliminará la cancha del catálogo de jugadores y de la base de datos central.
             </p>
             <div className="flex justify-center gap-2 pt-2">
               <button
                 onClick={() => setDeleteConfirmId(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 text-slate-700 font-bold text-xs"
+                className="px-4 py-2 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-semibold text-xs cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 onClick={() => handleDeleteCourt(deleteConfirmId)}
-                className="px-5 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-500"
+                className="px-5 py-2 rounded-lg bg-rose-600 text-white font-bold text-xs hover:bg-rose-500 cursor-pointer"
               >
                 Sí, Eliminar
               </button>
@@ -439,16 +480,16 @@ export const CourtsManager: React.FC = () => {
 
       {/* ADD COURT MODAL */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl space-y-4 text-slate-900 my-8">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl max-w-lg w-full p-6 sm:p-7 shadow-2xl space-y-4 text-[var(--text-primary)] my-8">
+            <div className="flex justify-between items-center pb-3 border-b border-[var(--border-hairline)]">
               <div>
-                <h3 className="text-base font-bold font-heading text-slate-900">
+                <h3 className="text-xl font-bold font-heading text-[var(--text-primary)]">
                   Agregar Nueva Cancha Deportiva
                 </h3>
-                <p className="text-xs text-slate-500">Configurá las características del nuevo espacio</p>
+                <p className="text-xs text-[var(--text-muted)]">Configurá las características y rango horario operativo</p>
               </div>
-              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setIsAddModalOpen(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -456,17 +497,17 @@ export const CourtsManager: React.FC = () => {
             <form onSubmit={handleCreateCourt} className="space-y-3.5 text-xs">
               
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Tipo de Deporte</label>
+                <label className="font-semibold text-[var(--text-secondary)] block mb-1.5">Tipo de Deporte</label>
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
                   {SPORT_OPTIONS.map((opt) => (
                     <button
                       key={opt.id}
                       type="button"
                       onClick={() => handleSportChange(opt.id)}
-                      className={`p-2 rounded-xl text-center border font-semibold text-[11px] transition-all cursor-pointer ${
+                      className={`p-2 rounded-xl text-center border font-bold text-[11px] transition-all cursor-pointer ${
                         sport === opt.id
-                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                          ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)] shadow-sm'
+                          : 'bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                       }`}
                     >
                       {opt.label}
@@ -476,106 +517,164 @@ export const CourtsManager: React.FC = () => {
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Nombre de la Cancha</label>
+                <label className="font-semibold text-[var(--text-secondary)] block mb-1">Nombre de la Cancha</label>
                 <input
                   type="text"
                   required
                   placeholder="Ej: Cancha 1 - Fútbol 5 'La Palmera'"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Nombre del Establecimiento / Complejo</label>
+                <label className="font-semibold text-[var(--text-secondary)] block mb-1">Nombre del Establecimiento / Complejo</label>
                 <input
                   type="text"
                   placeholder="Ej: Complejo Costanera Norte"
                   value={establishment}
                   onChange={(e) => setEstablishment(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Tarifa Día ($ / hora)</label>
+                  <label className="font-semibold text-[var(--text-secondary)] block mb-1">Tarifa Día ($ / hora)</label>
                   <input
                     type="number"
                     required
                     value={hourlyRateDay}
                     onChange={(e) => setHourlyRateDay(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
                   />
                 </div>
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Tarifa Noche c/Luz ($ / hora)</label>
+                  <label className="font-semibold text-[var(--text-secondary)] block mb-1">Tarifa Noche c/Luz ($ / hora)</label>
                   <input
                     type="number"
                     required
                     value={hourlyRateNight}
                     onChange={(e) => setHourlyRateNight(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
                   />
                 </div>
               </div>
 
+              {/* Rango Operativo: hora_inicio & hora_fin */}
+              <div className="p-3.5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-[var(--accent)]" />
+                    Rango Horario Operativo (Turnos de 1h)
+                  </span>
+                  <span className="font-mono text-[10px] font-semibold text-[var(--accent-soft-text)] tabular-nums">
+                    {newSlotsPerDay} {newSlotsPerDay === 1 ? 'turno/día' : 'turnos/día'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[11px] font-semibold text-[var(--text-secondary)] block mb-1">Hora inicio</label>
+                    <select
+                      value={horaInicio}
+                      onChange={(e) => {
+                        const nextVal = e.target.value;
+                        setHoraInicio(nextVal);
+                        const nextOrder = parseSlotHourOrder(nextVal);
+                        if (parseSlotHourOrder(horaFin) < nextOrder) {
+                          setHoraFin(nextVal);
+                        }
+                      }}
+                      className="w-full bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg p-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                    >
+                      {OPEN_HOUR_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-[var(--text-secondary)] block mb-1">Hora fin (último turno)</label>
+                    <select
+                      value={horaFin}
+                      onChange={(e) => setHoraFin(e.target.value)}
+                      className="w-full bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg p-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                    >
+                      {CLOSE_HOUR_OPTIONS.filter((opt) => opt.hour >= newOpenNum).map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-semibold text-[var(--text-secondary)] block mb-1">Tarifa Nocturna</label>
+                    <select
+                      value={nightStartHour}
+                      onChange={(e) => setNightStartHour(Number(e.target.value))}
+                      className="w-full bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg p-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                    >
+                      {NIGHT_START_HOUR_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Superficie / Piso</label>
+                <label className="font-semibold text-[var(--text-secondary)] block mb-1">Superficie / Piso</label>
                 <input
                   type="text"
                   required
                   value={surface}
                   onChange={(e) => setSurface(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+                <label className="flex items-center gap-2 p-2.5 rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-canvas)] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={isIndoor}
                     onChange={(e) => setIsIndoor(e.target.checked)}
-                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                    className="w-4 h-4 rounded accent-[var(--accent)]"
                   />
-                  <span className="font-bold text-slate-700">Cancha Techada</span>
+                  <span className="font-semibold text-[var(--text-primary)]">Cancha Techada</span>
                 </label>
 
-                <label className="flex items-center gap-2 p-2.5 rounded-xl border border-slate-200 bg-slate-50 cursor-pointer">
+                <label className="flex items-center gap-2 p-2.5 rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-canvas)] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={hasLighting}
                     onChange={(e) => setHasLighting(e.target.checked)}
-                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500"
+                    className="w-4 h-4 rounded accent-[var(--accent)]"
                   />
-                  <span className="font-bold text-slate-700">Tiene Iluminación LED</span>
+                  <span className="font-semibold text-[var(--text-primary)]">Tiene Iluminación LED</span>
                 </label>
               </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-700">Imágenes de la Cancha (máx. 4)</label>
-                  <span className="text-[11px] text-slate-400">
-                    {attachedImages.length > 0 ? `${attachedImages.length}/4 adjuntas` : 'Opcional (usa foto por defecto si no subís)'}
+                  <label className="font-semibold text-[var(--text-secondary)]">Imágenes de la Cancha (máx. 4)</label>
+                  <span className="text-[11px] text-[var(--text-muted)]">
+                    {attachedImages.length > 0 ? `${attachedImages.length}/4 adjuntas` : 'Opcional'}
                   </span>
                 </div>
 
                 {attachedImages.length > 0 && (
                   <div className="grid grid-cols-4 gap-2">
                     {attachedImages.map((src, idx) => (
-                      <div key={idx} className="relative h-20 rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
+                      <div key={idx} className="relative h-20 rounded-xl overflow-hidden border border-[var(--border-hairline)] bg-[var(--bg-subtle)]">
                         <img src={src} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
                         {idx === 0 && (
-                          <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px] font-bold">
+                          <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-[var(--accent)] text-[var(--accent-ink)] text-[9px] font-bold">
                             Portada
                           </span>
                         )}
                         <button
                           type="button"
                           onClick={() => handleRemoveAttachedImage(idx)}
-                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-slate-950/80 text-white flex items-center justify-center cursor-pointer hover:bg-rose-600"
+                          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/80 text-white flex items-center justify-center cursor-pointer hover:bg-rose-600"
                           title="Quitar imagen"
                         >
                           <X className="w-3 h-3" />
@@ -586,7 +685,7 @@ export const CourtsManager: React.FC = () => {
                 )}
 
                 {attachedImages.length < 4 && (
-                  <label className="flex items-center justify-center gap-2 w-full py-2.5 px-3 rounded-xl border-2 border-dashed border-slate-300 hover:border-emerald-500 bg-slate-50 hover:bg-emerald-50/40 text-slate-700 hover:text-emerald-700 font-semibold cursor-pointer transition-colors">
+                  <label className="flex items-center justify-center gap-2 w-full py-2.5 px-3 rounded-xl border border-dashed border-[var(--border-strong)] hover:border-[var(--accent)] bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-semibold cursor-pointer transition-colors">
                     {uploadingImage ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -594,7 +693,7 @@ export const CourtsManager: React.FC = () => {
                       </>
                     ) : (
                       <>
-                        <Camera className="w-4 h-4 text-emerald-600" />
+                        <Camera className="w-4 h-4 text-[var(--accent)]" />
                         <span>Adjuntar Imágenes desde Dispositivo (JPG, PNG, WEBP)</span>
                       </>
                     )}
@@ -615,44 +714,44 @@ export const CourtsManager: React.FC = () => {
                     value={newImageUrlInput}
                     onChange={(e) => setNewImageUrlInput(e.target.value)}
                     placeholder="O pegá una URL externa (https://...)"
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 font-mono"
+                    className="flex-1 bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
                   />
                   <button
                     type="button"
                     onClick={handleAddImageUrl}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] cursor-pointer shrink-0"
+                    className="px-3 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] border border-[var(--border-strong)] text-[var(--text-primary)] font-bold text-[11px] cursor-pointer shrink-0"
                   >
                     + URL
                   </button>
                 </div>
 
                 {imageUploadError && (
-                  <p className="text-[11px] text-rose-600 font-semibold">{imageUploadError}</p>
+                  <p className="text-[11px] text-rose-400 font-semibold">{imageUploadError}</p>
                 )}
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Comodidades (Separadas por comas)</label>
+                <label className="font-semibold text-[var(--text-secondary)] block mb-1">Comodidades (Separadas por comas)</label>
                 <input
                   type="text"
                   value={amenitiesInput}
                   onChange={(e) => setAmenitiesInput(e.target.value)}
                   placeholder="Ej: Pelotas, Chalecos, Vestuarios con agua caliente"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border-hairline)]">
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 font-bold text-xs"
+                  className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md"
+                  className="px-6 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs cursor-pointer shadow-md"
                 >
                   Publicar Cancha
                 </button>
@@ -664,65 +763,147 @@ export const CourtsManager: React.FC = () => {
 
       {/* EDIT MODAL */}
       {editingCourt && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 text-slate-900 my-8">
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <h3 className="text-base font-bold font-heading">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4 text-[var(--text-primary)] my-8">
+            <div className="flex justify-between items-center pb-3 border-b border-[var(--border-hairline)]">
+              <h3 className="text-lg font-bold font-heading">
                 Editar Cancha: {editingCourt.name}
               </h3>
-              <button onClick={() => setEditingCourt(null)} className="text-slate-400 hover:text-slate-600">
+              <button onClick={() => setEditingCourt(null)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer p-1">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSaveEdit} className="space-y-3 text-xs">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Nombre</label>
+                <label className="font-semibold text-[var(--text-secondary)] block mb-1">Nombre</label>
                 <input
                   type="text"
                   value={editingCourt.name}
                   onChange={(e) => setEditingCourt({ ...editingCourt, name: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Establecimiento / Complejo</label>
+                <label className="font-semibold text-[var(--text-secondary)] block mb-1">Establecimiento / Complejo</label>
                 <input
                   type="text"
                   value={editingCourt.establishment || ''}
                   onChange={(e) => setEditingCourt({ ...editingCourt, establishment: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Tarifa Día (ARS)</label>
+                  <label className="font-semibold text-[var(--text-secondary)] block mb-1">Tarifa Día (ARS)</label>
                   <input
                     type="number"
                     value={editingCourt.hourlyRateDay}
                     onChange={(e) => setEditingCourt({ ...editingCourt, hourlyRateDay: Number(e.target.value) })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
                   />
                 </div>
                 <div>
-                  <label className="font-bold text-slate-700 block mb-1">Tarifa Noche (ARS)</label>
+                  <label className="font-semibold text-[var(--text-secondary)] block mb-1">Tarifa Noche (ARS)</label>
                   <input
                     type="number"
                     value={editingCourt.hourlyRateNight}
                     onChange={(e) => setEditingCourt({ ...editingCourt, hourlyRateNight: Number(e.target.value) })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800 font-mono"
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
                   />
                 </div>
               </div>
 
+              {/* Rango Horario Operativo Editar Cancha */}
+              {(() => {
+                const editSched = getNormalizedCourtSchedule(editingCourt);
+                return (
+                  <div className="p-3 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-[var(--accent)]" />
+                        Horario Operativo
+                      </span>
+                      <span className="font-mono text-[10px] font-semibold text-[var(--accent-soft-text)] tabular-nums">
+                        {editSched.hora_inicio} a {editSched.hora_fin} hs
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div>
+                        <label className="text-[11px] font-semibold text-[var(--text-secondary)] block mb-1">Hora inicio</label>
+                        <select
+                          value={editSched.hora_inicio}
+                          onChange={(e) => {
+                            const nextHoraInicio = e.target.value;
+                            const nextOpen = parseSlotHourOrder(nextHoraInicio);
+                            const nextClose = Math.max(nextOpen, editSched.closeHour);
+                            setEditingCourt({
+                              ...editingCourt,
+                              hora_inicio: formatSlotHour(nextOpen),
+                              hora_fin: formatSlotHour(nextClose),
+                              openHour: nextOpen,
+                              closeHour: nextClose,
+                            });
+                          }}
+                          className="w-full bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg p-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                        >
+                          {OPEN_HOUR_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-[var(--text-secondary)] block mb-1">Hora fin</label>
+                        <select
+                          value={editSched.hora_fin}
+                          onChange={(e) => {
+                            const nextHoraFin = e.target.value;
+                            const nextClose = Math.max(editSched.openHour, parseSlotHourOrder(nextHoraFin));
+                            setEditingCourt({
+                              ...editingCourt,
+                              hora_inicio: editSched.hora_inicio,
+                              hora_fin: formatSlotHour(nextClose),
+                              openHour: editSched.openHour,
+                              closeHour: nextClose,
+                            });
+                          }}
+                          className="w-full bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg p-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                        >
+                          {CLOSE_HOUR_OPTIONS.filter((opt) => opt.hour >= editSched.openHour).map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] font-semibold text-[var(--text-secondary)] block mb-1">Tarifa Nocturna</label>
+                        <select
+                          value={editSched.nightStartHour}
+                          onChange={(e) => {
+                            setEditingCourt({
+                              ...editingCourt,
+                              nightStartHour: Number(e.target.value),
+                            });
+                          }}
+                          className="w-full bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg p-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                        >
+                          {NIGHT_START_HOUR_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Estado Operativo</label>
+                <label className="font-semibold text-[var(--text-secondary)] block mb-1">Estado Operativo</label>
                 <select
                   value={editingCourt.status}
                   onChange={(e) => setEditingCourt({ ...editingCourt, status: e.target.value as any })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 >
                   <option value="active">Activa / En Servicio</option>
                   <option value="maintenance">Mantenimiento (Cerrada temporalmente)</option>
@@ -730,19 +911,19 @@ export const CourtsManager: React.FC = () => {
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Superficie</label>
+                <label className="font-semibold text-[var(--text-secondary)] block mb-1">Superficie</label>
                 <input
                   type="text"
                   value={editingCourt.surface}
                   onChange={(e) => setEditingCourt({ ...editingCourt, surface: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-800"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
               </div>
 
               <div className="space-y-2 pt-1">
                 <div className="flex items-center justify-between">
-                  <label className="font-bold text-slate-700">Imágenes de la Cancha (máx. 4)</label>
-                  <span className="text-[11px] text-slate-400">
+                  <label className="font-semibold text-[var(--text-secondary)]">Imágenes de la Cancha (máx. 4)</label>
+                  <span className="text-[11px] text-[var(--text-muted)]">
                     {getEditingGallery(editingCourt).length}/4
                   </span>
                 </div>
@@ -750,17 +931,17 @@ export const CourtsManager: React.FC = () => {
                 {getEditingGallery(editingCourt).length > 0 && (
                   <div className="grid grid-cols-4 gap-2">
                     {getEditingGallery(editingCourt).map((src, idx) => (
-                      <div key={idx} className="relative h-16 rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
+                      <div key={idx} className="relative h-16 rounded-xl overflow-hidden border border-[var(--border-hairline)] bg-[var(--bg-subtle)]">
                         <img src={src} alt={`Foto ${idx + 1}`} className="w-full h-full object-cover" />
                         {idx === 0 && (
-                          <span className="absolute bottom-1 left-1 px-1 py-0.5 rounded bg-blue-600 text-white text-[9px] font-bold">
+                          <span className="absolute bottom-1 left-1 px-1 py-0.5 rounded bg-[var(--accent)] text-[var(--accent-ink)] text-[9px] font-bold">
                             Portada
                           </span>
                         )}
                         <button
                           type="button"
                           onClick={() => handleEditRemoveImage(idx)}
-                          className="absolute top-1 right-1 w-4 h-4 rounded-full bg-slate-950/80 text-white flex items-center justify-center cursor-pointer hover:bg-rose-600"
+                          className="absolute top-1 right-1 w-4 h-4 rounded-full bg-black/80 text-white flex items-center justify-center cursor-pointer hover:bg-rose-600"
                           title="Quitar imagen"
                         >
                           <X className="w-2.5 h-2.5" />
@@ -771,7 +952,7 @@ export const CourtsManager: React.FC = () => {
                 )}
 
                 {getEditingGallery(editingCourt).length < 4 && (
-                  <label className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl border-2 border-dashed border-slate-300 hover:border-blue-500 bg-slate-50 hover:bg-blue-50/40 text-slate-700 font-semibold cursor-pointer transition-colors">
+                  <label className="flex items-center justify-center gap-2 w-full py-2 px-3 rounded-xl border border-dashed border-[var(--border-strong)] hover:border-[var(--accent)] bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-semibold cursor-pointer transition-colors">
                     {editUploadingImage ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
@@ -779,7 +960,7 @@ export const CourtsManager: React.FC = () => {
                       </>
                     ) : (
                       <>
-                        <Upload className="w-4 h-4 text-blue-600" />
+                        <Upload className="w-4 h-4 text-[var(--accent)]" />
                         <span>Adjuntar Foto desde Dispositivo</span>
                       </>
                     )}
@@ -800,33 +981,33 @@ export const CourtsManager: React.FC = () => {
                     value={editImageUrlInput}
                     onChange={(e) => setEditImageUrlInput(e.target.value)}
                     placeholder="O agregá URL (https://...)"
-                    className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-800 font-mono"
+                    className="flex-1 bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
                   />
                   <button
                     type="button"
                     onClick={handleEditAddImageUrl}
-                    className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-[11px] cursor-pointer shrink-0"
+                    className="px-3 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] border border-[var(--border-strong)] text-[var(--text-primary)] font-bold text-[11px] cursor-pointer shrink-0"
                   >
                     + URL
                   </button>
                 </div>
 
                 {editImageError && (
-                  <p className="text-[11px] text-rose-600 font-semibold">{editImageError}</p>
+                  <p className="text-[11px] text-rose-400 font-semibold">{editImageError}</p>
                 )}
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-hairline)]">
                 <button
                   type="button"
                   onClick={() => setEditingCourt(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 font-bold text-xs"
+                  className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md"
+                  className="px-5 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs cursor-pointer shadow-md"
                 >
                   Guardar Cambios
                 </button>
