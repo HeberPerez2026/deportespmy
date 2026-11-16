@@ -504,9 +504,14 @@ export function createApiApp() {
       service: 'deportespmy-api',
       host: getRequestOrigin(req),
       vercelEnv: process.env.VERCEL_ENV || null,
+      vercelRegion: process.env.VERCEL_REGION || null,
       hasClientId: Boolean(clientId),
       hasClientSecret: Boolean(clientSecret),
       detectedEnvKeys: listSafeMpEnvKeys(),
+      allEnvKeysCount: Object.keys(process.env).length,
+      sampleEnvKeys: Object.keys(process.env).sort().slice(0, 30),
+      rawClientIdSnippet: process.env.MP_CLIENT_ID ? `${process.env.MP_CLIENT_ID.slice(0, 4)}... (len ${process.env.MP_CLIENT_ID.length})` : null,
+      rawClientSecretSnippet: process.env.MP_CLIENT_SECRET ? `${process.env.MP_CLIENT_SECRET.slice(0, 4)}... (len ${process.env.MP_CLIENT_SECRET.length})` : null,
     });
   });
 
