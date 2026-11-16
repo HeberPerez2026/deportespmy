@@ -43,6 +43,7 @@ export const AdminProfileSettings: React.FC = () => {
     hasClientSecret?: boolean;
     vercelEnv?: string | null;
     host?: string | null;
+    detectedEnvKeys?: string[];
   } | null>(null);
   const [isConnectingMP, setIsConnectingMP] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
@@ -68,6 +69,7 @@ export const AdminProfileSettings: React.FC = () => {
           hasClientSecret: data?.hasClientSecret,
           vercelEnv: data?.vercelEnv,
           host: data?.host,
+          detectedEnvKeys: Array.isArray(data?.detectedEnvKeys) ? data.detectedEnvKeys : [],
         });
       })
       .catch(() => {});
@@ -366,7 +368,17 @@ export const AdminProfileSettings: React.FC = () => {
                 <code className="font-mono bg-amber-100 px-1 rounded">
                   MP_CLIENT_SECRET: {oauthDiag?.hasClientSecret ? 'OK' : 'FALTA'}
                 </code>
-                . Si ya las cargaste en Vercel, asegurate de marcar Production/Preview y hacer <strong>Redeploy</strong>.
+                .
+                {oauthDiag?.detectedEnvKeys && (
+                  <>
+                    {' '}Claves detectadas:{' '}
+                    <code className="font-mono bg-amber-100 px-1 rounded">
+                      {oauthDiag.detectedEnvKeys.length > 0 ? oauthDiag.detectedEnvKeys.join(', ') : 'ninguna'}
+                    </code>
+                    .
+                  </>
+                )}{' '}
+                Si ya las cargaste en Vercel, asegurate de marcar Production/Preview y hacer <strong>Redeploy</strong>.
               </p>
             </div>
           </div>

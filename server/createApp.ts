@@ -70,16 +70,26 @@ function resolveMpOAuthCredentials(): { clientId: string; clientSecret: string }
     cleanEnvValue(process.env.mercadopago_client_id) ||
     cleanEnvValue(process.env.VITE_MP_CLIENT_ID) ||
     cleanEnvValue(process.env.MP_APP_ID) ||
-    cleanEnvValue(process.env.mp_app_id);
+    cleanEnvValue(process.env.mp_app_id) ||
+    cleanEnvValue(process.env.MERCADOPAGO_APP_ID);
 
   const clientSecret =
     cleanEnvValue(process.env.MP_CLIENT_SECRET) ||
     cleanEnvValue(process.env.mp_client_secret) ||
     cleanEnvValue(process.env.MERCADOPAGO_CLIENT_SECRET) ||
     cleanEnvValue(process.env.mercadopago_client_secret) ||
-    cleanEnvValue(process.env.VITE_MP_CLIENT_SECRET);
+    cleanEnvValue(process.env.VITE_MP_CLIENT_SECRET) ||
+    cleanEnvValue(process.env.MP_SECRET) ||
+    cleanEnvValue(process.env.mp_secret) ||
+    cleanEnvValue(process.env.MERCADOPAGO_SECRET);
 
   return { clientId, clientSecret };
+}
+
+function listSafeMpEnvKeys(): string[] {
+  return Object.keys(process.env)
+    .filter((k) => /mp_|_mp|mercado|client_id|client_secret|app_id/i.test(k))
+    .sort();
 }
 
 interface ResilientResponse {
@@ -455,8 +465,10 @@ export function createApiApp() {
   });
   app.use(express.json());
 
-  // CORS for /api routes so static custom domains (e.g. https://deportespmy.com.ar) can reach the backend
+  // CORS and no-cache headers for /api routes
   app.use('/api', (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
     const reqOrigin = req.headers.origin;
     if (reqOrigin) {
       const lower = reqOrigin.toLowerCase();
@@ -494,6 +506,7 @@ export function createApiApp() {
       vercelEnv: process.env.VERCEL_ENV || null,
       hasClientId: Boolean(clientId),
       hasClientSecret: Boolean(clientSecret),
+      detectedEnvKeys: listSafeMpEnvKeys(),
     });
   });
 
@@ -569,6 +582,7 @@ export function createApiApp() {
       hasClientSecret: Boolean(clientSecret),
       vercelEnv: process.env.VERCEL_ENV || null,
       host: getRequestOrigin(req),
+      detectedEnvKeys: listSafeMpEnvKeys(),
       callbackUrl: getOAuthRedirectUri(req),
       connected: Boolean(connectedRecord?.accessToken),
       userId: connectedRecord?.userId || null,
