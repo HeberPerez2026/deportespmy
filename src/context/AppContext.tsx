@@ -396,6 +396,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubCourts = subscribeToCourts((remoteCourts) => {
       setCourts(remoteCourts);
       localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(remoteCourts));
+      setCloudConnected(true);
       setLastSyncTime(new Date());
     });
 
@@ -403,6 +404,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubBookings = subscribeToBookings((remoteBookings) => {
       setBookings(remoteBookings);
       localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(remoteBookings));
+      setCloudConnected(true);
       setLastSyncTime(new Date());
     });
 
@@ -410,6 +412,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubReviews = subscribeToReviews((remoteReviews) => {
       setReviews(remoteReviews);
       localStorage.setItem(STORAGE_KEYS.REVIEWS, JSON.stringify(remoteReviews));
+      setCloudConnected(true);
       setLastSyncTime(new Date());
     });
 

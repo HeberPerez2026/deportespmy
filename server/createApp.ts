@@ -57,6 +57,31 @@ function normalizeAdminId(raw?: unknown): string {
     .replace(/[^a-z0-9_-]/g, '');
 }
 
+function cleanEnvValue(val?: string): string {
+  if (!val) return '';
+  return val.trim().replace(/^["']+|["']+$/g, '').trim();
+}
+
+function resolveMpOAuthCredentials(): { clientId: string; clientSecret: string } {
+  const clientId =
+    cleanEnvValue(process.env.MP_CLIENT_ID) ||
+    cleanEnvValue(process.env.mp_client_id) ||
+    cleanEnvValue(process.env.MERCADOPAGO_CLIENT_ID) ||
+    cleanEnvValue(process.env.mercadopago_client_id) ||
+    cleanEnvValue(process.env.VITE_MP_CLIENT_ID) ||
+    cleanEnvValue(process.env.MP_APP_ID) ||
+    cleanEnvValue(process.env.mp_app_id);
+
+  const clientSecret =
+    cleanEnvValue(process.env.MP_CLIENT_SECRET) ||
+    cleanEnvValue(process.env.mp_client_secret) ||
+    cleanEnvValue(process.env.MERCADOPAGO_CLIENT_SECRET) ||
+    cleanEnvValue(process.env.mercadopago_client_secret) ||
+    cleanEnvValue(process.env.VITE_MP_CLIENT_SECRET);
+
+  return { clientId, clientSecret };
+}
+
 interface ResilientResponse {
   ok: boolean;
   status: number;
@@ -327,7 +352,8 @@ async function confirmBookingInFirestore(
 }
 
 async function refreshAdminOAuthTokenIfNeeded(record: AdminTokenRecord): Promise<AdminTokenRecord> {
-  if (!record.refreshToken || !process.env.MP_CLIENT_ID || !process.env.MP_CLIENT_SECRET) {
+  const { clientId, clientSecret } = resolveMpOAuthCredentials();
+  if (!record.refreshToken || !clientId || !clientSecret) {
     return record;
   }
 
@@ -342,8 +368,8 @@ async function refreshAdminOAuthTokenIfNeeded(record: AdminTokenRecord): Promise
 
   try {
     const body = new URLSearchParams({
-      client_id: process.env.MP_CLIENT_ID,
-      client_secret: process.env.MP_CLIENT_SECRET,
+      client_id: clientId,
+      client_secret: clientSecret,
       grant_type: 'refresh_token',
       refresh_token: record.refreshToken
     });
@@ -459,8 +485,16 @@ export function createApiApp() {
     next();
   });
 
-  app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, service: 'deportespmy-api' });
+  app.get('/api/health', (req, res) => {
+    const { clientId, clientSecret } = resolveMpOAuthCredentials();
+    res.json({
+      ok: true,
+      service: 'deportespmy-api',
+      host: getRequestOrigin(req),
+      vercelEnv: process.env.VERCEL_ENV || null,
+      hasClientId: Boolean(clientId),
+      hasClientSecret: Boolean(clientSecret),
+    });
   });
 
   const port = Number(process.env.PORT) || 3000;
@@ -521,7 +555,8 @@ export function createApiApp() {
 
   app.get('/api/mercadopago/oauth/status', async (req, res) => {
     const adminId = normalizeAdminId(req.query.adminId);
-    const configured = Boolean(process.env.MP_CLIENT_ID && process.env.MP_CLIENT_SECRET);
+    const { clientId, clientSecret } = resolveMpOAuthCredentials();
+    const configured = Boolean(clientId && clientSecret);
     let connectedRecord: AdminTokenRecord | null = null;
 
     if (adminId) {
@@ -530,6 +565,10 @@ export function createApiApp() {
 
     res.json({
       configured,
+      hasClientId: Boolean(clientId),
+      hasClientSecret: Boolean(clientSecret),
+      vercelEnv: process.env.VERCEL_ENV || null,
+      host: getRequestOrigin(req),
       callbackUrl: getOAuthRedirectUri(req),
       connected: Boolean(connectedRecord?.accessToken),
       userId: connectedRecord?.userId || null,
@@ -544,15 +583,21 @@ export function createApiApp() {
       return res.status(400).json({ error: 'Se requiere identificar al administrador (adminId).' });
     }
 
-    const clientId = process.env.MP_CLIENT_ID;
-    const clientSecret = process.env.MP_CLIENT_SECRET;
+    const { clientId, clientSecret } = resolveMpOAuthCredentials();
     const redirectUri = getOAuthRedirectUri(req);
 
     if (!clientId || !clientSecret) {
+      const missing: string[] = [];
+      if (!clientId) missing.push('MP_CLIENT_ID');
+      if (!clientSecret) missing.push('MP_CLIENT_SECRET');
+      const envTag = process.env.VERCEL_ENV ? ` (entorno Vercel: ${process.env.VERCEL_ENV})` : '';
       return res.status(400).json({
         configured: false,
+        hasClientId: Boolean(clientId),
+        hasClientSecret: Boolean(clientSecret),
+        vercelEnv: process.env.VERCEL_ENV || null,
         callbackUrl: redirectUri,
-        error: 'Faltan configurar MP_CLIENT_ID y MP_CLIENT_SECRET en las variables de entorno del servidor.'
+        error: `Falta configurar ${missing.join(' y ')} en las variables de entorno del servidor${envTag}. Recordá hacer Redeploy luego de guardarlas.`
       });
     }
 
@@ -655,8 +700,7 @@ export function createApiApp() {
       ));
     }
 
-    const clientId = process.env.MP_CLIENT_ID;
-    const clientSecret = process.env.MP_CLIENT_SECRET;
+    const { clientId, clientSecret } = resolveMpOAuthCredentials();
     if (!clientId || !clientSecret) {
       return res.send(renderCallbackHtml(
         { type: 'MP_OAUTH_ERROR', error: 'Credenciales de plataforma MP_CLIENT_ID / MP_CLIENT_SECRET no configuradas.' },

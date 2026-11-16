@@ -38,6 +38,12 @@ export const AdminProfileSettings: React.FC = () => {
 
   // Mercado Pago 3P OAuth state
   const [oauthServerConfigured, setOauthServerConfigured] = useState<boolean>(true);
+  const [oauthDiag, setOauthDiag] = useState<{
+    hasClientId?: boolean;
+    hasClientSecret?: boolean;
+    vercelEnv?: string | null;
+    host?: string | null;
+  } | null>(null);
   const [isConnectingMP, setIsConnectingMP] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [oauthSuccessNotice, setOauthSuccessNotice] = useState<string | null>(null);
@@ -57,6 +63,12 @@ export const AdminProfileSettings: React.FC = () => {
       .then(safeParseJsonResponse)
       .then(data => {
         setOauthServerConfigured(Boolean(data?.configured));
+        setOauthDiag({
+          hasClientId: data?.hasClientId,
+          hasClientSecret: data?.hasClientSecret,
+          vercelEnv: data?.vercelEnv,
+          host: data?.host,
+        });
       })
       .catch(() => {});
   }, [adminIdKey]);
@@ -346,7 +358,15 @@ export const AdminProfileSettings: React.FC = () => {
             <div className="space-y-1">
               <p className="font-bold">Faltan configurar las credenciales OAuth de la plataforma</p>
               <p className="text-[11px] text-amber-800">
-                El dueño de la plataforma debe configurar <code className="font-mono bg-amber-100 px-1 rounded">MP_CLIENT_ID</code> y <code className="font-mono bg-amber-100 px-1 rounded">MP_CLIENT_SECRET</code> en las variables de entorno del servidor. Mientras tanto podés recibir señas con tu Alias o CBU abajo.
+                El servidor{oauthDiag?.host ? ` (${oauthDiag.host}${oauthDiag.vercelEnv ? ` · ${oauthDiag.vercelEnv}` : ''})` : ''} reporta:{' '}
+                <code className="font-mono bg-amber-100 px-1 rounded">
+                  MP_CLIENT_ID: {oauthDiag?.hasClientId ? 'OK' : 'FALTA'}
+                </code>{' '}
+                ·{' '}
+                <code className="font-mono bg-amber-100 px-1 rounded">
+                  MP_CLIENT_SECRET: {oauthDiag?.hasClientSecret ? 'OK' : 'FALTA'}
+                </code>
+                . Si ya las cargaste en Vercel, asegurate de marcar Production/Preview y hacer <strong>Redeploy</strong>.
               </p>
             </div>
           </div>
