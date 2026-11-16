@@ -86,3 +86,18 @@ export async function processImageUpload(
 
   return output;
 }
+
+export function getSafeReceiptUrl(url?: string): string {
+  if (!url) return '';
+  const trimmed = url.trim();
+  if (trimmed.startsWith('data:') || trimmed.startsWith('http') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+  if (trimmed.startsWith('iVBORw0KGgo')) {
+    return `data:image/png;base64,${trimmed}`;
+  }
+  if (trimmed.startsWith('/9j/')) {
+    return `data:image/jpeg;base64,${trimmed}`;
+  }
+  return `data:image/jpeg;base64,${trimmed}`;
+}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Court, TimeSlot, Booking } from '../../types';
 import { getUnionHoursRange, getNormalizedCourtSchedule } from '../../utils/scheduleHours';
+import { getSafeReceiptUrl } from '../../utils/imageUpload';
 import { 
   Calendar, 
   Clock, 
@@ -551,13 +552,13 @@ export const ScheduleGrid: React.FC = () => {
                     <div className="pt-2 border-t border-[var(--border-hairline)]">
                       <p className="text-[10px] text-[var(--text-muted)] font-bold uppercase mb-1">Comprobante Adjunto:</p>
                       <a 
-                        href={activeBookingDetails.receiptUrl} 
+                        href={getSafeReceiptUrl(activeBookingDetails.receiptUrl)} 
                         target="_blank" 
                         rel="noreferrer"
                         className="block relative group overflow-hidden rounded-xl border border-[var(--border-strong)]"
                       >
                         <img 
-                          src={activeBookingDetails.receiptUrl} 
+                          src={getSafeReceiptUrl(activeBookingDetails.receiptUrl)} 
                           alt="Recibo" 
                           className="w-full h-24 object-cover group-hover:scale-105 transition-transform"
                         />

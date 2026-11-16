@@ -75,6 +75,7 @@ import {
   normalizeCourtSchedule,
   parseSlotHourOrder,
 } from '../utils/scheduleHours';
+import { getSafeReceiptUrl } from '../utils/imageUpload';
 
 interface BookingInput {
   courtId: string;
@@ -1236,7 +1237,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const updated: Booking = {
       ...targetBooking,
       status: 'awaiting_approval',
-      receiptUrl,
+      receiptUrl: getSafeReceiptUrl(receiptUrl),
       paymentReference: paymentReference || targetBooking.paymentReference,
     };
 
