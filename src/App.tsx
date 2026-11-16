@@ -10,6 +10,7 @@ import { AdminDashboard } from './components/AdminPanel/AdminDashboard';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { Footer } from './components/Footer';
 import { CheckCircle, AlertCircle, MessageCircle, Loader2 } from 'lucide-react';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 
 const MainContent: React.FC = () => {
   const { 
@@ -351,6 +352,9 @@ const MainContent: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Vercel Speed Insights */}
+      <SpeedInsights />
 
     </div>
   );
