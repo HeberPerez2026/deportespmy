@@ -13,7 +13,7 @@
       "destination": "/api/index?__vercel_api_path=$1"
     },
     {
-      "source": "/((?!api/).*)",
+      "source": "/((?!api/|sw\\.js|manifest\\.webmanifest|icon\\.svg).*)",
       "destination": "/index.html"
     }
   ]

@@ -5,6 +5,11 @@ import http from 'node:http';
 import https from 'node:https';
 import { fileURLToPath } from 'node:url';
 import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
+import * as webpushNamespace from 'web-push';
+
+const webpush =
+  (webpushNamespace as unknown as { default?: typeof webpushNamespace }).default ||
+  webpushNamespace;
 
 interface FirebaseAppletConfig {
   projectId: string;
@@ -39,6 +44,25 @@ try {
 
 // In-memory store for admin OAuth tokens (backed by Firestore settings/profile_{adminId})
 const adminTokensStore = new Map<string, AdminTokenRecord>();
+
+// In-memory store for Web Push subscriptions & cached VAPID keys
+interface ServerPushSubscriptionRecord {
+  id: string;
+  deviceId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  bookingCodes: string[];
+  clientPhone?: string;
+  clientName?: string;
+  enabled: boolean;
+  userAgent?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+const pushSubscriptionsStore = new Map<string, ServerPushSubscriptionRecord>();
+let cachedVapidKeys: { publicKey: string; privateKey: string; subject: string } | null = null;
+let vapidInitPromise: Promise<{ publicKey: string; privateKey: string; subject: string } | null> | null = null;
 
 // In-memory cache for verified payment statuses (keyed by external_reference or paymentId)
 const verifiedPayments = new Map<string, {
@@ -339,6 +363,20 @@ async function confirmBookingInFirestore(
     const balanceDue = Math.max(0, totalAmount - effectivePaid);
     const paymentStatus = balanceDue <= 0 ? 'total_pagado' : 'seña_pagada';
 
+    const bookingPushMeta = {
+      bookingCode,
+      clientPhone: fields.clientPhone?.stringValue || '',
+      pushDeviceId: fields.pushDeviceId?.stringValue || '',
+      courtName: fields.courtName?.stringValue || 'Cancha',
+      date: fields.date?.stringValue || '',
+      startTime: fields.startTime?.stringValue || '',
+      endTime: fields.endTime?.stringValue || '',
+      amountPaid: effectivePaid,
+      balanceDue,
+      totalAmount,
+      paymentMethod: fields.paymentMethod?.stringValue || 'mercadopago',
+    };
+
     const patchUrl = `https://firestore.googleapis.com/v1/${docName}?updateMask.fieldPaths=status&updateMask.fieldPaths=paymentStatus&updateMask.fieldPaths=amountPaid&updateMask.fieldPaths=balanceDue&updateMask.fieldPaths=paymentReference&updateMask.fieldPaths=whatsappSent&updateMask.fieldPaths=whatsappSentAt&key=${encodeURIComponent(firebaseCfg.apiKey)}`;
 
     const patchResp = await resilientFetch(patchUrl, {
@@ -357,11 +395,341 @@ async function confirmBookingInFirestore(
       })
     });
 
+    if (patchResp.ok) {
+      dispatchBookingPushNotification({
+        ...bookingPushMeta,
+        eventType: 'payment_confirmed',
+      }).catch((pushErr) => {
+        console.warn('[Push] Error enviando push desde confirmBookingInFirestore:', pushErr);
+      });
+    }
+
     return patchResp.ok;
   } catch (err) {
     console.warn(`[Firestore REST] Error confirmando reserva ${bookingCode}:`, err);
     return false;
   }
+}
+
+function normalizePhoneDigits(phone?: string): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+async function ensureVapidKeys(): Promise<{ publicKey: string; privateKey: string; subject: string } | null> {
+  if (cachedVapidKeys) {
+    return cachedVapidKeys;
+  }
+  if (vapidInitPromise) {
+    return vapidInitPromise;
+  }
+
+  vapidInitPromise = (async () => {
+    const subject = cleanEnvValue(process.env.VAPID_SUBJECT) || 'mailto:soporte@deportespmy.com.ar';
+    const envPub = cleanEnvValue(process.env.VAPID_PUBLIC_KEY);
+    const envPriv = cleanEnvValue(process.env.VAPID_PRIVATE_KEY);
+
+    if (envPub && envPriv) {
+      cachedVapidKeys = { publicKey: envPub, privateKey: envPriv, subject };
+      webpush.setVapidDetails(subject, envPub, envPriv);
+      return cachedVapidKeys;
+    }
+
+    const docUrl = getFirestoreDocUrl('settings', 'pushVapidConfig');
+    if (docUrl) {
+      try {
+        const resp = await resilientFetch(docUrl);
+        if (resp.ok) {
+          const json: any = await resp.json();
+          const fields = json?.fields;
+          const pub = fields?.publicKey?.stringValue;
+          const priv = fields?.privateKey?.stringValue;
+          if (pub && priv) {
+            cachedVapidKeys = { publicKey: pub, privateKey: priv, subject };
+            webpush.setVapidDetails(subject, pub, priv);
+            return cachedVapidKeys;
+          }
+        }
+      } catch (err) {
+        console.warn('[Push] No se pudo leer pushVapidConfig desde Firestore:', err);
+      }
+    }
+
+    const generated = webpush.generateVAPIDKeys();
+    cachedVapidKeys = {
+      publicKey: generated.publicKey,
+      privateKey: generated.privateKey,
+      subject,
+    };
+    webpush.setVapidDetails(subject, generated.publicKey, generated.privateKey);
+
+    if (firebaseCfg?.projectId && firebaseCfg?.firestoreDatabaseId && firebaseCfg?.apiKey) {
+      const saveUrl = `https://firestore.googleapis.com/v1/projects/${firebaseCfg.projectId}/databases/${firebaseCfg.firestoreDatabaseId}/documents/settings/pushVapidConfig?key=${encodeURIComponent(firebaseCfg.apiKey)}`;
+      try {
+        await resilientFetch(saveUrl, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              publicKey: { stringValue: generated.publicKey },
+              privateKey: { stringValue: generated.privateKey },
+              subject: { stringValue: subject },
+              updatedAt: { stringValue: new Date().toISOString() },
+            }
+          })
+        });
+      } catch (err) {
+        console.warn('[Push] No se pudo persistir pushVapidConfig en Firestore:', err);
+      }
+    }
+
+    return cachedVapidKeys;
+  })();
+
+  const result = await vapidInitPromise;
+  vapidInitPromise = null;
+  return result;
+}
+
+function parseFirestorePushDoc(docObj: any): ServerPushSubscriptionRecord | null {
+  const fields = docObj?.fields;
+  if (!fields) return null;
+  const nameParts = String(docObj.name || '').split('/');
+  const id = nameParts[nameParts.length - 1] || fields.deviceId?.stringValue || '';
+  const deviceId = fields.deviceId?.stringValue || id;
+  const endpoint = fields.endpoint?.stringValue || '';
+  const p256dh = fields.p256dh?.stringValue || '';
+  const auth = fields.auth?.stringValue || '';
+  const enabled = fields.enabled?.booleanValue !== false;
+  if (!id || !endpoint || !p256dh || !auth) return null;
+
+  const rawCodes = fields.bookingCodes?.arrayValue?.values;
+  const bookingCodes: string[] = Array.isArray(rawCodes)
+    ? rawCodes.map((v: any) => String(v?.stringValue || '').trim()).filter(Boolean)
+    : [];
+
+  return {
+    id,
+    deviceId,
+    endpoint,
+    p256dh,
+    auth,
+    bookingCodes,
+    clientPhone: fields.clientPhone?.stringValue || '',
+    clientName: fields.clientName?.stringValue || '',
+    enabled,
+    userAgent: fields.userAgent?.stringValue || '',
+    createdAt: fields.createdAt?.stringValue || '',
+    updatedAt: fields.updatedAt?.stringValue || '',
+  };
+}
+
+async function savePushSubToFirestoreRest(record: ServerPushSubscriptionRecord): Promise<void> {
+  pushSubscriptionsStore.set(record.id, record);
+  if (!firebaseCfg?.projectId || !firebaseCfg?.firestoreDatabaseId || !firebaseCfg?.apiKey) return;
+
+  const docUrl = `https://firestore.googleapis.com/v1/projects/${firebaseCfg.projectId}/databases/${firebaseCfg.firestoreDatabaseId}/documents/pushSubscriptions/${encodeURIComponent(record.id)}?key=${encodeURIComponent(firebaseCfg.apiKey)}`;
+  try {
+    await resilientFetch(docUrl, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fields: {
+          deviceId: { stringValue: record.deviceId },
+          endpoint: { stringValue: record.endpoint },
+          p256dh: { stringValue: record.p256dh },
+          auth: { stringValue: record.auth },
+          bookingCodes: {
+            arrayValue: {
+              values: record.bookingCodes.slice(0, 50).map((code) => ({ stringValue: code }))
+            }
+          },
+          clientPhone: { stringValue: record.clientPhone || '' },
+          clientName: { stringValue: record.clientName || '' },
+          enabled: { booleanValue: record.enabled },
+          userAgent: { stringValue: (record.userAgent || '').slice(0, 200) },
+          createdAt: { stringValue: record.createdAt || new Date().toISOString() },
+          updatedAt: { stringValue: record.updatedAt || new Date().toISOString() },
+        }
+      })
+    });
+  } catch (err) {
+    console.warn('[Push] Error guardando suscripción en Firestore REST:', err);
+  }
+}
+
+async function deletePushSubFromFirestoreRest(subId: string): Promise<void> {
+  pushSubscriptionsStore.delete(subId);
+  if (!firebaseCfg?.projectId || !firebaseCfg?.firestoreDatabaseId || !firebaseCfg?.apiKey) return;
+  const docUrl = `https://firestore.googleapis.com/v1/projects/${firebaseCfg.projectId}/databases/${firebaseCfg.firestoreDatabaseId}/documents/pushSubscriptions/${encodeURIComponent(subId)}?key=${encodeURIComponent(firebaseCfg.apiKey)}`;
+  try {
+    await resilientFetch(docUrl, { method: 'DELETE' });
+  } catch {}
+}
+
+async function loadAllPushSubscriptions(): Promise<ServerPushSubscriptionRecord[]> {
+  const merged = new Map<string, ServerPushSubscriptionRecord>(pushSubscriptionsStore);
+
+  if (firebaseCfg?.projectId && firebaseCfg?.firestoreDatabaseId && firebaseCfg?.apiKey) {
+    const listUrl = `https://firestore.googleapis.com/v1/projects/${firebaseCfg.projectId}/databases/${firebaseCfg.firestoreDatabaseId}/documents/pushSubscriptions?pageSize=200&key=${encodeURIComponent(firebaseCfg.apiKey)}`;
+    try {
+      const resp = await resilientFetch(listUrl);
+      if (resp.ok) {
+        const data: any = await resp.json();
+        const docs: any[] = Array.isArray(data?.documents) ? data.documents : [];
+        for (const d of docs) {
+          const parsed = parseFirestorePushDoc(d);
+          if (parsed) {
+            merged.set(parsed.id, parsed);
+            pushSubscriptionsStore.set(parsed.id, parsed);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Push] Error leyendo pushSubscriptions desde Firestore REST:', err);
+    }
+  }
+
+  return Array.from(merged.values());
+}
+
+function buildBookingPushContent(input: {
+  eventType: string;
+  bookingCode: string;
+  courtName?: string;
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+  amountPaid?: number;
+  balanceDue?: number;
+  refundAmount?: number;
+  mpRefunded?: boolean;
+  customTitle?: string;
+  customBody?: string;
+}) {
+  const code = input.bookingCode || 'PMY';
+  const court = input.courtName || 'Tu cancha';
+  const schedule = input.date && input.startTime ? `${input.date} ${input.startTime} hs` : (input.date || '');
+  const balance = Number(input.balanceDue || 0);
+  const paid = Number(input.amountPaid || 0);
+  const refund = Number(input.refundAmount ?? paid);
+
+  let title = input.customTitle?.trim() || '';
+  let body = input.customBody?.trim() || '';
+
+  if (!title || !body) {
+    switch (input.eventType) {
+      case 'booking_created':
+        title = title || `Reserva registrada #${code}`;
+        body = body || `${court}${schedule ? ` · ${schedule}` : ''}. Pendiente de pago o verificación.`;
+        break;
+      case 'receipt_submitted':
+        title = title || `Comprobante recibido #${code}`;
+        body = body || `El club está revisando tu comprobante para ${court}${schedule ? ` (${schedule})` : ''}.`;
+        break;
+      case 'payment_confirmed':
+        title = title || `Turno confirmado #${code}`;
+        body = body || `${court}${schedule ? ` · ${schedule}` : ''}. ${balance > 0 ? `Saldo en cancha: $${balance.toLocaleString('es-AR')}.` : 'Pago 100% acreditado.'}`;
+        break;
+      case 'balance_paid':
+        title = title || `Saldo completado #${code}`;
+        body = body || `${court}${schedule ? ` (${schedule})` : ''} quedó abonado al 100%.`;
+        break;
+      case 'booking_cancelled':
+        title = title || `Turno cancelado #${code}`;
+        body = body || (refund > 0
+          ? `${court}${schedule ? ` (${schedule})` : ''} fue cancelado. ${input.mpRefunded ? `Se devolvieron $${refund.toLocaleString('es-AR')} por Mercado Pago.` : `Devolución registrada de $${refund.toLocaleString('es-AR')}.`}`
+          : `${court}${schedule ? ` (${schedule})` : ''} fue cancelado y liberado.`);
+        break;
+      default:
+        title = title || `Actualización de turno #${code}`;
+        body = body || `${court}${schedule ? ` · ${schedule}` : ''}. Tocá para ver el estado actualizado.`;
+        break;
+    }
+  }
+
+  return {
+    title,
+    body,
+    icon: '/icon.svg',
+    badge: '/icon.svg',
+    tag: `booking-${code}-${input.eventType}`,
+    url: `/?booking_code=${encodeURIComponent(code)}`,
+    bookingCode: code,
+    status: input.eventType,
+  };
+}
+
+async function dispatchBookingPushNotification(input: {
+  eventType: string;
+  bookingCode: string;
+  clientPhone?: string;
+  pushDeviceId?: string;
+  courtName?: string;
+  date?: string;
+  startTime?: string;
+  endTime?: string;
+  amountPaid?: number;
+  balanceDue?: number;
+  refundAmount?: number;
+  mpRefunded?: boolean;
+  customTitle?: string;
+  customBody?: string;
+}): Promise<{ ok: boolean; sentCount: number; matchedCount: number }> {
+  const keys = await ensureVapidKeys();
+  if (!keys) {
+    return { ok: false, sentCount: 0, matchedCount: 0 };
+  }
+
+  const allSubs = await loadAllPushSubscriptions();
+  const targetPhoneNorm = normalizePhoneDigits(input.clientPhone);
+  const targetCode = String(input.bookingCode || '').trim().toUpperCase();
+  const targetDevice = String(input.pushDeviceId || '').trim();
+
+  const matched = allSubs.filter((sub) => {
+    if (!sub.enabled || !sub.endpoint || !sub.p256dh || !sub.auth) return false;
+    const codeMatch = targetCode && sub.bookingCodes.some((c) => c.trim().toUpperCase() === targetCode);
+    const deviceMatch = targetDevice && sub.deviceId === targetDevice;
+    const subPhoneNorm = normalizePhoneDigits(sub.clientPhone);
+    const phoneMatch = Boolean(targetPhoneNorm && subPhoneNorm && targetPhoneNorm === subPhoneNorm);
+    return codeMatch || deviceMatch || phoneMatch;
+  });
+
+  if (matched.length === 0) {
+    return { ok: true, sentCount: 0, matchedCount: 0 };
+  }
+
+  const payload = JSON.stringify(buildBookingPushContent(input));
+  let sentCount = 0;
+
+  await Promise.all(
+    matched.map(async (sub) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: {
+              p256dh: sub.p256dh,
+              auth: sub.auth,
+            },
+          },
+          payload,
+          { TTL: 60 * 60 * 12 }
+        );
+        sentCount += 1;
+      } catch (err: any) {
+        const statusCode = Number(err?.statusCode || 0);
+        if (statusCode === 404 || statusCode === 410) {
+          await deletePushSubFromFirestoreRest(sub.id);
+        } else {
+          console.warn(`[Push] Error enviando push a ${sub.id}:`, err?.message || err);
+        }
+      }
+    })
+  );
+
+  return { ok: true, sentCount, matchedCount: matched.length };
 }
 
 async function refreshAdminOAuthTokenIfNeeded(record: AdminTokenRecord): Promise<AdminTokenRecord> {
@@ -1282,6 +1650,122 @@ export function createApiApp() {
         mpRefunded: false,
         error: err?.message || 'Error de conexión al solicitar reembolso en Mercado Pago.'
       });
+    }
+  });
+
+  // ==========================================
+  // 6. WEB PUSH NOTIFICATIONS (SERVICE WORKER)
+  // ==========================================
+
+  app.get('/api/push/vapid-public-key', async (_req, res) => {
+    try {
+      const keys = await ensureVapidKeys();
+      if (!keys) {
+        return res.status(503).json({ supported: false, error: 'Servicio Push no disponible.' });
+      }
+      res.json({ supported: true, publicKey: keys.publicKey });
+    } catch (err: any) {
+      res.status(500).json({ supported: false, error: err?.message || 'Error obteniendo clave VAPID.' });
+    }
+  });
+
+  app.post('/api/push/subscribe', async (req, res) => {
+    try {
+      const {
+        deviceId,
+        subscription,
+        bookingCodes,
+        bookingCode,
+        clientPhone,
+        clientName,
+        userAgent
+      } = req.body || {};
+
+      const cleanDeviceId = String(deviceId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100);
+      const endpoint = String(subscription?.endpoint || '').trim();
+      const p256dh = String(subscription?.keys?.p256dh || '').trim();
+      const auth = String(subscription?.keys?.auth || '').trim();
+
+      if (!cleanDeviceId || !endpoint || !p256dh || !auth) {
+        return res.status(400).json({ ok: false, error: 'Suscripción push inválida o incompleta.' });
+      }
+
+      const existingSubs = await loadAllPushSubscriptions();
+      const existing = existingSubs.find((s) => s.id === cleanDeviceId || s.deviceId === cleanDeviceId);
+
+      const codeSet = new Set<string>(existing?.bookingCodes || []);
+      if (Array.isArray(bookingCodes)) {
+        bookingCodes.forEach((c) => {
+          const clean = String(c || '').trim().toUpperCase();
+          if (clean) codeSet.add(clean);
+        });
+      }
+      if (bookingCode) {
+        const clean = String(bookingCode).trim().toUpperCase();
+        if (clean) codeSet.add(clean);
+      }
+
+      const now = new Date().toISOString();
+      const record: ServerPushSubscriptionRecord = {
+        id: cleanDeviceId,
+        deviceId: cleanDeviceId,
+        endpoint,
+        p256dh,
+        auth,
+        bookingCodes: Array.from(codeSet).slice(-50),
+        clientPhone: String(clientPhone || existing?.clientPhone || '').trim().slice(0, 32),
+        clientName: String(clientName || existing?.clientName || '').trim().slice(0, 128),
+        enabled: true,
+        userAgent: String(userAgent || req.headers['user-agent'] || existing?.userAgent || '').slice(0, 200),
+        createdAt: existing?.createdAt || now,
+        updatedAt: now,
+      };
+
+      await savePushSubToFirestoreRest(record);
+      res.json({ ok: true, id: record.id, bookingCodes: record.bookingCodes });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err?.message || 'Error registrando suscripción Push.' });
+    }
+  });
+
+  app.post('/api/push/unsubscribe', async (req, res) => {
+    try {
+      const cleanDeviceId = String(req.body?.deviceId || '').trim().replace(/[^a-zA-Z0-9_-]/g, '');
+      if (cleanDeviceId) {
+        await deletePushSubFromFirestoreRest(cleanDeviceId);
+      }
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err?.message || 'Error cancelando suscripción Push.' });
+    }
+  });
+
+  app.post('/api/push/notify-booking', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const bookingCode = String(body.bookingCode || '').trim();
+      if (!bookingCode) {
+        return res.status(400).json({ ok: false, error: 'Se requiere bookingCode.' });
+      }
+      const result = await dispatchBookingPushNotification({
+        eventType: String(body.eventType || 'admin_reminder'),
+        bookingCode,
+        clientPhone: body.clientPhone,
+        pushDeviceId: body.pushDeviceId,
+        courtName: body.courtName,
+        date: body.date,
+        startTime: body.startTime,
+        endTime: body.endTime,
+        amountPaid: Number(body.amountPaid) || 0,
+        balanceDue: Number(body.balanceDue) || 0,
+        refundAmount: body.refundAmount !== undefined ? Number(body.refundAmount) : undefined,
+        mpRefunded: Boolean(body.mpRefunded),
+        customTitle: body.customTitle,
+        customBody: body.customBody,
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err?.message || 'Error enviando notificación Push.' });
     }
   });
 

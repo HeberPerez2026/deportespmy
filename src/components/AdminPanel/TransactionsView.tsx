@@ -263,6 +263,18 @@ export const TransactionsView: React.FC = () => {
               </div>
             </div>
 
+            <div className={`p-3 rounded-2xl text-xs leading-relaxed border ${
+              cancelTarget.paymentMethod === 'mercadopago' && /^MP-\d{5,}$/.test(cancelTarget.paymentReference || '')
+                ? 'bg-sky-500/15 border-sky-500/35 text-sky-800 dark:text-sky-200'
+                : 'bg-amber-500/15 border-amber-500/35 text-amber-900 dark:text-amber-200'
+            }`}>
+              {cancelTarget.paymentMethod === 'mercadopago' && /^MP-\d{5,}$/.test(cancelTarget.paymentReference || '') ? (
+                <span>Este pago ingresó por <strong>Mercado Pago Checkout Pro</strong>: el sistema solicitará el reembolso automático hacia el medio de pago del jugador.</span>
+              ) : (
+                <span>Los pagos por <strong>CBU, Alias o efectivo</strong> no se revierten automáticamente desde el sistema bancario. El turno se liberará y quedará registrado como reembolsado para que realices la transferencia manual al jugador.</span>
+              )}
+            </div>
+
             <label className="flex items-center gap-2 text-xs font-semibold text-[var(--text-secondary)] cursor-pointer select-none">
               <input
                 type="checkbox"

@@ -1,5 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
-import confetti from 'canvas-confetti';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { apiFetch, safeParseJsonResponse } from '../utils/api';
 import { 
   Court, 
@@ -15,7 +14,8 @@ import {
   BusinessProfile,
   AdminUser,
   DeveloperContact,
-  SiteContent
+  SiteContent,
+  PushSubscriptionRecord
 } from '../types';
 import { 
   INITIAL_COURTS, 
@@ -50,8 +50,23 @@ import {
   subscribeToAdmins,
   saveAdminUserToFirestore,
   deleteAdminUserFromFirestore,
-  fetchAllCollectionDocs
+  fetchAllCollectionDocs,
+  subscribeToPushSubscriptions
 } from '../services/centralSync';
+import {
+  isPushSupported,
+  getNotificationPermissionState,
+  getOrCreatePushDeviceId,
+  getTrackedBookingCodes,
+  addTrackedBookingCode,
+  getStoredPushEnabled,
+  registerPushServiceWorker,
+  enableDevicePushNotifications,
+  disableDevicePushNotifications,
+  syncTrackedBookingWithPush,
+  sendBookingPushNotification,
+  showLocalServiceWorkerNotification,
+} from '../services/pushNotifications';
 import { testFirestoreConnection } from '../firebase';
 import {
   formatSlotHour,
@@ -177,6 +192,30 @@ interface AppContextType {
   generateWhatsAppMessage: (booking: Booking) => string;
   getWhatsAppShareUrl: (booking: Booking) => string;
   triggerWhatsAppSend: (booking: Booking) => void;
+
+  // Web Push (Service Worker) notifications
+  pushSupported: boolean;
+  pushPermission: NotificationPermission | 'unsupported';
+  isPushEnabled: boolean;
+  trackedBookingCodes: string[];
+  enablePushNotifications: (opts?: {
+    bookingCode?: string;
+    clientPhone?: string;
+    clientName?: string;
+    silentWelcome?: boolean;
+  }) => Promise<{
+    ok: boolean;
+    permission: NotificationPermission | 'unsupported';
+    hasWebPushEndpoint: boolean;
+    message: string;
+  }>;
+  disablePushNotifications: () => Promise<void>;
+  sendManualBookingPush: (
+    booking: Booking,
+    customTitle?: string,
+    customBody?: string
+  ) => Promise<{ ok: boolean; sentCount: number; matchedCount: number }>;
+  hasBookingPushSubscription: (booking: Booking) => boolean;
   
   // DB tools
   exportDatabaseJson: () => string;
@@ -300,6 +339,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTab, setActiveTab] = useState<string>('turnos');
   const [selectedEstablishmentKey, setSelectedEstablishmentKey] = useState<string | null>(null);
+
+  // Web Push Notifications State
+  const pushSupported = isPushSupported();
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | 'unsupported'>(() =>
+    getNotificationPermissionState()
+  );
+  const [isPushEnabled, setIsPushEnabled] = useState<boolean>(() => {
+    const perm = getNotificationPermissionState();
+    return perm === 'granted' && getStoredPushEnabled();
+  });
+  const [trackedBookingCodes, setTrackedBookingCodes] = useState<string[]>(() => getTrackedBookingCodes());
+  const [pushSubscriptions, setPushSubscriptions] = useState<PushSubscriptionRecord[]>([]);
+  const prevBookingStatusRef = useRef<Map<string, { status: string; paymentStatus: string }>>(new Map());
 
   // Admin Authentication State
   const [currentAdminUser, setCurrentAdminUser] = useState<AdminUser | null>(() => {
@@ -487,6 +539,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setLastSyncTime(new Date());
     });
 
+    // 8. Subscribe to Push Subscriptions (para que el panel sepa si el jugador activó Push)
+    const unsubPushSubs = subscribeToPushSubscriptions((remoteSubs) => {
+      setPushSubscriptions(remoteSubs);
+    });
+
     return () => {
       unsubCourts();
       unsubBookings();
@@ -496,8 +553,134 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubDevContact();
       unsubSiteContent();
       unsubAdmins();
+      unsubPushSubs();
     };
   }, [currentAdminUser?.username]);
+
+  // Registrar Service Worker al iniciar y sincronizar permisos Push
+  useEffect(() => {
+    if (!pushSupported) return;
+    registerPushServiceWorker().then(async (reg) => {
+      const currentPerm = getNotificationPermissionState();
+      setPushPermission(currentPerm);
+      if (currentPerm === 'granted' && getStoredPushEnabled()) {
+        setIsPushEnabled(true);
+        if (reg && 'pushManager' in reg) {
+          const existing = await reg.pushManager.getSubscription().catch(() => null);
+          if (!existing) {
+            enableDevicePushNotifications({ silentWelcome: true }).catch(() => {});
+          }
+        }
+      }
+    });
+  }, [pushSupported]);
+
+  // Detectar cambios en reservas seguidas por este dispositivo (aviso local por SW si está abierta la pestaña)
+  useEffect(() => {
+    const myDeviceId = getOrCreatePushDeviceId();
+    const prevMap = prevBookingStatusRef.current;
+
+    if (prevMap.size === 0) {
+      bookings.forEach((b) => {
+        prevMap.set(b.id, { status: b.status, paymentStatus: b.paymentStatus });
+      });
+      return;
+    }
+
+    const canNotifyLocally =
+      !isAdminAuthenticated &&
+      pushSupported &&
+      Notification.permission === 'granted' &&
+      isPushEnabled;
+
+    bookings.forEach((b) => {
+      const prev = prevMap.get(b.id);
+      if (prev && (prev.status !== b.status || prev.paymentStatus !== b.paymentStatus)) {
+        const isMine =
+          b.pushDeviceId === myDeviceId ||
+          trackedBookingCodes.includes((b.bookingCode || '').toUpperCase());
+
+        if (canNotifyLocally && isMine) {
+          if (b.status === 'confirmed' && prev.status !== 'confirmed') {
+            showLocalServiceWorkerNotification({
+              title: `Turno confirmado #${b.bookingCode}`,
+              body: `${b.courtName} · ${b.date} ${b.startTime} hs. ${b.balanceDue > 0 ? `Saldo en cancha: $${b.balanceDue.toLocaleString('es-AR')}.` : 'Pago acreditado 100%.'}`,
+              tag: `booking-${b.bookingCode}-payment_confirmed`,
+              bookingCode: b.bookingCode,
+              status: 'payment_confirmed',
+            });
+          } else if (b.status === 'cancelled' && prev.status !== 'cancelled') {
+            showLocalServiceWorkerNotification({
+              title: `Turno cancelado #${b.bookingCode}`,
+              body: `${b.courtName} (${b.date} ${b.startTime} hs) fue cancelado.`,
+              tag: `booking-${b.bookingCode}-booking_cancelled`,
+              bookingCode: b.bookingCode,
+              status: 'booking_cancelled',
+            });
+          } else if (b.paymentStatus === 'total_pagado' && prev.paymentStatus !== 'total_pagado') {
+            showLocalServiceWorkerNotification({
+              title: `Saldo completado #${b.bookingCode}`,
+              body: `Tu turno en ${b.courtName} (${b.date} ${b.startTime} hs) quedó 100% pagado.`,
+              tag: `booking-${b.bookingCode}-balance_paid`,
+              bookingCode: b.bookingCode,
+              status: 'balance_paid',
+            });
+          }
+        }
+      }
+      prevMap.set(b.id, { status: b.status, paymentStatus: b.paymentStatus });
+    });
+  }, [bookings, isAdminAuthenticated, pushSupported, isPushEnabled, trackedBookingCodes]);
+
+  const enablePushNotifications = useCallback(async (opts?: {
+    bookingCode?: string;
+    clientPhone?: string;
+    clientName?: string;
+    silentWelcome?: boolean;
+  }) => {
+    const res = await enableDevicePushNotifications({
+      bookingCode: opts?.bookingCode,
+      clientPhone: opts?.clientPhone || userPhone,
+      clientName: opts?.clientName || userName,
+      silentWelcome: opts?.silentWelcome,
+    });
+    setPushPermission(res.permission);
+    setIsPushEnabled(res.ok);
+    setTrackedBookingCodes(getTrackedBookingCodes());
+    return res;
+  }, [userPhone, userName]);
+
+  const disablePushNotifications = useCallback(async () => {
+    await disableDevicePushNotifications();
+    setIsPushEnabled(false);
+    setPushPermission(getNotificationPermissionState());
+  }, []);
+
+  const sendManualBookingPush = useCallback(async (
+    booking: Booking,
+    customTitle?: string,
+    customBody?: string
+  ) => {
+    return sendBookingPushNotification({
+      booking,
+      eventType: 'admin_reminder',
+      customTitle,
+      customBody,
+    });
+  }, []);
+
+  const hasBookingPushSubscription = useCallback((booking: Booking): boolean => {
+    const codeUpper = (booking.bookingCode || '').trim().toUpperCase();
+    const digits = (booking.clientPhone || '').replace(/\D/g, '').slice(-10);
+    return pushSubscriptions.some((sub) => {
+      if (!sub.enabled) return false;
+      if (booking.pushDeviceId && sub.deviceId === booking.pushDeviceId) return true;
+      if (codeUpper && sub.bookingCodes?.some((c) => c.trim().toUpperCase() === codeUpper)) return true;
+      const subDigits = (sub.clientPhone || '').replace(/\D/g, '').slice(-10);
+      if (digits && subDigits && digits === subDigits) return true;
+      return false;
+    });
+  }, [pushSubscriptions]);
 
   // Fetch full cloud data on demand
   const refreshFromCloud = useCallback(async () => {
@@ -962,6 +1145,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? 'pendiente_mostrador'
       : (input.isDepositOnly ? 'seña_pagada' : 'total_pagado');
     const bookingCode = `PMY-${Math.floor(1000 + Math.random() * 9000)}`;
+    const deviceId = !isAdminAuthenticated ? getOrCreatePushDeviceId() : undefined;
 
     const newBooking: Booking = {
       id: `bk-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -990,6 +1174,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       whatsappSent: bookingStatus === 'confirmed',
       whatsappSentAt: bookingStatus === 'confirmed' ? new Date().toISOString() : undefined,
       adminId: ownerAdminId,
+      ...(deviceId ? { pushDeviceId: deviceId } : {}),
     };
 
     const nextBookings = [newBooking, ...bookings];
@@ -1005,6 +1190,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUserPhone(input.clientPhone);
     setUserName(input.clientName);
     setUserEmail(input.clientEmail);
+
+    if (!isAdminAuthenticated) {
+      const updatedCodes = addTrackedBookingCode(bookingCode);
+      setTrackedBookingCodes(updatedCodes);
+      syncTrackedBookingWithPush({
+        bookingCode,
+        clientPhone: input.clientPhone,
+        clientName: input.clientName,
+      });
+    }
 
     if (bookingStatus === 'confirmed') {
       // Auto record WhatsApp log
@@ -1025,16 +1220,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return next;
       });
 
-      // Confetti celebration
-      try {
-        confetti({
-          particleCount: 80,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
-      } catch {
-        // Ignore
-      }
+      sendBookingPushNotification({ booking: newBooking, eventType: 'payment_confirmed' });
+    } else if (!newBooking.clientName.startsWith('[BLOQUEADO')) {
+      sendBookingPushNotification({ booking: newBooking, eventType: 'booking_created' });
     }
 
     return newBooking;
@@ -1058,6 +1246,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(nextBookings));
     } catch {}
     saveBookingToFirestore(updated);
+
+    sendBookingPushNotification({ booking: updated, eventType: 'receipt_submitted' });
     
     return updated;
   }, [bookings]);
@@ -1110,10 +1300,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
     saveBookingToFirestore(confirmed);
 
-    // Confetti celebration
-    try {
-      confetti({ particleCount: 90, spread: 80, origin: { y: 0.6 } });
-    } catch {}
+    sendBookingPushNotification({ booking: confirmed, eventType: 'payment_confirmed' });
 
     // Auto record WhatsApp log and open message
     const preview = generateWhatsAppMessage(confirmed);
@@ -1255,6 +1442,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    sendBookingPushNotification({
+      booking: targetBooking,
+      eventType: 'booking_cancelled',
+      mpRefunded,
+    });
+
     return {
       success: true,
       mpRefunded,
@@ -1287,6 +1480,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBookings(updated);
     if (targetBooking) {
       saveBookingToFirestore(targetBooking);
+      sendBookingPushNotification({ booking: targetBooking, eventType: 'balance_paid' });
     }
   }, [bookings]);
 
@@ -1644,6 +1838,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     generateWhatsAppMessage,
     getWhatsAppShareUrl,
     triggerWhatsAppSend,
+    pushSupported,
+    pushPermission,
+    isPushEnabled,
+    trackedBookingCodes,
+    enablePushNotifications,
+    disablePushNotifications,
+    sendManualBookingPush,
+    hasBookingPushSubscription,
     exportDatabaseJson,
     importDatabaseJson,
     resetDatabase,
@@ -1705,6 +1907,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     generateWhatsAppMessage,
     getWhatsAppShareUrl,
     triggerWhatsAppSend,
+    pushSupported,
+    pushPermission,
+    isPushEnabled,
+    trackedBookingCodes,
+    enablePushNotifications,
+    disablePushNotifications,
+    sendManualBookingPush,
+    hasBookingPushSubscription,
     exportDatabaseJson,
     importDatabaseJson,
     resetDatabase,

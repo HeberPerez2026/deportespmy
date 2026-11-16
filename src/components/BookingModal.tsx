@@ -26,8 +26,12 @@ import {
   FileCheck,
   PauseCircle,
   AlertTriangle,
-  Landmark
+  Landmark,
+  Bell,
+  BellRing,
+  Download
 } from 'lucide-react';
+import { downloadBookingReceiptPng } from '../utils/receiptDownload';
 
 interface BookingModalProps {
   court: Court;
@@ -51,7 +55,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     userEmail,
     getAdminIdForCourt,
     getBusinessProfileForCourt,
-    setActiveTab
+    setActiveTab,
+    pushSupported,
+    pushPermission,
+    isPushEnabled,
+    enablePushNotifications
   } = useApp();
 
   const effectiveProfile = getBusinessProfileForCourt(court);
@@ -87,6 +95,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const [isSubmittingReceipt, setIsSubmittingReceipt] = useState(false);
+  const [pushFeedback, setPushFeedback] = useState<string | null>(null);
+  const [isActivatingPush, setIsActivatingPush] = useState(false);
 
   // Available slots for selected date (scoped estrictamente a hora_inicio..hora_fin)
   const slots = getSlotsForCourtAndDate(court.id, selectedDate);
@@ -126,6 +136,30 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
       setPaymentMethod('mercadopago');
     }
   }, [paymentMethod, isMpAvailable, isTransferAvailable]);
+
+  // Live Firestore sync while viewing Step 4 (for manual transfers approved/cancelled in real time)
+  useEffect(() => {
+    if (step !== 4 || !confirmedBooking) return;
+    const synced = bookings.find(
+      (b) =>
+        b.id === confirmedBooking.id ||
+        b.bookingCode.toUpperCase() === confirmedBooking.bookingCode.toUpperCase()
+    );
+    if (!synced) return;
+    if (
+      synced.status !== confirmedBooking.status ||
+      synced.paymentStatus !== confirmedBooking.paymentStatus ||
+      synced.paymentReference !== confirmedBooking.paymentReference ||
+      synced.amountPaid !== confirmedBooking.amountPaid ||
+      synced.balanceDue !== confirmedBooking.balanceDue
+    ) {
+      setConfirmedBooking(synced);
+      if (synced.status === 'confirmed' || synced.status === 'cancelled') {
+        setIsWaitingForConfirmation(false);
+        setMpCheckoutUrl(null);
+      }
+    }
+  }, [step, bookings, confirmedBooking]);
 
   // Real-time automatic verification watcher when waiting for Checkout Pro OAuth confirmation
   useEffect(() => {
@@ -449,7 +483,6 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                     value={selectedDate}
                     onChange={(e) => setSelectedDate(e.target.value)}
                     className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg px-3.5 py-2.5 text-sm font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-                    style={{ colorScheme: 'dark' }}
                   />
                 </div>
 
@@ -1084,7 +1117,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
 
           {/* STEP 4: Success / Waiting / Pending Verification */}
           {step === 4 && confirmedBooking && (
-            <div className="space-y-6 text-center py-2">
+            <div className="space-y-5 text-center py-2">
               
               <div className="flex flex-col items-center justify-center">
                 {isWaitingForConfirmation ? (
@@ -1099,6 +1132,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   <div className="w-16 h-16 bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
                     <CheckCircle className="w-10 h-10" />
                   </div>
+                ) : confirmedBooking.status === 'cancelled' ? (
+                  <div className="w-16 h-16 bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/40 rounded-full flex items-center justify-center mx-auto">
+                    <AlertTriangle className="w-9 h-9" />
+                  </div>
                 ) : (
                   <div className="w-16 h-16 bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/40 rounded-full flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20">
                     <Clock className="w-10 h-10 animate-pulse" />
@@ -1106,18 +1143,35 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 )}
               </div>
 
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div>
                 <span className={`text-xs font-semibold ${
-                  isWaitingForConfirmation ? 'text-sky-600 dark:text-sky-400' : 
-                  confirmedBooking.status === 'confirmed' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+                  isWaitingForConfirmation
+                    ? 'text-sky-600 dark:text-sky-400'
+                    : confirmedBooking.status === 'confirmed'
+                    ? 'text-emerald-600 dark:text-emerald-400'
+                    : confirmedBooking.status === 'cancelled'
+                    ? 'text-rose-600 dark:text-rose-400'
+                    : 'text-amber-600 dark:text-amber-400'
                 }`}>
-                  {isWaitingForConfirmation ? 'Esperando confirmación de pago' : 
-                   confirmedBooking.status === 'confirmed' ? 'Reserva exitosa y pago acreditado' : 'Reserva pendiente de verificación'}
+                  {isWaitingForConfirmation
+                    ? 'Esperando confirmación de pago'
+                    : confirmedBooking.status === 'confirmed'
+                    ? 'Reserva confirmada y acreditada'
+                    : confirmedBooking.status === 'cancelled'
+                    ? 'Turno cancelado'
+                    : confirmedBooking.status === 'awaiting_approval'
+                    ? 'Comprobante enviado · En revisión'
+                    : 'Reserva pendiente de verificación'}
                 </span>
                 
                 <h3 className="text-2xl font-bold font-heading mt-1">
-                  {isWaitingForConfirmation ? 'Procesando en Mercado Pago' : 
-                   confirmedBooking.status === 'confirmed' ? `Turno Confirmado #${confirmedBooking.bookingCode}` : `Turno Reservado #${confirmedBooking.bookingCode}`}
+                  {isWaitingForConfirmation
+                    ? 'Procesando en Mercado Pago'
+                    : confirmedBooking.status === 'confirmed'
+                    ? `Turno Confirmado #${confirmedBooking.bookingCode}`
+                    : confirmedBooking.status === 'cancelled'
+                    ? `Reserva Cancelada #${confirmedBooking.bookingCode}`
+                    : `Turno Reservado #${confirmedBooking.bookingCode}`}
                 </h3>
                 
                 <p className="text-xs text-[var(--text-secondary)] mt-2 max-w-md mx-auto leading-relaxed">
@@ -1128,11 +1182,59 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                       ? 'Copiamos el Alias a tu portapapeles. Abrí Mercado Pago, realizá la transferencia y adjuntá el comprobante abajo para que el club lo apruebe.'
                       : 'Estamos esperando a que realices la transferencia. Adjuntá el comprobante abajo para confirmar tu turno.'
                   ) : confirmedBooking.status === 'confirmed' ? (
-                    `Tu turno en ${confirmedBooking.courtName} quedó reservado para el ${confirmedBooking.date} de ${confirmedBooking.startTime} a ${confirmedBooking.endTime} hs.`
+                    `Tu turno en ${confirmedBooking.courtName} quedó confirmado para el ${confirmedBooking.date} de ${confirmedBooking.startTime} a ${confirmedBooking.endTime} hs.`
+                  ) : confirmedBooking.status === 'cancelled' ? (
+                    'Esta reserva fue cancelada y el horario volvió a quedar disponible.'
+                  ) : confirmedBooking.status === 'awaiting_approval' ? (
+                    'El club ya recibió tu comprobante. En cuanto el administrador apruebe la acreditación, te avisaremos por Push y WhatsApp.'
                   ) : (
-                    'Tu reserva ha sido registrada como pendiente. El club verificará el depósito y confirmará el turno a la brevedad. Recibirás un mensaje por WhatsApp.'
+                    'Tu reserva fue registrada como pendiente. Adjuntá el comprobante de transferencia o avisá al club para confirmarla.'
                   )}
                 </p>
+              </div>
+
+              {/* 3-Step Visual Status Timeline */}
+              <div className="max-w-md mx-auto grid grid-cols-3 gap-2 p-3 rounded-lg bg-[var(--bg-canvas)] border border-[var(--border-hairline)] text-[11px]">
+                <div className="flex flex-col items-center gap-1">
+                  <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                    <Check className="w-3.5 h-3.5" />
+                  </span>
+                  <span className="font-semibold text-[var(--text-primary)]">1. Registrada</span>
+                </div>
+
+                <div className="flex flex-col items-center gap-1">
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold ${
+                    confirmedBooking.status === 'confirmed'
+                      ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                      : confirmedBooking.status === 'cancelled'
+                      ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400'
+                      : 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                  }`}>
+                    {confirmedBooking.status === 'confirmed' ? <Check className="w-3.5 h-3.5" /> : '2'}
+                  </span>
+                  <span className="font-semibold text-[var(--text-primary)]">
+                    {confirmedBooking.status === 'awaiting_approval'
+                      ? '2. En revisión'
+                      : confirmedBooking.status === 'confirmed'
+                      ? '2. Pago OK'
+                      : '2. Pago'}
+                  </span>
+                </div>
+
+                <div className="flex flex-col items-center gap-1">
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center font-bold ${
+                    confirmedBooking.status === 'confirmed'
+                      ? 'bg-[var(--accent)] text-[var(--accent-ink)]'
+                      : confirmedBooking.status === 'cancelled'
+                      ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400'
+                      : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
+                  }`}>
+                    {confirmedBooking.status === 'confirmed' ? <Check className="w-3.5 h-3.5" /> : '3'}
+                  </span>
+                  <span className={`font-semibold ${confirmedBooking.status === 'confirmed' ? 'text-[var(--accent-soft-text)]' : 'text-[var(--text-muted)]'}`}>
+                    {confirmedBooking.status === 'cancelled' ? '3. Cancelada' : '3. Confirmada'}
+                  </span>
+                </div>
               </div>
 
               {isWaitingForConfirmation && hasAutomaticMP && confirmedBooking.paymentMethod === 'mercadopago' && (
@@ -1182,13 +1284,17 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
               {/* Clean Reservation Details Summary */}
               <div className="max-w-md mx-auto bg-[var(--bg-canvas)] p-4 rounded-lg border border-[var(--border-hairline)] text-left space-y-2.5 text-xs text-[var(--text-secondary)]">
                 <div className="flex items-center justify-between pb-2 border-b border-[var(--border-hairline)]">
-                  <span className="font-semibold text-[var(--text-primary)]">Detalles del turno</span>
+                  <span className="font-semibold text-[var(--text-primary)]">Comprobante digital</span>
                   <span className="font-mono text-[var(--accent-soft-text)] font-bold">
                     #{confirmedBooking.bookingCode}
                   </span>
                 </div>
 
                 <div className="space-y-1.5">
+                  <div className="flex justify-between">
+                    <span>Complejo:</span>
+                    <strong className="text-[var(--text-primary)]">{effectiveProfile.complexName}</strong>
+                  </div>
                   <div className="flex justify-between">
                     <span>Cancha:</span>
                     <strong className="text-[var(--text-primary)]">{confirmedBooking.courtName}</strong>
@@ -1202,6 +1308,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   <div className="flex justify-between">
                     <span>Titular:</span>
                     <strong className="text-[var(--text-primary)]">{confirmedBooking.clientName}</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Referencia / Op.:</span>
+                    <strong className="font-mono text-[var(--text-primary)]">
+                      {confirmedBooking.paymentReference || `#${confirmedBooking.bookingCode}`}
+                    </strong>
                   </div>
                   <div className="flex justify-between">
                     <span>Total cancha:</span>
@@ -1218,7 +1330,72 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                     </div>
                   )}
                 </div>
+
+                <div className="pt-2 border-t border-[var(--border-hairline)]">
+                  <button
+                    type="button"
+                    onClick={() => downloadBookingReceiptPng(confirmedBooking, effectiveProfile.complexName)}
+                    className="w-full py-2 px-3 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs flex items-center justify-center gap-1.5 border border-[var(--border-hairline)] transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-[var(--accent-soft-text)]" />
+                    <span>Descargar comprobante (.png)</span>
+                  </button>
+                </div>
               </div>
+
+              {/* Web Push Notifications Opt-in Box */}
+              {pushSupported && (
+                <div className="max-w-md mx-auto p-3.5 bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg text-left space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-[var(--accent-soft)] text-[var(--accent-soft-text)] flex items-center justify-center shrink-0">
+                        {isPushEnabled ? <BellRing className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-[var(--text-primary)]">
+                          {isPushEnabled
+                            ? `Avisos Push activos para #${confirmedBooking.bookingCode}`
+                            : 'Recibir avisos Push en este dispositivo'}
+                        </p>
+                        <p className="text-[11px] text-[var(--text-secondary)]">
+                          {pushPermission === 'denied'
+                            ? 'Notificaciones bloqueadas en el navegador. Habilitalas en ajustes del sitio.'
+                            : isPushEnabled
+                            ? 'Te notificaremos directo en este dispositivo cuando el club apruebe o actualice tu reserva.'
+                            : 'Enterate al instante cuando se confirme el pago o haya cambios en el turno.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {pushPermission !== 'denied' && (
+                      <button
+                        type="button"
+                        disabled={isActivatingPush}
+                        onClick={async () => {
+                          setIsActivatingPush(true);
+                          const res = await enablePushNotifications({
+                            bookingCode: confirmedBooking.bookingCode,
+                            clientPhone: confirmedBooking.clientPhone,
+                            clientName: confirmedBooking.clientName,
+                          });
+                          setPushFeedback(res.message);
+                          setIsActivatingPush(false);
+                        }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-colors cursor-pointer ${
+                          isPushEnabled
+                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30'
+                            : 'bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)]'
+                        }`}
+                      >
+                        {isActivatingPush ? 'Activando...' : isPushEnabled ? 'Sincronizado' : 'Activar'}
+                      </button>
+                    )}
+                  </div>
+                  {pushFeedback && (
+                    <p className="text-[11px] text-[var(--accent-soft-text)] font-medium">{pushFeedback}</p>
+                  )}
+                </div>
+              )}
 
               {/* Payment Receipt Badge */}
               <div className="max-w-md mx-auto p-4 bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg text-left space-y-2">
@@ -1231,7 +1408,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                     )}
                   </span>
                   <span className="text-[11px] text-[var(--accent-soft-text)] font-semibold">
-                    {confirmedBooking.paymentStatus === 'total_pagado' ? 'Total 100% pagado' : confirmedBooking.status === 'confirmed' ? 'Seña 50% abonada' : 'Pago pendiente'}
+                    {confirmedBooking.status === 'cancelled'
+                      ? 'Reserva cancelada'
+                      : confirmedBooking.paymentStatus === 'total_pagado'
+                      ? 'Total 100% pagado'
+                      : confirmedBooking.status === 'confirmed'
+                      ? 'Seña 50% abonada'
+                      : 'Pago pendiente'}
                   </span>
                 </div>
                 <div className="text-xs text-[var(--text-secondary)] flex justify-between">

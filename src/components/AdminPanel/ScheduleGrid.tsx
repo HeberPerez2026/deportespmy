@@ -17,7 +17,8 @@ import {
   CreditCard,
   DollarSign,
   Loader2,
-  RotateCcw
+  RotateCcw,
+  Bell
 } from 'lucide-react';
 
 export const ScheduleGrid: React.FC = () => {
@@ -33,7 +34,9 @@ export const ScheduleGrid: React.FC = () => {
     blockTimeSlot,
     unblockTimeSlot,
     triggerWhatsAppSend,
-    confirmBookingPayment
+    confirmBookingPayment,
+    sendManualBookingPush,
+    hasBookingPushSubscription
   } = useApp();
 
   // Selected item modal states
@@ -56,19 +59,20 @@ export const ScheduleGrid: React.FC = () => {
   const [refundError, setRefundError] = useState<string | null>(null);
   const [notifyClientOnRefund, setNotifyClientOnRefund] = useState(true);
   const [refundFeedback, setRefundFeedback] = useState<string | null>(null);
+  const [isSendingPush, setIsSendingPush] = useState(false);
 
   const hours = getUnionHoursRange(courts);
 
   const pendingBookingsForDate = bookings.filter(b => b.date === selectedDate && b.status === 'pending_payment');
 
   const handleSlotClick = (court: Court, slot: TimeSlot) => {
-    // Check if slot has an existing booking (confirmed, pending, or blocked)
+    // Check if slot has an existing active booking (confirmed, pending, or blocked)
     const booking = slot.bookingId 
       ? bookings.find(item => item.id === slot.bookingId || item.bookingCode === slot.bookingId)
       : bookings.find(item => item.courtId === court.id && item.date === slot.date && item.startTime === slot.startTime);
 
     if (slot.status === 'booked' || slot.status === 'blocked' || slot.status === 'pending' || booking) {
-      if (booking) {
+      if (booking && booking.status !== 'cancelled') {
         setActiveBookingDetails(booking);
         return;
       }
@@ -135,12 +139,12 @@ export const ScheduleGrid: React.FC = () => {
   return (
     <div className="space-y-4">
       {refundFeedback && (
-        <div className="bg-emerald-500/15 border border-emerald-500/35 text-emerald-200 rounded-2xl p-3.5 text-xs font-bold flex items-center justify-between gap-2 shadow-sm">
+        <div className="bg-emerald-500/15 border border-emerald-500/35 text-emerald-800 dark:text-emerald-200 rounded-2xl p-3.5 text-xs font-bold flex items-center justify-between gap-2 shadow-sm">
           <div className="flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+            <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>{refundFeedback}</span>
           </div>
-          <button onClick={() => setRefundFeedback(null)} className="text-emerald-300 hover:text-emerald-100 cursor-pointer">
+          <button onClick={() => setRefundFeedback(null)} className="text-emerald-700 dark:text-emerald-300 hover:opacity-80 cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -182,11 +186,11 @@ export const ScheduleGrid: React.FC = () => {
       {/* Pending Bookings Alert Banner */}
       {pendingBookingsForDate.length > 0 && (
         <div className="bg-amber-500/15 border border-amber-500/35 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-2 text-amber-200 font-semibold">
-            <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+          <div className="flex items-center gap-2 text-amber-900 dark:text-amber-200 font-semibold">
+            <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
             <span>Hay {pendingBookingsForDate.length} {pendingBookingsForDate.length === 1 ? 'turno reservado pendiente' : 'turnos reservados pendientes'} de confirmación para el {selectedDate}.</span>
           </div>
-          <span className="text-[11px] text-amber-300/90">
+          <span className="text-[11px] text-amber-800 dark:text-amber-300/90">
             Hacé clic en los casilleros amarillos para verificar el pago y confirmarlo.
           </span>
         </div>
@@ -576,18 +580,53 @@ export const ScheduleGrid: React.FC = () => {
                   )}
                 </div>
 
+                {/* Estado de notificaciones Push en dispositivo del jugador */}
+                <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)]">
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[var(--text-secondary)]">
+                    <Bell className="w-3.5 h-3.5 text-[var(--accent-soft-text)]" />
+                    <span>Notificaciones Push:</span>
+                    <strong className={hasBookingPushSubscription(activeBookingDetails) ? 'text-emerald-600 dark:text-emerald-400' : 'text-[var(--text-muted)]'}>
+                      {hasBookingPushSubscription(activeBookingDetails) ? 'Activas en dispositivo' : 'Sin suscripción Push'}
+                    </strong>
+                  </span>
+                  {hasBookingPushSubscription(activeBookingDetails) && (
+                    <button
+                      type="button"
+                      disabled={isSendingPush}
+                      onClick={async () => {
+                        setIsSendingPush(true);
+                        const res = await sendManualBookingPush(activeBookingDetails);
+                        setIsSendingPush(false);
+                        setRefundFeedback(
+                          res.sentCount > 0
+                            ? `Aviso Push enviado al dispositivo del jugador (#${activeBookingDetails.bookingCode}).`
+                            : 'No se encontró suscripción Push activa para este dispositivo.'
+                        );
+                        setTimeout(() => setRefundFeedback(null), 5000);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-[var(--accent-soft)] hover:opacity-85 text-[var(--accent-soft-text)] font-bold text-[10px] cursor-pointer disabled:opacity-50"
+                    >
+                      {isSendingPush ? 'Enviando...' : 'Enviar Push'}
+                    </button>
+                  )}
+                </div>
+
                 {/* Action buttons */}
                 <div className="space-y-2 pt-1">
                   {(activeBookingDetails.status === 'pending_payment' || activeBookingDetails.status === 'awaiting_approval') && (
                     <button
+                      type="button"
                       onClick={() => {
+                        const approvedCode = activeBookingDetails.bookingCode;
                         const paidAmount = activeBookingDetails.totalAmount * (activeBookingDetails.isDepositOnly ? 0.5 : 1);
-                        const confirmed = confirmBookingPayment(
-                          activeBookingDetails.id, 
-                          `VERIFIED-ADMIN-${Date.now().toString().slice(-4)}`, 
+                        confirmBookingPayment(
+                          activeBookingDetails.id,
+                          `VERIFIED-ADMIN-${Date.now().toString().slice(-4)}`,
                           paidAmount
                         );
-                        if (confirmed) setActiveBookingDetails(confirmed);
+                        setActiveBookingDetails(null);
+                        setRefundFeedback(`Turno #${approvedCode} aprobado y confirmado correctamente.`);
+                        setTimeout(() => setRefundFeedback(null), 6000);
                       }}
                       className="w-full py-3 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md"
                     >
@@ -598,9 +637,13 @@ export const ScheduleGrid: React.FC = () => {
 
                   {activeBookingDetails.balanceDue > 0 && activeBookingDetails.status === 'confirmed' && (
                     <button
+                      type="button"
                       onClick={() => {
+                        const code = activeBookingDetails.bookingCode;
                         collectBalanceAtCourt(activeBookingDetails.id);
-                        setActiveBookingDetails(prev => prev ? { ...prev, amountPaid: prev.totalAmount, balanceDue: 0, paymentStatus: 'total_pagado' } : null);
+                        setActiveBookingDetails(null);
+                        setRefundFeedback(`Saldo cobrado para el turno #${code}. Quedó saldado 100%.`);
+                        setTimeout(() => setRefundFeedback(null), 5000);
                       }}
                       className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-[#090D12] font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md"
                     >
@@ -611,6 +654,7 @@ export const ScheduleGrid: React.FC = () => {
 
                   <div className="flex gap-2">
                     <button
+                      type="button"
                       onClick={() => triggerWhatsAppSend(activeBookingDetails)}
                       className="flex-1 py-2.5 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/35 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
                     >
@@ -619,6 +663,7 @@ export const ScheduleGrid: React.FC = () => {
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => {
                         setRefundError(null);
                         setNotifyClientOnRefund(true);
@@ -686,19 +731,30 @@ export const ScheduleGrid: React.FC = () => {
               </div>
             </div>
 
-            <div className={`p-3 rounded-2xl text-xs leading-relaxed border ${
-              cancelConfirmBooking.amountPaid > 0 && cancelConfirmBooking.paymentMethod === 'mercadopago'
-                ? 'bg-sky-500/15 border-sky-500/35 text-sky-800 dark:text-sky-200'
-                : 'bg-amber-500/15 border-amber-500/35 text-amber-900 dark:text-amber-200'
-            }`}>
-              {cancelConfirmBooking.amountPaid <= 0 ? (
-                <span>Este turno no registra dinero acreditado aún. Al confirmar se cancelará y el horario quedará libre inmediatamente.</span>
-              ) : cancelConfirmBooking.paymentMethod === 'mercadopago' ? (
-                <span>Al confirmar, el sistema solicitará a <strong>Mercado Pago</strong> el reembolso automático de <strong>${cancelConfirmBooking.amountPaid.toLocaleString('es-AR')}</strong> hacia el jugador (si fue abonado con Checkout Pro) y liberará el horario.</span>
-              ) : (
-                <span>Al confirmar, el turno pasará a estado <strong>Reembolsado (${cancelConfirmBooking.amountPaid.toLocaleString('es-AR')})</strong>, se liberará la cancha y deberás transferir/entregar la devolución al jugador.</span>
-              )}
-            </div>
+            {(() => {
+              const isCheckoutProAuto = Boolean(
+                cancelConfirmBooking.amountPaid > 0 &&
+                cancelConfirmBooking.paymentMethod === 'mercadopago' &&
+                /^MP-\d{5,}$/.test(cancelConfirmBooking.paymentReference || '')
+              );
+              return (
+                <div className={`p-3 rounded-2xl text-xs leading-relaxed border ${
+                  isCheckoutProAuto
+                    ? 'bg-sky-500/15 border-sky-500/35 text-sky-800 dark:text-sky-200'
+                    : 'bg-amber-500/15 border-amber-500/35 text-amber-900 dark:text-amber-200'
+                }`}>
+                  {cancelConfirmBooking.amountPaid <= 0 ? (
+                    <span>Este turno no registra dinero acreditado aún. Al confirmar se cancelará y el horario quedará libre inmediatamente.</span>
+                  ) : isCheckoutProAuto ? (
+                    <span>Al confirmar, el sistema solicitará a <strong>Mercado Pago (Checkout Pro)</strong> el reembolso automático de <strong>${cancelConfirmBooking.amountPaid.toLocaleString('es-AR')}</strong> hacia el jugador y liberará el horario.</span>
+                  ) : (
+                    <span>
+                      Los pagos realizados por <strong>CBU, Alias o transferencia directa</strong> no permiten devolución bancaria automática. Al confirmar, el turno pasará a estado <strong>Reembolsado (${cancelConfirmBooking.amountPaid.toLocaleString('es-AR')})</strong>, se liberará la cancha y deberás transferir el dinero manualmente al jugador.
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
 
             <label className="flex items-center gap-2 text-xs font-semibold text-[var(--text-secondary)] cursor-pointer select-none">
               <input

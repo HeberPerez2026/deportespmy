@@ -7,7 +7,7 @@ import {
   onSnapshot 
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Booking, Review, Court, BusinessProfile, AdminUser, DeveloperContact, SiteContent } from '../types';
+import { Booking, Review, Court, BusinessProfile, AdminUser, DeveloperContact, SiteContent, PushSubscriptionRecord } from '../types';
 import { normalizeCourtSchedule } from '../utils/scheduleHours';
 
 export enum OperationType {
@@ -460,5 +460,49 @@ export const fetchAllCollectionDocs = async <T>(collName: string): Promise<T[]> 
   } catch (err) {
     console.warn(`[Firestore] Fetch ${collName} error:`, err);
     return [];
+  }
+};
+
+// Save or update PushSubscription in Firestore
+export const savePushSubscriptionToFirestore = async (sub: PushSubscriptionRecord): Promise<boolean> => {
+  try {
+    await setDoc(doc(db, 'pushSubscriptions', sub.id), sub, { merge: true });
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Save pushSubscription error:', err);
+    return false;
+  }
+};
+
+// Delete PushSubscription in Firestore
+export const deletePushSubscriptionFromFirestore = async (subscriptionId: string): Promise<boolean> => {
+  try {
+    await deleteDoc(doc(db, 'pushSubscriptions', subscriptionId));
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Delete pushSubscription error:', err);
+    return false;
+  }
+};
+
+// Subscribe to pushSubscriptions collection (so admin knows which bookings have active push)
+export const subscribeToPushSubscriptions = (
+  onUpdate: (subs: PushSubscriptionRecord[]) => void
+): (() => void) => {
+  try {
+    return onSnapshot(
+      collection(db, 'pushSubscriptions'),
+      (snapshot) => {
+        const list: PushSubscriptionRecord[] = [];
+        snapshot.forEach((d) => list.push({ ...(d.data() as PushSubscriptionRecord), id: d.id }));
+        onUpdate(list);
+      },
+      (error) => {
+        console.warn('[Firestore] PushSubscriptions subscription error:', error);
+      }
+    );
+  } catch (err) {
+    console.warn('[Firestore] Error attaching pushSubscriptions listener:', err);
+    return () => {};
   }
 };

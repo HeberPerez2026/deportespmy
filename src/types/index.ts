@@ -82,6 +82,7 @@ export interface Booking {
   refundAmount?: number;
   refundedAt?: string;
   refundReference?: string;
+  pushDeviceId?: string;
 }
 
 export interface Review {
@@ -277,4 +278,27 @@ export interface WhatsAppNotificationLog {
   status: 'sent' | 'delivered' | 'read';
   adminId?: string;
   courtId?: string;
+}
+
+export type BookingPushEventType =
+  | 'booking_created'
+  | 'receipt_submitted'
+  | 'payment_confirmed'
+  | 'balance_paid'
+  | 'booking_cancelled'
+  | 'admin_reminder';
+
+export interface PushSubscriptionRecord {
+  id: string;
+  deviceId: string;
+  endpoint: string;
+  p256dh: string;
+  auth: string;
+  bookingCodes: string[];
+  clientPhone?: string;
+  clientName?: string;
+  enabled: boolean;
+  userAgent?: string;
+  createdAt: string;
+  updatedAt: string;
 }
