@@ -548,7 +548,9 @@ export function createApiApp() {
     const reqOrigin = getRequestOrigin(req);
     if (
       reqOrigin &&
-      (reqOrigin.endsWith('.run.app') ||
+      (reqOrigin === 'https://deportespmy.com.ar' ||
+        reqOrigin === 'https://www.deportespmy.com.ar' ||
+        reqOrigin.endsWith('.run.app') ||
         reqOrigin.endsWith('.onrender.com') ||
         reqOrigin.endsWith('.koyeb.app') ||
         reqOrigin.endsWith('.vercel.app') ||
