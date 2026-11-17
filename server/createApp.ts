@@ -607,6 +607,11 @@ function buildBookingPushContent(input: {
   mpRefunded?: boolean;
   customTitle?: string;
   customBody?: string;
+  missingPlayers?: number;
+  playerName?: string;
+  playerPhone?: string;
+  remainingPlayers?: number;
+  joinBookingCode?: string;
 }) {
   const code = input.bookingCode || 'PMY';
   const court = input.courtName || 'Tu cancha';
@@ -614,6 +619,9 @@ function buildBookingPushContent(input: {
   const balance = Number(input.balanceDue || 0);
   const paid = Number(input.amountPaid || 0);
   const refund = Number(input.refundAmount ?? paid);
+  const missing = Math.max(0, Number(input.missingPlayers || 0));
+  const remaining = Math.max(0, Number(input.remainingPlayers ?? 0));
+  const joinCode = (input.joinBookingCode || '').trim();
 
   let title = input.customTitle?.trim() || '';
   let body = input.customBody?.trim() || '';
@@ -642,6 +650,24 @@ function buildBookingPushContent(input: {
           ? `${court}${schedule ? ` (${schedule})` : ''} fue cancelado. ${input.mpRefunded ? `Se devolvieron $${refund.toLocaleString('es-AR')} por Mercado Pago.` : `Devolución registrada de $${refund.toLocaleString('es-AR')}.`}`
           : `${court}${schedule ? ` (${schedule})` : ''} fue cancelado y liberado.`);
         break;
+      case 'looking_for_players': {
+        const countLabel = missing === 1 ? 'Falta 1 jugador' : `Faltan ${missing || 1} jugadores`;
+        title = title || `${countLabel} · ${court}`;
+        body = body || `${schedule ? `${schedule} · ` : ''}${input.playerName ? `${input.playerName} busca gente para jugar.` : 'Se buscan jugadores para completar el turno.'} Tocá para sumarte.`;
+        break;
+      }
+      case 'player_joined_match': {
+        const joiner = input.playerName || 'Un jugador';
+        title = title || `¡Se sumó ${joiner}! #${code}`;
+        body = body || `${court}${schedule ? ` (${schedule})` : ''}. ${remaining > 0 ? `Ahora faltan ${remaining}.` : '¡Equipo completo!'}${input.playerPhone ? ` Tel: ${input.playerPhone}` : ''}`;
+        break;
+      }
+      case 'player_invite_match': {
+        const inviter = input.playerName || 'Un organizador';
+        title = title || `Invitación a jugar · ${court}`;
+        body = body || `${inviter} te invitó a sumarte (${schedule || 'hoy'})${missing > 0 ? ` · Faltan ${missing}` : ''}. Tocá para anotarte.`;
+        break;
+      }
       default:
         title = title || `Actualización de turno #${code}`;
         body = body || `${court}${schedule ? ` · ${schedule}` : ''}. Tocá para ver el estado actualizado.`;
@@ -649,14 +675,23 @@ function buildBookingPushContent(input: {
     }
   }
 
+  const effectiveJoinCode =
+    joinCode ||
+    (input.eventType === 'looking_for_players' || input.eventType === 'player_invite_match' ? code : '');
+
+  const url = effectiveJoinCode
+    ? `/?join_booking=${encodeURIComponent(effectiveJoinCode)}`
+    : `/?booking_code=${encodeURIComponent(code)}`;
+
   return {
     title,
     body,
     icon: '/icon.svg',
     badge: '/icon.svg',
-    tag: `booking-${code}-${input.eventType}`,
-    url: `/?booking_code=${encodeURIComponent(code)}`,
+    tag: effectiveJoinCode ? `match-${code}-${input.eventType}` : `booking-${code}-${input.eventType}`,
+    url,
     bookingCode: code,
+    joinBookingCode: effectiveJoinCode,
     status: input.eventType,
   };
 }
@@ -666,6 +701,9 @@ async function dispatchBookingPushNotification(input: {
   bookingCode: string;
   clientPhone?: string;
   pushDeviceId?: string;
+  targetDeviceId?: string;
+  excludeDeviceId?: string;
+  broadcast?: boolean;
   courtName?: string;
   date?: string;
   startTime?: string;
@@ -676,6 +714,11 @@ async function dispatchBookingPushNotification(input: {
   mpRefunded?: boolean;
   customTitle?: string;
   customBody?: string;
+  missingPlayers?: number;
+  playerName?: string;
+  playerPhone?: string;
+  remainingPlayers?: number;
+  joinBookingCode?: string;
 }): Promise<{ ok: boolean; sentCount: number; matchedCount: number }> {
   const keys = await ensureVapidKeys();
   if (!keys) {
@@ -685,10 +728,23 @@ async function dispatchBookingPushNotification(input: {
   const allSubs = await loadAllPushSubscriptions();
   const targetPhoneNorm = normalizePhoneDigits(input.clientPhone);
   const targetCode = String(input.bookingCode || '').trim().toUpperCase();
-  const targetDevice = String(input.pushDeviceId || '').trim();
+  const targetDevice = String(input.targetDeviceId || input.pushDeviceId || '').trim();
+  const excludeDevice = String(input.excludeDeviceId || '').trim();
 
   const matched = allSubs.filter((sub) => {
     if (!sub.enabled || !sub.endpoint || !sub.p256dh || !sub.auth) return false;
+    if (excludeDevice && sub.deviceId === excludeDevice) return false;
+
+    if (input.eventType === 'player_invite_match') {
+      if (targetDevice && sub.deviceId === targetDevice) return true;
+      const subPhoneNorm = normalizePhoneDigits(sub.clientPhone);
+      return Boolean(targetPhoneNorm && subPhoneNorm && targetPhoneNorm === subPhoneNorm);
+    }
+
+    if (input.broadcast) {
+      return true;
+    }
+
     const codeMatch = targetCode && sub.bookingCodes.some((c) => c.trim().toUpperCase() === targetCode);
     const deviceMatch = targetDevice && sub.deviceId === targetDevice;
     const subPhoneNorm = normalizePhoneDigits(sub.clientPhone);
@@ -1752,6 +1808,9 @@ export function createApiApp() {
         bookingCode,
         clientPhone: body.clientPhone,
         pushDeviceId: body.pushDeviceId,
+        targetDeviceId: body.targetDeviceId,
+        excludeDeviceId: body.excludeDeviceId,
+        broadcast: Boolean(body.broadcast),
         courtName: body.courtName,
         date: body.date,
         startTime: body.startTime,
@@ -1762,6 +1821,11 @@ export function createApiApp() {
         mpRefunded: Boolean(body.mpRefunded),
         customTitle: body.customTitle,
         customBody: body.customBody,
+        missingPlayers: body.missingPlayers !== undefined ? Number(body.missingPlayers) : undefined,
+        playerName: body.playerName,
+        playerPhone: body.playerPhone,
+        remainingPlayers: body.remainingPlayers !== undefined ? Number(body.remainingPlayers) : undefined,
+        joinBookingCode: body.joinBookingCode,
       });
       res.json(result);
     } catch (err: any) {

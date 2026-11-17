@@ -26,6 +26,15 @@ service cloud.firestore {
         && (!('balanceDue' in data) || (data.balanceDue is number && data.balanceDue >= 0))
         && (!('refundAmount' in data) || (data.refundAmount is number && data.refundAmount >= 0))
         && (!('pushDeviceId' in data) || (data.pushDeviceId is string && data.pushDeviceId.size() <= 128))
+        && (!('lookingForPlayers' in data) || data.lookingForPlayers is bool)
+        && (!('neededPlayers' in data) || (data.neededPlayers is number && data.neededPlayers >= 0 && data.neededPlayers <= 30))
+        && (!('lookingForPlayersMessage' in data) || (data.lookingForPlayersMessage is string && data.lookingForPlayersMessage.size() <= 300))
+        && (!('lookingForPlayersUpdatedAt' in data) || (data.lookingForPlayersUpdatedAt is string && data.lookingForPlayersUpdatedAt.size() <= 64))
+        && (!('joinedPlayers' in data) || (
+          data.joinedPlayers is list
+          && data.joinedPlayers.size() <= 30
+          && (data.joinedPlayers.size() == 0 || data.joinedPlayers[0] is map)
+        ))
         && data.status is string && (
           data.status == 'confirmed' ||
           data.status == 'cancelled' ||
@@ -88,6 +97,21 @@ service cloud.firestore {
         ));
     }
 
+    function isValidAvailablePlayer(data) {
+      return data.name is string && data.name.size() >= 1 && data.name.size() <= 128
+        && data.phone is string && data.phone.size() >= 4 && data.phone.size() <= 32
+        && data.date is string && data.date.size() <= 16
+        && data.expiresAt is string && data.expiresAt.size() <= 64
+        && (!('timePreference' in data) || (data.timePreference is string && data.timePreference.size() <= 64))
+        && (!('notes' in data) || (data.notes is string && data.notes.size() <= 300))
+        && (!('pushDeviceId' in data) || (data.pushDeviceId is string && data.pushDeviceId.size() <= 128))
+        && (!('preferredSports' in data) || (
+          data.preferredSports is list
+          && data.preferredSports.size() <= 20
+          && (data.preferredSports.size() == 0 || (data.preferredSports[0] is string && data.preferredSports[0].size() <= 32))
+        ));
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;
@@ -135,6 +159,13 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if isValidId(subscriptionId) && isValidPushSubscription(incoming());
       allow delete: if isValidId(subscriptionId);
+    }
+
+    // Available Players daily list collection
+    match /availablePlayers/{playerId} {
+      allow read: if true;
+      allow create, update: if isValidId(playerId) && isValidAvailablePlayer(incoming());
+      allow delete: if isValidId(playerId);
     }
 
     // Connection check

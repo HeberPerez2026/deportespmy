@@ -44,10 +44,34 @@ export interface TimeSlot {
   status: SlotStatus;
   bookingId?: string;
   blockedReason?: string;
+  missingPlayersCount?: number;
 }
 
 export type PaymentMethod = 'mercadopago' | 'tarjeta' | 'transferencia' | 'efectivo_mostrador';
 export type PaymentStatus = 'seña_pagada' | 'total_pagado' | 'pendiente_mostrador' | 'reembolsado';
+
+export interface JoinedPlayer {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  notes?: string;
+  pushDeviceId?: string;
+  joinedAt: string;
+}
+
+export interface AvailablePlayer {
+  id: string;
+  name: string;
+  phone: string;
+  preferredSports: SportType[];
+  timePreference?: string;
+  notes?: string;
+  date: string; // YYYY-MM-DD (local date)
+  expiresAt: string; // ISO string at 23:59:59.999 of that local day
+  createdAt: string;
+  pushDeviceId?: string;
+}
 
 export interface Booking {
   id: string;
@@ -89,6 +113,13 @@ export interface Booking {
   refundedAt?: string;
   refundReference?: string;
   pushDeviceId?: string;
+
+  // Matchmaking / Missing players fields
+  lookingForPlayers?: boolean;
+  neededPlayers?: number;
+  lookingForPlayersMessage?: string;
+  lookingForPlayersUpdatedAt?: string;
+  joinedPlayers?: JoinedPlayer[];
 }
 
 export interface Review {
@@ -293,7 +324,10 @@ export type BookingPushEventType =
   | 'payment_confirmed'
   | 'balance_paid'
   | 'booking_cancelled'
-  | 'admin_reminder';
+  | 'admin_reminder'
+  | 'looking_for_players'
+  | 'player_joined_match'
+  | 'player_invite_match';
 
 export interface PushSubscriptionRecord {
   id: string;

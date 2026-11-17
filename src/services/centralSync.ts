@@ -7,7 +7,7 @@ import {
   onSnapshot 
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Booking, Review, Court, BusinessProfile, AdminUser, DeveloperContact, SiteContent, PushSubscriptionRecord } from '../types';
+import { Booking, Review, Court, BusinessProfile, AdminUser, DeveloperContact, SiteContent, PushSubscriptionRecord, AvailablePlayer } from '../types';
 import { normalizeCourtSchedule } from '../utils/scheduleHours';
 
 export enum OperationType {
@@ -504,5 +504,47 @@ export const subscribeToPushSubscriptions = (
   } catch (err) {
     console.warn('[Firestore] Error attaching pushSubscriptions listener:', err);
     return () => {};
+  }
+};
+
+// Real-time listener for Available Players (daily matchmaking list)
+export const subscribeToAvailablePlayers = (
+  onUpdate: (players: AvailablePlayer[]) => void
+): (() => void) => {
+  try {
+    return onSnapshot(
+      collection(db, 'availablePlayers'),
+      (snapshot) => {
+        const list: AvailablePlayer[] = [];
+        snapshot.forEach((d) => list.push({ ...(d.data() as AvailablePlayer), id: d.id }));
+        onUpdate(list);
+      },
+      (error) => {
+        console.warn('[Firestore] AvailablePlayers subscription error:', error);
+      }
+    );
+  } catch (err) {
+    console.warn('[Firestore] Error attaching availablePlayers listener:', err);
+    return () => {};
+  }
+};
+
+export const saveAvailablePlayerToFirestore = async (player: AvailablePlayer): Promise<boolean> => {
+  try {
+    await setDoc(doc(db, 'availablePlayers', player.id), player);
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Save availablePlayer error:', err);
+    return false;
+  }
+};
+
+export const deleteAvailablePlayerFromFirestore = async (playerId: string): Promise<boolean> => {
+  try {
+    await deleteDoc(doc(db, 'availablePlayers', playerId));
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Delete availablePlayer error:', err);
+    return false;
   }
 };

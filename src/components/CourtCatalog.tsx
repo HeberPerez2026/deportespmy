@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Court } from '../types';
+import { Booking, Court } from '../types';
 import { BookingModal } from './BookingModal';
+import { JoinMatchModal } from './JoinMatchModal';
+import { AvailablePlayersModal } from './AvailablePlayersModal';
 import {
   resolveCourtGallery,
   SPORT_DISPLAY_LABELS,
@@ -20,21 +22,26 @@ import {
   Search,
   Lock,
   Building2,
+  Users,
 } from 'lucide-react';
 
 interface CourtCatalogProps {
   onOpenAdminLogin?: () => void;
+  onOpenAvailablePlayers?: () => void;
   courtsOverride?: Court[];
   complexNameOverride?: string;
 }
 
 export const CourtCatalog: React.FC<CourtCatalogProps> = ({
   onOpenAdminLogin,
+  onOpenAvailablePlayers,
   courtsOverride,
   complexNameOverride,
 }) => {
   const {
     courts,
+    bookings,
+    availablePlayers,
     reviews,
     selectedSport,
     selectedDate,
@@ -49,6 +56,8 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
 
   const [activeBookingCourt, setActiveBookingCourt] = useState<Court | null>(null);
   const [selectedInitialSlot, setSelectedInitialSlot] = useState<string | undefined>(undefined);
+  const [activeJoinBooking, setActiveJoinBooking] = useState<Booking | null>(null);
+  const [isLocalAvailablePlayersOpen, setIsLocalAvailablePlayersOpen] = useState(false);
   const [photoIndexByCourt, setPhotoIndexByCourt] = useState<Record<string, number>>({});
 
   const sourceCourts = courtsOverride ?? courts;
@@ -93,23 +102,43 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
           </p>
         </div>
 
-        {/* Clean Unboxed Legend */}
-        {sourceCourts.length > 0 && (
-          <div className="flex flex-wrap items-center gap-4 text-xs font-medium text-[var(--text-secondary)] shrink-0">
-            <span className="inline-flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-[var(--accent)]" />
-              {siteContent.catalogLegendAvailable}
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-[var(--border-strong)]" />
-              {siteContent.catalogLegendOccupied}
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-[var(--night-cue)]" />
-              {siteContent.catalogLegendNight}
-            </span>
-          </div>
-        )}
+        {/* Clean Unboxed Legend + Available Players Trigger */}
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4 shrink-0">
+          {sourceCourts.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs font-medium text-[var(--text-secondary)]">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm bg-[var(--accent)]" />
+                {siteContent.catalogLegendAvailable}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm bg-amber-500" />
+                Faltan jugadores (sumate)
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm bg-[var(--border-strong)]" />
+                {siteContent.catalogLegendOccupied}
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-sm bg-[var(--night-cue)]" />
+                {siteContent.catalogLegendNight}
+              </span>
+            </div>
+          )}
+
+          {!isAdminAuthenticated && (
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenAvailablePlayers) onOpenAvailablePlayers();
+                else setIsLocalAvailablePlayersOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-lg bg-[var(--accent-soft)] hover:opacity-90 text-[var(--accent-soft-text)] border border-[var(--border-hairline)] text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer transition-opacity"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Jugadores disponibles ({availablePlayers.length})</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Empty State 1: No courts in DB yet */}
@@ -335,6 +364,9 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
                       <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
                         {slots.map((slot) => {
                           const isAvailable = slot.status === 'available';
+                          const missingCount = slot.missingPlayersCount || 0;
+                          const isLookingForPlayers = missingCount > 0 && Boolean(slot.bookingId);
+                          const isClickable = isAvailable || isLookingForPlayers;
                           const slotHourOrder = parseSlotHourOrder(slot.startTime);
                           const isNight = slotHourOrder >= schedule.nightStartHour;
 
@@ -342,15 +374,38 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
                             <button
                               key={slot.id}
                               type="button"
-                              disabled={!isAvailable}
-                              onClick={() => handleOpenBooking(court, slot.startTime)}
-                              className={`py-1.5 px-1 rounded-lg text-xs font-mono font-semibold transition-colors duration-150 text-center border relative tabular-nums ${
-                                !isAvailable
+                              disabled={!isClickable}
+                              title={
+                                isLookingForPlayers
+                                  ? `Faltan ${missingCount} ${missingCount === 1 ? 'jugador' : 'jugadores'} · Clic para sumarte al partido`
+                                  : isAvailable
+                                  ? `Reservar ${slot.startTime} hs`
+                                  : 'Horario ocupado'
+                              }
+                              onClick={() => {
+                                if (isLookingForPlayers && slot.bookingId) {
+                                  const match = bookings.find((b) => b.id === slot.bookingId);
+                                  if (match) setActiveJoinBooking(match);
+                                  return;
+                                }
+                                if (isAvailable) {
+                                  handleOpenBooking(court, slot.startTime);
+                                }
+                              }}
+                              className={`py-1.5 px-1 rounded-lg text-xs font-mono font-semibold transition-colors duration-150 text-center border relative tabular-nums flex flex-col items-center justify-center leading-tight ${
+                                isLookingForPlayers
+                                  ? 'bg-amber-500/15 hover:bg-amber-500 text-amber-700 dark:text-amber-300 hover:text-slate-950 border-amber-500/60 cursor-pointer'
+                                  : !isAvailable
                                   ? 'bg-[var(--bg-subtle)] text-[var(--text-muted)] border-transparent line-through cursor-not-allowed opacity-55'
                                   : 'bg-[var(--accent-soft)] hover:bg-[var(--accent)] text-[var(--accent-soft-text)] hover:text-[var(--accent-ink)] border-[var(--border-hairline)] hover:border-[var(--accent)] cursor-pointer'
                               }`}
                             >
                               <span>{slot.startTime}</span>
+                              {isLookingForPlayers && (
+                                <span className="font-sans text-[10px] font-bold tracking-tight">
+                                  {missingCount === 1 ? 'Falta 1' : `Faltan ${missingCount}`}
+                                </span>
+                              )}
                               {isNight && isAvailable && (
                                 <span
                                   className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--night-cue)]"
@@ -391,6 +446,20 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
           court={activeBookingCourt}
           initialSlotTime={selectedInitialSlot}
           onClose={() => setActiveBookingCourt(null)}
+        />
+      )}
+
+      {activeJoinBooking && (
+        <JoinMatchModal
+          booking={activeJoinBooking}
+          onClose={() => setActiveJoinBooking(null)}
+        />
+      )}
+
+      {!onOpenAvailablePlayers && (
+        <AvailablePlayersModal
+          isOpen={isLocalAvailablePlayersOpen}
+          onClose={() => setIsLocalAvailablePlayersOpen(false)}
         />
       )}
     </section>

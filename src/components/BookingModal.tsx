@@ -29,9 +29,12 @@ import {
   Landmark,
   Bell,
   BellRing,
-  Download
+  Download,
+  Users,
+  Send
 } from 'lucide-react';
 import { downloadBookingReceiptPng } from '../utils/receiptDownload';
+import { JoinMatchModal } from './JoinMatchModal';
 
 interface BookingModalProps {
   court: Court;
@@ -59,7 +62,9 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     pushSupported,
     pushPermission,
     isPushEnabled,
-    enablePushNotifications
+    enablePushNotifications,
+    requestPlayersForBooking,
+    stopLookingForPlayers
   } = useApp();
 
   const effectiveProfile = getBusinessProfileForCourt(court);
@@ -97,6 +102,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const [isSubmittingReceipt, setIsSubmittingReceipt] = useState(false);
   const [pushFeedback, setPushFeedback] = useState<string | null>(null);
   const [isActivatingPush, setIsActivatingPush] = useState(false);
+
+  // Matchmaking: join open slot from Step 1 or ask for missing players in Step 4
+  const [activeJoinBooking, setActiveJoinBooking] = useState<Booking | null>(null);
+  const [lfpCount, setLfpCount] = useState<number>(1);
+  const [lfpNote, setLfpNote] = useState<string>('');
+  const [isSendingLfp, setIsSendingLfp] = useState(false);
+  const [lfpFeedback, setLfpFeedback] = useState<string | null>(null);
 
   // Available slots for selected date (scoped estrictamente a hora_inicio..hora_fin)
   const slots = getSlotsForCourtAndDate(court.id, selectedDate);
@@ -152,7 +164,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
       synced.paymentStatus !== confirmedBooking.paymentStatus ||
       synced.paymentReference !== confirmedBooking.paymentReference ||
       synced.amountPaid !== confirmedBooking.amountPaid ||
-      synced.balanceDue !== confirmedBooking.balanceDue
+      synced.balanceDue !== confirmedBooking.balanceDue ||
+      synced.lookingForPlayers !== confirmedBooking.lookingForPlayers ||
+      synced.neededPlayers !== confirmedBooking.neededPlayers ||
+      (synced.joinedPlayers?.length || 0) !== (confirmedBooking.joinedPlayers?.length || 0)
     ) {
       setConfirmedBooking(synced);
       if (synced.status === 'confirmed' || synced.status === 'cancelled') {
@@ -515,7 +530,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-60 overflow-y-auto pr-1">
                   {slots.map((slot) => {
                     const isAvailable = slot.status === 'available';
-                    const isSelected = selectedSlotTime === slot.startTime;
+                    const missingCount = slot.missingPlayersCount || 0;
+                    const isLooking = missingCount > 0 && Boolean(slot.bookingId);
+                    const isClickable = isAvailable || isLooking;
+                    const isSelected = selectedSlotTime === slot.startTime && isAvailable;
                     const slotHourOrder = parseSlotHourOrder(slot.startTime);
                     const isNightSlot = slotHourOrder >= nightStartHour;
 
@@ -523,10 +541,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                       <button
                         key={slot.id}
                         type="button"
-                        disabled={!isAvailable}
-                        onClick={() => setSelectedSlotTime(slot.startTime)}
+                        disabled={!isClickable}
+                        onClick={() => {
+                          if (isLooking && slot.bookingId) {
+                            const match = bookings.find((b) => b.id === slot.bookingId);
+                            if (match) setActiveJoinBooking(match);
+                            return;
+                          }
+                          setSelectedSlotTime(slot.startTime);
+                        }}
                         className={`p-2 rounded-lg text-center border text-xs font-medium transition-colors relative tabular-nums ${
-                          !isAvailable
+                          isLooking
+                            ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 border-amber-500/60 font-semibold cursor-pointer'
+                            : !isAvailable
                             ? 'bg-[var(--bg-subtle)] text-[var(--text-muted)] border-transparent cursor-not-allowed line-through opacity-55'
                             : isSelected
                             ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)] font-bold cursor-pointer'
@@ -534,8 +561,12 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                         }`}
                       >
                         <div className="font-mono text-sm font-bold">{slot.startTime}</div>
-                        <div className="font-mono text-[11px] opacity-85">
-                          {isAvailable ? `$${slot.price.toLocaleString('es-AR')}` : 'Ocupado'}
+                        <div className="font-mono text-[11px] opacity-90">
+                          {isLooking
+                            ? (missingCount === 1 ? 'Falta 1 · Sumarme' : `Faltan ${missingCount} · Sumarme`)
+                            : isAvailable
+                            ? `$${slot.price.toLocaleString('es-AR')}`
+                            : 'Ocupado'}
                         </div>
                         {isNightSlot && isAvailable && (
                           <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--night-cue)]" title="Tarifa nocturna con luz" />
@@ -1592,6 +1623,139 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 )}
               </div>
 
+              {/* ¿Te faltan jugadores? Matchmaking Push */}
+              {confirmedBooking.status !== 'cancelled' && (
+                <div className="max-w-md mx-auto p-4 bg-[var(--bg-canvas)] border border-amber-500/35 rounded-lg text-left space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                        <Users className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-[var(--text-primary)]">
+                          ¿Te faltan jugadores para este turno?
+                        </h4>
+                        <p className="text-[11px] text-[var(--text-secondary)]">
+                          Publicalo en la grilla y enviá un Push para que otros jugadores se sumen.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {confirmedBooking.lookingForPlayers && (() => {
+                    const joinedLen = confirmedBooking.joinedPlayers?.length || 0;
+                    const rem = Math.max(0, (confirmedBooking.neededPlayers || 0) - joinedLen);
+                    return (
+                      <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs flex items-center justify-between gap-2">
+                        <span className="font-semibold text-amber-700 dark:text-amber-300">
+                          {rem > 0
+                            ? `Activo en la grilla: Faltan ${rem} ${rem === 1 ? 'jugador' : 'jugadores'}`
+                            : 'Equipo completo'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await stopLookingForPlayers(confirmedBooking.id);
+                            setLfpFeedback('Cerraste la búsqueda de jugadores.');
+                          }}
+                          className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                        >
+                          Cerrar búsqueda
+                        </button>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                        ¿Cuántos faltan?
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={22}
+                        value={lfpCount}
+                        onChange={(e) => setLfpCount(Math.max(1, Math.min(22, Number(e.target.value) || 1)))}
+                        className="w-full bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg px-3 py-2 text-xs font-mono font-bold text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                        Nota / nivel (opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={lfpNote}
+                        onChange={(e) => setLfpNote(e.target.value)}
+                        placeholder="Ej: Falta arquero / nivel intermedio"
+                        className="w-full bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg px-3 py-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isSendingLfp}
+                    onClick={async () => {
+                      setIsSendingLfp(true);
+                      setLfpFeedback(null);
+                      try {
+                        if (pushSupported && pushPermission !== 'denied' && !isPushEnabled) {
+                          await enablePushNotifications({
+                            bookingCode: confirmedBooking.bookingCode,
+                            clientPhone: confirmedBooking.clientPhone,
+                            clientName: confirmedBooking.clientName,
+                            silentWelcome: true,
+                          }).catch(() => {});
+                        }
+                        const res = await requestPlayersForBooking(
+                          confirmedBooking.id,
+                          lfpCount,
+                          lfpNote
+                        );
+                        if (res.booking) setConfirmedBooking(res.booking);
+                        setLfpFeedback(
+                          res.pushResult.sentCount > 0
+                            ? `¡Publicado en la grilla y notificación Push enviada a ${res.pushResult.sentCount} dispositivo(s)!`
+                            : '¡Publicado en la grilla de horarios! Cuando alguien se sume recibirás el aviso de retorno.'
+                        );
+                      } finally {
+                        setIsSendingLfp(false);
+                      }
+                    }}
+                    className="w-full py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>
+                      {isSendingLfp
+                        ? 'Publicando y enviando Push...'
+                        : `Publicar "${lfpCount === 1 ? 'Falta 1' : `Faltan ${lfpCount}`}" en grilla y enviar Push`}
+                    </span>
+                  </button>
+
+                  {lfpFeedback && (
+                    <p className="text-[11px] text-[var(--accent-soft-text)] font-medium">{lfpFeedback}</p>
+                  )}
+
+                  {(confirmedBooking.joinedPlayers?.length || 0) > 0 && (
+                    <div className="pt-2 border-t border-[var(--border-hairline)] space-y-1.5">
+                      <span className="text-[11px] font-bold text-[var(--text-primary)] block">
+                        Jugadores sumados ({confirmedBooking.joinedPlayers!.length}):
+                      </span>
+                      {confirmedBooking.joinedPlayers!.map((jp) => (
+                        <div key={jp.id} className="text-[11px] flex items-center justify-between gap-2 bg-[var(--bg-surface)] px-2.5 py-1.5 rounded border border-[var(--border-hairline)]">
+                          <span>
+                            <strong>{jp.name}</strong> · <span className="font-mono">{jp.phone}</span>
+                          </span>
+                          {jp.notes && <span className="text-[var(--text-muted)] truncate max-w-[140px]">{jp.notes}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-center pt-1">
                 <button
                   type="button"
@@ -1608,6 +1772,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
           )}
         </div>
       </div>
+
+      {activeJoinBooking && (
+        <JoinMatchModal
+          booking={activeJoinBooking}
+          onClose={() => setActiveJoinBooking(null)}
+        />
+      )}
     </div>
   );
 };

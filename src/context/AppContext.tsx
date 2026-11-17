@@ -16,7 +16,9 @@ import {
   DeveloperContact,
   SiteContent,
   PushSubscriptionRecord,
-  FilterTag
+  FilterTag,
+  AvailablePlayer,
+  JoinedPlayer
 } from '../types';
 import { 
   INITIAL_COURTS, 
@@ -53,7 +55,10 @@ import {
   saveAdminUserToFirestore,
   deleteAdminUserFromFirestore,
   fetchAllCollectionDocs,
-  subscribeToPushSubscriptions
+  subscribeToPushSubscriptions,
+  subscribeToAvailablePlayers,
+  saveAvailablePlayerToFirestore,
+  deleteAvailablePlayerFromFirestore
 } from '../services/centralSync';
 import {
   isPushSupported,
@@ -67,6 +72,9 @@ import {
   disableDevicePushNotifications,
   syncTrackedBookingWithPush,
   sendBookingPushNotification,
+  sendMatchLookingForPlayersPush,
+  sendPlayerJoinedMatchPush,
+  sendPlayerInviteMatchPush,
   showLocalServiceWorkerNotification,
 } from '../services/pushNotifications';
 import { testFirestoreConnection } from '../firebase';
@@ -222,6 +230,43 @@ interface AppContextType {
     customBody?: string
   ) => Promise<{ ok: boolean; sentCount: number; matchedCount: number }>;
   hasBookingPushSubscription: (booking: Booking) => boolean;
+
+  // Matchmaking: Missing players & daily available players list
+  availablePlayers: AvailablePlayer[];
+  myAvailablePlayerId: string | null;
+  requestPlayersForBooking: (
+    bookingId: string,
+    missingCount: number,
+    message?: string
+  ) => Promise<{
+    ok: boolean;
+    booking?: Booking;
+    pushResult: { ok: boolean; sentCount: number; matchedCount: number };
+  }>;
+  stopLookingForPlayers: (bookingId: string) => Promise<void>;
+  joinMatchBooking: (
+    bookingId: string,
+    player: { name: string; phone: string; email?: string; notes?: string }
+  ) => Promise<{
+    ok: boolean;
+    booking?: Booking;
+    remainingPlayers: number;
+    pushSent: boolean;
+    error?: string;
+  }>;
+  removeJoinedPlayerFromBooking: (bookingId: string, joinedPlayerId: string) => Promise<void>;
+  registerAvailablePlayer: (input: {
+    name: string;
+    phone: string;
+    preferredSports: SportType[];
+    timePreference?: string;
+    notes?: string;
+  }) => Promise<AvailablePlayer>;
+  unregisterAvailablePlayer: (playerId: string) => Promise<void>;
+  inviteAvailablePlayerToBooking: (
+    player: AvailablePlayer,
+    booking: Booking
+  ) => Promise<{ ok: boolean; sentCount: number }>;
   
   // DB tools
   exportDatabaseJson: () => string;
@@ -244,8 +289,31 @@ const STORAGE_KEYS = {
   CURRENT_ADMIN: 'deportespmy_current_admin_v6',
 };
 
+const STORAGE_MY_AVAILABLE_ID = 'deportespmy_my_available_player_id_v1';
+
 const normalizeAdminKey = (val?: string | null): string =>
   (val || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+
+export const getLocalDayDateString = (): string => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+export const getEndOfLocalDayIso = (): string => {
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  return end.toISOString();
+};
+
+const isAvailablePlayerActiveToday = (player: AvailablePlayer, nowMs: number, todayStr: string): boolean => {
+  if (!player || player.date !== todayStr) return false;
+  const expMs = Date.parse(player.expiresAt);
+  if (Number.isNaN(expMs)) return false;
+  return expMs > nowMs;
+};
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -357,7 +425,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [trackedBookingCodes, setTrackedBookingCodes] = useState<string[]>(() => getTrackedBookingCodes());
   const [pushSubscriptions, setPushSubscriptions] = useState<PushSubscriptionRecord[]>([]);
-  const prevBookingStatusRef = useRef<Map<string, { status: string; paymentStatus: string }>>(new Map());
+  const [rawAvailablePlayers, setRawAvailablePlayers] = useState<AvailablePlayer[]>([]);
+  const [dayTick, setDayTick] = useState<number>(() => Date.now());
+  const [myAvailablePlayerIdState, setMyAvailablePlayerIdState] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(STORAGE_MY_AVAILABLE_ID);
+    } catch {
+      return null;
+    }
+  });
+  const prevBookingStatusRef = useRef<
+    Map<
+      string,
+      {
+        status: string;
+        paymentStatus: string;
+        joinedCount: number;
+        lookingForPlayers: boolean;
+        lookingUpdatedAt?: string;
+      }
+    >
+  >(new Map());
 
   // Admin Authentication State
   const [currentAdminUser, setCurrentAdminUser] = useState<AdminUser | null>(() => {
@@ -550,6 +638,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setPushSubscriptions(remoteSubs);
     });
 
+    // 9. Subscribe to Available Players (lista diaria hasta fin del día)
+    const unsubAvailablePlayers = subscribeToAvailablePlayers((remotePlayers) => {
+      const nowMs = Date.now();
+      const todayStr = getLocalDayDateString();
+      const active: AvailablePlayer[] = [];
+      remotePlayers.forEach((p) => {
+        if (isAvailablePlayerActiveToday(p, nowMs, todayStr)) {
+          active.push(p);
+        } else if (p.id) {
+          deleteAvailablePlayerFromFirestore(p.id).catch(() => {});
+        }
+      });
+      setRawAvailablePlayers(active);
+    });
+
     return () => {
       unsubCourts();
       unsubBookings();
@@ -560,8 +663,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubSiteContent();
       unsubAdmins();
       unsubPushSubs();
+      unsubAvailablePlayers();
     };
   }, [currentAdminUser?.username]);
+
+  // Refrescar expiración diaria de jugadores disponibles cada 60 segundos (limpia al cambiar de día 00:00)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const nowMs = Date.now();
+      const todayStr = getLocalDayDateString();
+      setDayTick(nowMs);
+      setRawAvailablePlayers((prev) => {
+        const expired = prev.filter((p) => !isAvailablePlayerActiveToday(p, nowMs, todayStr));
+        if (expired.length === 0) return prev;
+        expired.forEach((p) => {
+          deleteAvailablePlayerFromFirestore(p.id).catch(() => {});
+        });
+        return prev.filter((p) => isAvailablePlayerActiveToday(p, nowMs, todayStr));
+      });
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Registrar Service Worker al iniciar y sincronizar permisos Push
   useEffect(() => {
@@ -581,14 +703,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [pushSupported]);
 
-  // Detectar cambios en reservas seguidas por este dispositivo (aviso local por SW si está abierta la pestaña)
+  // Detectar cambios en reservas seguidas y novedades de matchmaking (aviso local por SW y banner en vivo)
   useEffect(() => {
     const myDeviceId = getOrCreatePushDeviceId();
     const prevMap = prevBookingStatusRef.current;
 
     if (prevMap.size === 0) {
       bookings.forEach((b) => {
-        prevMap.set(b.id, { status: b.status, paymentStatus: b.paymentStatus });
+        prevMap.set(b.id, {
+          status: b.status,
+          paymentStatus: b.paymentStatus,
+          joinedCount: b.joinedPlayers?.length || 0,
+          lookingForPlayers: Boolean(b.lookingForPlayers),
+          lookingUpdatedAt: b.lookingForPlayersUpdatedAt,
+        });
       });
       return;
     }
@@ -601,40 +729,98 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     bookings.forEach((b) => {
       const prev = prevMap.get(b.id);
-      if (prev && (prev.status !== b.status || prev.paymentStatus !== b.paymentStatus)) {
-        const isMine =
-          b.pushDeviceId === myDeviceId ||
-          trackedBookingCodes.includes((b.bookingCode || '').toUpperCase());
+      const currentJoinedCount = b.joinedPlayers?.length || 0;
+      const isLookingNow = Boolean(b.lookingForPlayers) && b.status !== 'cancelled';
+      const isMine =
+        b.pushDeviceId === myDeviceId ||
+        trackedBookingCodes.includes((b.bookingCode || '').toUpperCase());
 
-        if (canNotifyLocally && isMine) {
-          if (b.status === 'confirmed' && prev.status !== 'confirmed') {
+      if (prev) {
+        if (prev.status !== b.status || prev.paymentStatus !== b.paymentStatus) {
+          if (canNotifyLocally && isMine) {
+            if (b.status === 'confirmed' && prev.status !== 'confirmed') {
+              showLocalServiceWorkerNotification({
+                title: `Turno confirmado #${b.bookingCode}`,
+                body: `${b.courtName} · ${b.date} ${b.startTime} hs. ${b.balanceDue > 0 ? `Saldo en cancha: $${b.balanceDue.toLocaleString('es-AR')}.` : 'Pago acreditado 100%.'}`,
+                tag: `booking-${b.bookingCode}-payment_confirmed`,
+                bookingCode: b.bookingCode,
+                status: 'payment_confirmed',
+              });
+            } else if (b.status === 'cancelled' && prev.status !== 'cancelled') {
+              showLocalServiceWorkerNotification({
+                title: `Turno cancelado #${b.bookingCode}`,
+                body: `${b.courtName} (${b.date} ${b.startTime} hs) fue cancelado.`,
+                tag: `booking-${b.bookingCode}-booking_cancelled`,
+                bookingCode: b.bookingCode,
+                status: 'booking_cancelled',
+              });
+            } else if (b.paymentStatus === 'total_pagado' && prev.paymentStatus !== 'total_pagado') {
+              showLocalServiceWorkerNotification({
+                title: `Saldo completado #${b.bookingCode}`,
+                body: `Tu turno en ${b.courtName} (${b.date} ${b.startTime} hs) quedó 100% pagado.`,
+                tag: `booking-${b.bookingCode}-balance_paid`,
+                bookingCode: b.bookingCode,
+                status: 'balance_paid',
+              });
+            }
+          }
+        }
+
+        // Notificación de retorno cuando alguien se suma a una reserva propia
+        if (currentJoinedCount > prev.joinedCount && isMine && !isAdminAuthenticated) {
+          const lastJoiner = b.joinedPlayers?.[currentJoinedCount - 1];
+          const remaining = Math.max(0, (b.neededPlayers || 0) - currentJoinedCount);
+          const title = `¡Se sumó ${lastJoiner?.name || 'un jugador'}! #${b.bookingCode}`;
+          const body = `${b.courtName} (${b.date} ${b.startTime} hs). ${
+            remaining > 0 ? `Ahora faltan ${remaining}.` : '¡Equipo completo!'
+          }`;
+
+          window.dispatchEvent(
+            new CustomEvent('deportespmy:push_banner', {
+              detail: { title, body, bookingCode: b.bookingCode },
+            })
+          );
+
+          if (canNotifyLocally) {
             showLocalServiceWorkerNotification({
-              title: `Turno confirmado #${b.bookingCode}`,
-              body: `${b.courtName} · ${b.date} ${b.startTime} hs. ${b.balanceDue > 0 ? `Saldo en cancha: $${b.balanceDue.toLocaleString('es-AR')}.` : 'Pago acreditado 100%.'}`,
-              tag: `booking-${b.bookingCode}-payment_confirmed`,
+              title,
+              body,
+              tag: `match-joined-${b.bookingCode}-${currentJoinedCount}`,
               bookingCode: b.bookingCode,
-              status: 'payment_confirmed',
+              status: 'player_joined_match',
             });
-          } else if (b.status === 'cancelled' && prev.status !== 'cancelled') {
+          }
+        }
+
+        // Aviso a otros jugadores cuando un organizador publica que le faltan jugadores
+        const lookingUpdated =
+          isLookingNow &&
+          (!prev.lookingForPlayers ||
+            (b.lookingForPlayersUpdatedAt && b.lookingForPlayersUpdatedAt !== prev.lookingUpdatedAt));
+
+        if (lookingUpdated && !isMine && !isAdminAuthenticated) {
+          const remaining = Math.max(0, (b.neededPlayers || 0) - currentJoinedCount);
+          if (remaining > 0 && canNotifyLocally) {
+            const countLabel = remaining === 1 ? 'Falta 1 jugador' : `Faltan ${remaining} jugadores`;
             showLocalServiceWorkerNotification({
-              title: `Turno cancelado #${b.bookingCode}`,
-              body: `${b.courtName} (${b.date} ${b.startTime} hs) fue cancelado.`,
-              tag: `booking-${b.bookingCode}-booking_cancelled`,
+              title: `${countLabel} · ${b.courtName}`,
+              body: `${b.date} ${b.startTime} hs · ${b.clientName} busca jugadores. Tocá para sumarte.`,
+              tag: `match-lfp-${b.bookingCode}-${b.lookingForPlayersUpdatedAt || currentJoinedCount}`,
               bookingCode: b.bookingCode,
-              status: 'booking_cancelled',
-            });
-          } else if (b.paymentStatus === 'total_pagado' && prev.paymentStatus !== 'total_pagado') {
-            showLocalServiceWorkerNotification({
-              title: `Saldo completado #${b.bookingCode}`,
-              body: `Tu turno en ${b.courtName} (${b.date} ${b.startTime} hs) quedó 100% pagado.`,
-              tag: `booking-${b.bookingCode}-balance_paid`,
-              bookingCode: b.bookingCode,
-              status: 'balance_paid',
+              joinBookingCode: b.bookingCode,
+              status: 'looking_for_players',
             });
           }
         }
       }
-      prevMap.set(b.id, { status: b.status, paymentStatus: b.paymentStatus });
+
+      prevMap.set(b.id, {
+        status: b.status,
+        paymentStatus: b.paymentStatus,
+        joinedCount: currentJoinedCount,
+        lookingForPlayers: isLookingNow,
+        lookingUpdatedAt: b.lookingForPlayersUpdatedAt,
+      });
     });
   }, [bookings, isAdminAuthenticated, pushSupported, isPushEnabled, trackedBookingCodes]);
 
@@ -1417,7 +1603,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       paymentStatus: paidAmount > 0 ? 'reembolsado' : booking.paymentStatus,
       refundAmount: paidAmount,
       refundedAt: new Date().toISOString(),
-      refundReference: refundId || undefined
+      refundReference: refundId || undefined,
+      lookingForPlayers: false,
+      neededPlayers: 0,
     };
 
     const updated = bookings.map(b => b.id === booking.id ? targetBooking : b);
@@ -1596,6 +1784,239 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await deleteReviewFromFirestore(reviewId);
   }, [reviews]);
 
+  // Matchmaking: lista diaria de jugadores disponibles (expira al terminar el día local)
+  const availablePlayers = useMemo(() => {
+    const todayStr = getLocalDayDateString();
+    return rawAvailablePlayers
+      .filter((p) => isAvailablePlayerActiveToday(p, dayTick, todayStr))
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }, [rawAvailablePlayers, dayTick]);
+
+  const myAvailablePlayerId = useMemo(() => {
+    const myDevId = getOrCreatePushDeviceId();
+    const match = availablePlayers.find(
+      (p) => (myAvailablePlayerIdState && p.id === myAvailablePlayerIdState) || (p.pushDeviceId && p.pushDeviceId === myDevId)
+    );
+    return match ? match.id : null;
+  }, [availablePlayers, myAvailablePlayerIdState]);
+
+  const requestPlayersForBooking = useCallback(async (
+    bookingId: string,
+    missingCount: number,
+    message?: string
+  ) => {
+    const cleanMissing = Math.max(1, Math.min(22, Math.floor(Number(missingCount) || 1)));
+    const target = bookings.find((b) => b.id === bookingId || b.bookingCode.toUpperCase() === bookingId.toUpperCase());
+    if (!target || target.status === 'cancelled') {
+      return { ok: false, pushResult: { ok: false, sentCount: 0, matchedCount: 0 } };
+    }
+
+    const myDevId = !isAdminAuthenticated ? getOrCreatePushDeviceId() : target.pushDeviceId;
+    const currentJoined = target.joinedPlayers || [];
+    const totalNeeded = currentJoined.length + cleanMissing;
+
+    const updated: Booking = {
+      ...target,
+      lookingForPlayers: true,
+      neededPlayers: totalNeeded,
+      lookingForPlayersMessage: message?.trim() || '',
+      lookingForPlayersUpdatedAt: new Date().toISOString(),
+      ...(myDevId && !target.pushDeviceId ? { pushDeviceId: myDevId } : {}),
+    };
+
+    const nextBookings = bookings.map((b) => (b.id === target.id ? updated : b));
+    setBookings(nextBookings);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(nextBookings));
+    } catch {}
+    await saveBookingToFirestore(updated);
+
+    if (!isAdminAuthenticated) {
+      const updatedCodes = addTrackedBookingCode(updated.bookingCode);
+      setTrackedBookingCodes(updatedCodes);
+      syncTrackedBookingWithPush({
+        bookingCode: updated.bookingCode,
+        clientPhone: updated.clientPhone,
+        clientName: updated.clientName,
+      });
+    }
+
+    const pushResult = await sendMatchLookingForPlayersPush({
+      booking: updated,
+      missingPlayers: cleanMissing,
+      message: updated.lookingForPlayersMessage,
+    });
+
+    return { ok: true, booking: updated, pushResult };
+  }, [bookings, isAdminAuthenticated]);
+
+  const stopLookingForPlayers = useCallback(async (bookingId: string) => {
+    const target = bookings.find((b) => b.id === bookingId || b.bookingCode.toUpperCase() === bookingId.toUpperCase());
+    if (!target) return;
+    const updated: Booking = {
+      ...target,
+      lookingForPlayers: false,
+      neededPlayers: target.joinedPlayers?.length || 0,
+      lookingForPlayersUpdatedAt: new Date().toISOString(),
+    };
+    const nextBookings = bookings.map((b) => (b.id === target.id ? updated : b));
+    setBookings(nextBookings);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(nextBookings));
+    } catch {}
+    await saveBookingToFirestore(updated);
+  }, [bookings]);
+
+  const joinMatchBooking = useCallback(async (
+    bookingId: string,
+    player: { name: string; phone: string; email?: string; notes?: string }
+  ) => {
+    const target = bookings.find((b) => b.id === bookingId || b.bookingCode.toUpperCase() === bookingId.toUpperCase());
+    if (!target || target.status === 'cancelled') {
+      return { ok: false, remainingPlayers: 0, pushSent: false, error: 'Este turno ya no está disponible.' };
+    }
+
+    const currentJoined = target.joinedPlayers || [];
+    const currentRemaining = target.lookingForPlayers
+      ? Math.max(0, (target.neededPlayers || 0) - currentJoined.length)
+      : 0;
+
+    if (currentRemaining <= 0) {
+      return { ok: false, remainingPlayers: 0, pushSent: false, error: 'Ya se completaron todos los lugares para este partido.' };
+    }
+
+    const cleanName = player.name.trim();
+    const cleanPhone = player.phone.trim();
+    if (!cleanName || !cleanPhone) {
+      return { ok: false, remainingPlayers: currentRemaining, pushSent: false, error: 'Ingresá tu nombre y WhatsApp.' };
+    }
+
+    const newJoiner: JoinedPlayer = {
+      id: `jp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: cleanName,
+      phone: cleanPhone,
+      email: player.email?.trim() || '',
+      notes: player.notes?.trim() || '',
+      pushDeviceId: getOrCreatePushDeviceId(),
+      joinedAt: new Date().toISOString(),
+    };
+
+    const nextJoined = [...currentJoined, newJoiner];
+    const remainingPlayers = Math.max(0, (target.neededPlayers || 0) - nextJoined.length);
+
+    const updated: Booking = {
+      ...target,
+      joinedPlayers: nextJoined,
+      lookingForPlayers: remainingPlayers > 0,
+      lookingForPlayersUpdatedAt: new Date().toISOString(),
+    };
+
+    const nextBookings = bookings.map((b) => (b.id === target.id ? updated : b));
+    setBookings(nextBookings);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(nextBookings));
+    } catch {}
+    await saveBookingToFirestore(updated);
+
+    setUserName(cleanName);
+    setUserPhone(cleanPhone);
+    if (player.email?.trim()) {
+      setUserEmail(player.email.trim());
+    }
+
+    const pushRes = await sendPlayerJoinedMatchPush({
+      booking: updated,
+      playerName: cleanName,
+      playerPhone: cleanPhone,
+      remainingPlayers,
+    });
+
+    return {
+      ok: true,
+      booking: updated,
+      remainingPlayers,
+      pushSent: pushRes.sentCount > 0,
+    };
+  }, [bookings]);
+
+  const removeJoinedPlayerFromBooking = useCallback(async (bookingId: string, joinedPlayerId: string) => {
+    const target = bookings.find((b) => b.id === bookingId || b.bookingCode.toUpperCase() === bookingId.toUpperCase());
+    if (!target) return;
+    const nextJoined = (target.joinedPlayers || []).filter((p) => p.id !== joinedPlayerId);
+    const remaining = Math.max(0, (target.neededPlayers || 0) - nextJoined.length);
+    const updated: Booking = {
+      ...target,
+      joinedPlayers: nextJoined,
+      lookingForPlayers: remaining > 0 ? Boolean(target.lookingForPlayers || (target.neededPlayers || 0) > nextJoined.length) : false,
+      lookingForPlayersUpdatedAt: new Date().toISOString(),
+    };
+    const nextBookings = bookings.map((b) => (b.id === target.id ? updated : b));
+    setBookings(nextBookings);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(nextBookings));
+    } catch {}
+    await saveBookingToFirestore(updated);
+  }, [bookings]);
+
+  const registerAvailablePlayer = useCallback(async (input: {
+    name: string;
+    phone: string;
+    preferredSports: SportType[];
+    timePreference?: string;
+    notes?: string;
+  }): Promise<AvailablePlayer> => {
+    const myDevId = getOrCreatePushDeviceId();
+    const todayStr = getLocalDayDateString();
+    const expiresAt = getEndOfLocalDayIso();
+    const cleanId = `ap-${myDevId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24)}-${todayStr.replace(/-/g, '')}`;
+
+    const entry: AvailablePlayer = {
+      id: cleanId,
+      name: input.name.trim(),
+      phone: input.phone.trim(),
+      preferredSports: input.preferredSports.length > 0 ? input.preferredSports : ['futbol5'],
+      timePreference: input.timePreference?.trim() || '',
+      notes: input.notes?.trim() || '',
+      date: todayStr,
+      expiresAt,
+      createdAt: new Date().toISOString(),
+      pushDeviceId: myDevId,
+    };
+
+    setRawAvailablePlayers((prev) => [entry, ...prev.filter((p) => p.id !== entry.id)]);
+    setMyAvailablePlayerIdState(entry.id);
+    try {
+      localStorage.setItem(STORAGE_MY_AVAILABLE_ID, entry.id);
+    } catch {}
+    setUserName(entry.name);
+    setUserPhone(entry.phone);
+
+    await saveAvailablePlayerToFirestore(entry);
+    return entry;
+  }, []);
+
+  const unregisterAvailablePlayer = useCallback(async (playerId: string) => {
+    setRawAvailablePlayers((prev) => prev.filter((p) => p.id !== playerId));
+    if (myAvailablePlayerIdState === playerId) {
+      setMyAvailablePlayerIdState(null);
+      try {
+        localStorage.removeItem(STORAGE_MY_AVAILABLE_ID);
+      } catch {}
+    }
+    await deleteAvailablePlayerFromFirestore(playerId);
+  }, [myAvailablePlayerIdState]);
+
+  const inviteAvailablePlayerToBooking = useCallback(async (player: AvailablePlayer, booking: Booking) => {
+    const missing = Math.max(1, (booking.neededPlayers || 1) - (booking.joinedPlayers?.length || 0));
+    const res = await sendPlayerInviteMatchPush({
+      booking,
+      targetDeviceId: player.pushDeviceId,
+      targetPhone: player.phone,
+      missingPlayers: missing,
+    });
+    return { ok: res.ok, sentCount: res.sentCount };
+  }, []);
+
   // Generate Slots for a Court on a specific Date using court's custom open/close hours
   const getSlotsForCourtAndDate = useCallback((courtId: string, date: string): TimeSlot[] => {
     const court = courts.find(c => c.id === courtId);
@@ -1631,6 +2052,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       let status: SlotStatus = 'available';
       let blockedReason: string | undefined = undefined;
+      let missingPlayersCount: number | undefined = undefined;
 
       if (matchingBooking) {
         if (matchingBooking.clientName.startsWith('[BLOQUEADO')) {
@@ -1640,6 +2062,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           status = 'pending';
         } else {
           status = 'booked';
+        }
+
+        if (status !== 'blocked' && matchingBooking.lookingForPlayers) {
+          const joinedLen = matchingBooking.joinedPlayers?.length || 0;
+          const remaining = Math.max(0, (matchingBooking.neededPlayers || 0) - joinedLen);
+          if (remaining > 0) {
+            missingPlayersCount = remaining;
+          }
         }
       }
 
@@ -1653,6 +2083,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         status,
         bookingId: matchingBooking?.id,
         blockedReason,
+        missingPlayersCount,
       };
     });
   }, [courts, bookings]);
@@ -1867,6 +2298,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     disablePushNotifications,
     sendManualBookingPush,
     hasBookingPushSubscription,
+    availablePlayers,
+    myAvailablePlayerId,
+    requestPlayersForBooking,
+    stopLookingForPlayers,
+    joinMatchBooking,
+    removeJoinedPlayerFromBooking,
+    registerAvailablePlayer,
+    unregisterAvailablePlayer,
+    inviteAvailablePlayerToBooking,
     exportDatabaseJson,
     importDatabaseJson,
     resetDatabase,
@@ -1939,6 +2379,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     disablePushNotifications,
     sendManualBookingPush,
     hasBookingPushSubscription,
+    availablePlayers,
+    myAvailablePlayerId,
+    requestPlayersForBooking,
+    stopLookingForPlayers,
+    joinMatchBooking,
+    removeJoinedPlayerFromBooking,
+    registerAvailablePlayer,
+    unregisterAvailablePlayer,
+    inviteAvailablePlayerToBooking,
     exportDatabaseJson,
     importDatabaseJson,
     resetDatabase,

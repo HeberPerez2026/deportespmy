@@ -34,7 +34,12 @@
         "refundAmount": { "type": "number" },
         "refundedAt": { "type": "string", "maxLength": 64 },
         "refundReference": { "type": "string", "maxLength": 64 },
-        "pushDeviceId": { "type": "string", "maxLength": 128 }
+        "pushDeviceId": { "type": "string", "maxLength": 128 },
+        "lookingForPlayers": { "type": "boolean" },
+        "neededPlayers": { "type": "number" },
+        "lookingForPlayersMessage": { "type": "string", "maxLength": 300 },
+        "lookingForPlayersUpdatedAt": { "type": "string", "maxLength": 64 },
+        "joinedPlayers": { "type": "array", "description": "List of players who joined this match" }
       },
       "required": [
         "bookingCode",
@@ -198,6 +203,23 @@
         "updatedAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["deviceId", "endpoint", "enabled"]
+    },
+    "AvailablePlayer": {
+      "title": "AvailablePlayer",
+      "description": "Player registered as available to play for the current day until 23:59",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 128 },
+        "phone": { "type": "string", "maxLength": 32 },
+        "preferredSports": { "type": "array", "description": "List of preferred sports IDs" },
+        "timePreference": { "type": "string", "maxLength": 64 },
+        "notes": { "type": "string", "maxLength": 300 },
+        "date": { "type": "string", "maxLength": 16 },
+        "expiresAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "pushDeviceId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["name", "phone", "date", "expiresAt"]
     }
   },
   "firestore": {
@@ -232,6 +254,10 @@
     "/pushSubscriptions/{subscriptionId}": {
       "schema": "PushSubscription",
       "description": "Player Web Push subscriptions for real-time booking status notifications"
+    },
+    "/availablePlayers/{playerId}": {
+      "schema": "AvailablePlayer",
+      "description": "Daily expiring list of players available to join matches today"
     }
   }
 }

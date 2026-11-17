@@ -37,9 +37,14 @@ self.addEventListener('push', (event) => {
     } catch {}
   }
 
+  const joinCode = payload.joinBookingCode ? String(payload.joinBookingCode) : '';
   const targetUrl =
     payload.url ||
-    (payload.bookingCode ? `/?booking_code=${encodeURIComponent(payload.bookingCode)}` : '/');
+    (joinCode
+      ? `/?join_booking=${encodeURIComponent(joinCode)}`
+      : payload.bookingCode
+      ? `/?booking_code=${encodeURIComponent(payload.bookingCode)}`
+      : '/');
 
   const options = {
     body: payload.body,
@@ -52,6 +57,7 @@ self.addEventListener('push', (event) => {
     data: {
       url: targetUrl,
       bookingCode: payload.bookingCode || '',
+      joinBookingCode: joinCode,
       status: payload.status || '',
       receivedAt: Date.now(),
     },
@@ -66,6 +72,7 @@ self.addEventListener('push', (event) => {
             type: 'PUSH_RECEIVED',
             payload: {
               ...payload,
+              joinBookingCode: joinCode,
               url: targetUrl,
             },
           });
@@ -81,8 +88,14 @@ self.addEventListener('message', (event) => {
 
   if (data.type === 'SHOW_LOCAL_NOTIFICATION' && data.payload) {
     const p = data.payload;
+    const joinCode = p.joinBookingCode ? String(p.joinBookingCode) : '';
     const targetUrl =
-      p.url || (p.bookingCode ? `/?booking_code=${encodeURIComponent(p.bookingCode)}` : '/');
+      p.url ||
+      (joinCode
+        ? `/?join_booking=${encodeURIComponent(joinCode)}`
+        : p.bookingCode
+        ? `/?booking_code=${encodeURIComponent(p.bookingCode)}`
+        : '/');
 
     event.waitUntil(
       self.registration.showNotification(p.title || 'DeportesPMY', {
@@ -95,6 +108,7 @@ self.addEventListener('message', (event) => {
         data: {
           url: targetUrl,
           bookingCode: p.bookingCode || '',
+          joinBookingCode: joinCode,
           status: p.status || '',
         },
       })
@@ -115,9 +129,14 @@ self.addEventListener('notificationclick', (event) => {
           if (clientUrl.origin === self.location.origin) {
             client.postMessage({
               type: 'NOTIFICATION_CLICKED',
+              url: targetUrl,
+              bookingCode: data.bookingCode || '',
+              joinBookingCode: data.joinBookingCode || '',
+              status: data.status || '',
               payload: {
                 url: targetUrl,
                 bookingCode: data.bookingCode || '',
+                joinBookingCode: data.joinBookingCode || '',
                 status: data.status || '',
               },
             });

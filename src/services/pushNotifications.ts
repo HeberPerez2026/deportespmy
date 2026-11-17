@@ -106,6 +106,7 @@ export async function showLocalServiceWorkerNotification(payload: {
   body: string;
   tag: string;
   bookingCode?: string;
+  joinBookingCode?: string;
   status?: string;
   url?: string;
 }): Promise<boolean> {
@@ -120,6 +121,14 @@ export async function showLocalServiceWorkerNotification(payload: {
     sessionStorage.setItem(STORAGE_SENT_TAGS, JSON.stringify([...sentList.slice(-30), payload.tag]));
   } catch {}
 
+  const targetUrl =
+    payload.url ||
+    (payload.joinBookingCode
+      ? `/?join_booking=${encodeURIComponent(payload.joinBookingCode)}`
+      : payload.bookingCode
+      ? `/?booking_code=${encodeURIComponent(payload.bookingCode)}`
+      : '/');
+
   try {
     const reg = await registerPushServiceWorker();
     if (!reg) return false;
@@ -127,7 +136,10 @@ export async function showLocalServiceWorkerNotification(payload: {
     if (worker) {
       worker.postMessage({
         type: 'SHOW_LOCAL_NOTIFICATION',
-        payload,
+        payload: {
+          ...payload,
+          url: targetUrl,
+        },
       });
       return true;
     }
@@ -137,8 +149,9 @@ export async function showLocalServiceWorkerNotification(payload: {
       badge: '/icon.svg',
       tag: payload.tag,
       data: {
-        url: payload.url || (payload.bookingCode ? `/?booking_code=${encodeURIComponent(payload.bookingCode)}` : '/'),
+        url: targetUrl,
         bookingCode: payload.bookingCode || '',
+        joinBookingCode: payload.joinBookingCode || '',
         status: payload.status || '',
       },
     });
@@ -388,6 +401,124 @@ export async function sendBookingPushNotification(params: {
         mpRefunded,
         customTitle,
         customBody,
+      }),
+    });
+    if (!resp.ok) {
+      return { ok: false, sentCount: 0, matchedCount: 0 };
+    }
+    const data = await safeParseJsonResponse(resp);
+    return {
+      ok: Boolean(data?.ok),
+      sentCount: Number(data?.sentCount) || 0,
+      matchedCount: Number(data?.matchedCount) || 0,
+    };
+  } catch {
+    return { ok: false, sentCount: 0, matchedCount: 0 };
+  }
+}
+
+export async function sendMatchLookingForPlayersPush(params: {
+  booking: Booking;
+  missingPlayers: number;
+  message?: string;
+}): Promise<{ ok: boolean; sentCount: number; matchedCount: number }> {
+  const { booking, missingPlayers, message } = params;
+  const myDeviceId = getOrCreatePushDeviceId();
+  try {
+    const resp = await apiFetch('/api/push/notify-booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        eventType: 'looking_for_players',
+        broadcast: true,
+        excludeDeviceId: myDeviceId,
+        bookingCode: booking.bookingCode,
+        joinBookingCode: booking.bookingCode,
+        courtName: booking.courtName,
+        date: booking.date,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+        missingPlayers,
+        playerName: booking.clientName,
+        customBody: message?.trim() || undefined,
+      }),
+    });
+    if (!resp.ok) {
+      return { ok: false, sentCount: 0, matchedCount: 0 };
+    }
+    const data = await safeParseJsonResponse(resp);
+    return {
+      ok: Boolean(data?.ok),
+      sentCount: Number(data?.sentCount) || 0,
+      matchedCount: Number(data?.matchedCount) || 0,
+    };
+  } catch {
+    return { ok: false, sentCount: 0, matchedCount: 0 };
+  }
+}
+
+export async function sendPlayerJoinedMatchPush(params: {
+  booking: Booking;
+  playerName: string;
+  playerPhone: string;
+  remainingPlayers: number;
+}): Promise<{ ok: boolean; sentCount: number; matchedCount: number }> {
+  const { booking, playerName, playerPhone, remainingPlayers } = params;
+  try {
+    const resp = await apiFetch('/api/push/notify-booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        eventType: 'player_joined_match',
+        bookingCode: booking.bookingCode,
+        clientPhone: booking.clientPhone,
+        pushDeviceId: booking.pushDeviceId,
+        courtName: booking.courtName,
+        date: booking.date,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+        playerName,
+        playerPhone,
+        remainingPlayers,
+      }),
+    });
+    if (!resp.ok) {
+      return { ok: false, sentCount: 0, matchedCount: 0 };
+    }
+    const data = await safeParseJsonResponse(resp);
+    return {
+      ok: Boolean(data?.ok),
+      sentCount: Number(data?.sentCount) || 0,
+      matchedCount: Number(data?.matchedCount) || 0,
+    };
+  } catch {
+    return { ok: false, sentCount: 0, matchedCount: 0 };
+  }
+}
+
+export async function sendPlayerInviteMatchPush(params: {
+  booking: Booking;
+  targetDeviceId?: string;
+  targetPhone?: string;
+  missingPlayers: number;
+}): Promise<{ ok: boolean; sentCount: number; matchedCount: number }> {
+  const { booking, targetDeviceId, targetPhone, missingPlayers } = params;
+  try {
+    const resp = await apiFetch('/api/push/notify-booking', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        eventType: 'player_invite_match',
+        bookingCode: booking.bookingCode,
+        joinBookingCode: booking.bookingCode,
+        targetDeviceId,
+        clientPhone: targetPhone,
+        courtName: booking.courtName,
+        date: booking.date,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+        playerName: booking.clientName,
+        missingPlayers,
       }),
     });
     if (!resp.ok) {

@@ -10,6 +10,8 @@ import { ReviewsSection } from './components/ReviewsSection';
 import { AdminDashboard } from './components/AdminPanel/AdminDashboard';
 import { AdminLoginModal } from './components/AdminLoginModal';
 import { Footer } from './components/Footer';
+import { AvailablePlayersModal } from './components/AvailablePlayersModal';
+import { JoinMatchModal } from './components/JoinMatchModal';
 import {
   CheckCircle,
   AlertCircle,
@@ -25,7 +27,10 @@ import {
   Ticket,
   Search,
   X,
-  Clock
+  Clock,
+  Users,
+  Send,
+  Trash2
 } from 'lucide-react';
 import { downloadBookingReceiptPng } from './utils/receiptDownload';
 import { Booking } from './types';
@@ -50,7 +55,11 @@ const MainContent: React.FC = () => {
     enablePushNotifications,
     disablePushNotifications,
     userPhone,
-    userName
+    userName,
+    availablePlayers,
+    requestPlayersForBooking,
+    stopLookingForPlayers,
+    removeJoinedPlayerFromBooking
   } = useApp();
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
 
@@ -71,9 +80,23 @@ const MainContent: React.FC = () => {
   const [focusedBookingCode, setFocusedBookingCode] = useState<string | null>(null);
   const [lookupCodeInput, setLookupCodeInput] = useState('');
   const [lookupError, setLookupError] = useState<string | null>(null);
-  const [pushBanner, setPushBanner] = useState<{ title: string; body: string; bookingCode?: string } | null>(null);
+  const [pushBanner, setPushBanner] = useState<{
+    title: string;
+    body: string;
+    bookingCode?: string;
+    joinBookingCode?: string;
+  } | null>(null);
   const [isTogglingPush, setIsTogglingPush] = useState(false);
   const [successPushFeedback, setSuccessPushFeedback] = useState<string | null>(null);
+
+  // Matchmaking modals & Missing Players editor inside Mis Reservas
+  const [isAvailablePlayersOpen, setIsAvailablePlayersOpen] = useState(false);
+  const [pendingJoinBookingCode, setPendingJoinBookingCode] = useState<string | null>(null);
+  const [editingLfpBookingId, setEditingLfpBookingId] = useState<string | null>(null);
+  const [lfpCountInput, setLfpCountInput] = useState<number>(1);
+  const [lfpNoteInput, setLfpNoteInput] = useState<string>('');
+  const [lfpSendingId, setLfpSendingId] = useState<string | null>(null);
+  const [lfpFeedbackByBooking, setLfpFeedbackByBooking] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -87,6 +110,13 @@ const MainContent: React.FC = () => {
     const courtName = params.get('court_name') || 'Cancha Reservada';
     const bookingDate = params.get('booking_date') || '';
     const bookingTime = params.get('booking_time') || '';
+    const joinBooking = params.get('join_booking') || '';
+
+    if (joinBooking) {
+      setPendingJoinBookingCode(joinBooking.toUpperCase());
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
 
     const isMercadoPagoReturn = Boolean(
       payment ||
@@ -189,31 +219,54 @@ const MainContent: React.FC = () => {
     };
   }, [confirmBookingPayment]);
 
-  // Listen to Service Worker Push messages & notification clicks
+  // Listen to Service Worker Push messages, notification clicks & local real-time match banners
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const handleCustomBanner = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail;
+      if (!detail) return;
+      setPushBanner({
+        title: detail.title || 'Novedad en tu partido',
+        body: detail.body || '',
+        bookingCode: detail.bookingCode ? String(detail.bookingCode).toUpperCase() : undefined,
+        joinBookingCode: detail.joinBookingCode ? String(detail.joinBookingCode).toUpperCase() : undefined,
+      });
+    };
+
+    window.addEventListener('deportespmy:push_banner', handleCustomBanner);
+
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+      return () => {
+        window.removeEventListener('deportespmy:push_banner', handleCustomBanner);
+      };
+    }
 
     const handleSwMessage = (event: MessageEvent) => {
       const data = event.data;
       if (!data || typeof data !== 'object') return;
 
-      if (data.type === 'NOTIFICATION_CLICKED' && data.bookingCode) {
-        const code = String(data.bookingCode).toUpperCase();
-        setFocusedBookingCode(code);
-        setLookupCodeInput(code);
-        setIsMyBookingsOpen(true);
+      if (data.type === 'NOTIFICATION_CLICKED') {
+        if (data.joinBookingCode) {
+          setPendingJoinBookingCode(String(data.joinBookingCode).toUpperCase());
+        } else if (data.bookingCode) {
+          const code = String(data.bookingCode).toUpperCase();
+          setFocusedBookingCode(code);
+          setLookupCodeInput(code);
+          setIsMyBookingsOpen(true);
+        }
       } else if (data.type === 'PUSH_RECEIVED' && data.payload) {
         const payload = data.payload;
         setPushBanner({
           title: payload.title || 'Actualización de tu reserva',
           body: payload.body || '',
           bookingCode: payload.bookingCode ? String(payload.bookingCode).toUpperCase() : undefined,
+          joinBookingCode: payload.joinBookingCode ? String(payload.joinBookingCode).toUpperCase() : undefined,
         });
       }
     };
 
     navigator.serviceWorker.addEventListener('message', handleSwMessage);
     return () => {
+      window.removeEventListener('deportespmy:push_banner', handleCustomBanner);
       navigator.serviceWorker.removeEventListener('message', handleSwMessage);
     };
   }, []);
@@ -325,7 +378,18 @@ const MainContent: React.FC = () => {
               </button>
             </nav>
 
-            <div className="flex items-center gap-2 ml-auto">
+            <div className="flex flex-wrap items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={() => setIsAvailablePlayersOpen(true)}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 bg-[var(--accent-soft)] hover:opacity-90 text-[var(--accent-soft-text)] border border-[var(--border-hairline)] transition-opacity cursor-pointer"
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>
+                  Jugadores disponibles{availablePlayers.length > 0 ? ` (${availablePlayers.length})` : ''}
+                </span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -378,7 +442,18 @@ const MainContent: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {pushBanner.bookingCode && (
+                  {pushBanner.joinBookingCode ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingJoinBookingCode(pushBanner.joinBookingCode || null);
+                        setPushBanner(null);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-amber-500 text-slate-950 font-bold cursor-pointer"
+                    >
+                      Sumarme al partido
+                    </button>
+                  ) : pushBanner.bookingCode ? (
                     <button
                       type="button"
                       onClick={() => {
@@ -391,7 +466,7 @@ const MainContent: React.FC = () => {
                     >
                       Ver comprobante
                     </button>
-                  )}
+                  ) : null}
                   <button
                     type="button"
                     onClick={() => setPushBanner(null)}
@@ -415,7 +490,10 @@ const MainContent: React.FC = () => {
             {activeTab === 'turnos' && (
               <>
                 <HeroBanner />
-                <CourtCatalog onOpenAdminLogin={() => setIsAdminLoginOpen(true)} />
+                <CourtCatalog
+                  onOpenAdminLogin={() => setIsAdminLoginOpen(true)}
+                  onOpenAvailablePlayers={() => setIsAvailablePlayersOpen(true)}
+                />
 
                 {/* Community Reviews Band */}
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
@@ -827,7 +905,192 @@ const MainContent: React.FC = () => {
                               <span>Avisos Push</span>
                             </button>
                           )}
+
+                          {b.status !== 'cancelled' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (editingLfpBookingId === b.id) {
+                                  setEditingLfpBookingId(null);
+                                } else {
+                                  const joinedLen = b.joinedPlayers?.length || 0;
+                                  const curRem = b.lookingForPlayers
+                                    ? Math.max(1, (b.neededPlayers || 1) - joinedLen)
+                                    : 1;
+                                  setLfpCountInput(curRem);
+                                  setLfpNoteInput(b.lookingForPlayersMessage || '');
+                                  setEditingLfpBookingId(b.id);
+                                }
+                              }}
+                              className={`py-2 px-3 rounded-lg font-semibold text-xs inline-flex items-center justify-center gap-1.5 border cursor-pointer ${
+                                b.lookingForPlayers
+                                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-700 dark:text-amber-300'
+                                  : 'bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] border-[var(--border-hairline)] text-[var(--text-primary)]'
+                              }`}
+                            >
+                              <Users className="w-3.5 h-3.5" />
+                              <span>
+                                {b.lookingForPlayers
+                                  ? `Faltan ${Math.max(0, (b.neededPlayers || 0) - (b.joinedPlayers?.length || 0))}`
+                                  : '¿Faltan jugadores?'}
+                              </span>
+                            </button>
+                          )}
                         </div>
+
+                        {/* Missing Players Editor & Joined Players List */}
+                        {(editingLfpBookingId === b.id || b.lookingForPlayers || (b.joinedPlayers?.length || 0) > 0) && b.status !== 'cancelled' && (
+                          <div className="pt-3 border-t border-[var(--border-hairline)] space-y-2.5 text-xs">
+                            {b.lookingForPlayers && (() => {
+                              const joinedLen = b.joinedPlayers?.length || 0;
+                              const rem = Math.max(0, (b.neededPlayers || 0) - joinedLen);
+                              return (
+                                <div className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                                  <span className="font-semibold text-amber-700 dark:text-amber-300">
+                                    {rem > 0
+                                      ? `Publicado en grilla: Faltan ${rem} ${rem === 1 ? 'jugador' : 'jugadores'}`
+                                      : 'Cupo de jugadores completado'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => stopLookingForPlayers(b.id)}
+                                    className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline cursor-pointer"
+                                  >
+                                    Cerrar búsqueda
+                                  </button>
+                                </div>
+                              );
+                            })()}
+
+                            {editingLfpBookingId === b.id && (
+                              <div className="p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)] space-y-2.5">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                  <div>
+                                    <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                                      ¿Cuántos faltan?
+                                    </label>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={22}
+                                      value={lfpCountInput}
+                                      onChange={(e) => setLfpCountInput(Math.max(1, Math.min(22, Number(e.target.value) || 1)))}
+                                      className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                                    />
+                                  </div>
+                                  <div className="sm:col-span-2">
+                                    <label className="block text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                                      Nota (opcional)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={lfpNoteInput}
+                                      onChange={(e) => setLfpNoteInput(e.target.value)}
+                                      placeholder="Ej: Falta 1 para F5 / nivel intermedio"
+                                      className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                                    />
+                                  </div>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  disabled={lfpSendingId === b.id}
+                                  onClick={async () => {
+                                    setLfpSendingId(b.id);
+                                    try {
+                                      if (pushSupported && pushPermission !== 'denied' && !isPushEnabled) {
+                                        await enablePushNotifications({
+                                          bookingCode: b.bookingCode,
+                                          clientPhone: b.clientPhone,
+                                          clientName: b.clientName,
+                                          silentWelcome: true,
+                                        }).catch(() => {});
+                                      }
+                                      const res = await requestPlayersForBooking(b.id, lfpCountInput, lfpNoteInput);
+                                      setLfpFeedbackByBooking((prev) => ({
+                                        ...prev,
+                                        [b.id]:
+                                          res.pushResult.sentCount > 0
+                                            ? `Publicado en grilla y Push enviado a ${res.pushResult.sentCount} dispositivo(s).`
+                                            : 'Publicado en la grilla. Recibirás un Push cuando alguien se sume.',
+                                      }));
+                                      setEditingLfpBookingId(null);
+                                    } finally {
+                                      setLfpSendingId(null);
+                                    }
+                                  }}
+                                  className="w-full py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-bold text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                                >
+                                  <Send className="w-3.5 h-3.5" />
+                                  <span>
+                                    {lfpSendingId === b.id
+                                      ? 'Publicando...'
+                                      : 'Publicar en grilla y enviar Push'}
+                                  </span>
+                                </button>
+                              </div>
+                            )}
+
+                            {lfpFeedbackByBooking[b.id] && (
+                              <p className="text-[11px] text-[var(--accent-soft-text)] font-medium">
+                                {lfpFeedbackByBooking[b.id]}
+                              </p>
+                            )}
+
+                            {(b.joinedPlayers?.length || 0) > 0 && (
+                              <div className="space-y-1.5">
+                                <span className="text-[11px] font-bold text-[var(--text-primary)] block">
+                                  Jugadores sumados ({b.joinedPlayers!.length}):
+                                </span>
+                                {b.joinedPlayers!.map((jp) => {
+                                  const jpPhone = (jp.phone || '').replace(/\D/g, '');
+                                  const waUrl = jpPhone
+                                    ? `https://wa.me/${jpPhone}?text=${encodeURIComponent(`¡Hola ${jp.name}! Gracias por sumarte al partido #${b.bookingCode} (${b.courtName}, ${b.date} ${b.startTime} hs).`)}`
+                                    : '';
+                                  return (
+                                    <div
+                                      key={jp.id}
+                                      className="flex items-center justify-between gap-2 p-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)]"
+                                    >
+                                      <div className="min-w-0">
+                                        <p className="font-semibold text-[var(--text-primary)] truncate">
+                                          {jp.name}{' '}
+                                          <span className="font-mono font-normal text-[var(--text-secondary)]">
+                                            ({jp.phone})
+                                          </span>
+                                        </p>
+                                        {jp.notes && (
+                                          <p className="text-[11px] text-[var(--text-muted)] truncate">{jp.notes}</p>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        {waUrl && (
+                                          <a
+                                            href={waUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="p-1.5 rounded bg-[var(--accent-soft)] text-[var(--accent-soft-text)] hover:opacity-80"
+                                            title="Escribir por WhatsApp"
+                                          >
+                                            <MessageCircle className="w-3.5 h-3.5" />
+                                          </a>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={() => removeJoinedPlayerFromBooking(b.id, jp.id)}
+                                          className="p-1.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 cursor-pointer"
+                                          title="Quitar jugador"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -865,6 +1128,26 @@ const MainContent: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Lista de Jugadores Disponibles Hoy */}
+      <AvailablePlayersModal
+        isOpen={isAvailablePlayersOpen}
+        onClose={() => setIsAvailablePlayersOpen(false)}
+      />
+
+      {/* Sumarse a un partido desde notificación Push / URL */}
+      {(() => {
+        const joinTargetBooking = pendingJoinBookingCode
+          ? bookings.find((b) => (b.bookingCode || '').toUpperCase() === pendingJoinBookingCode.toUpperCase())
+          : undefined;
+        if (!joinTargetBooking) return null;
+        return (
+          <JoinMatchModal
+            booking={joinTargetBooking}
+            onClose={() => setPendingJoinBookingCode(null)}
+          />
+        );
+      })()}
     </div>
   );
 };
