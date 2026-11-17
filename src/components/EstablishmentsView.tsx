@@ -25,7 +25,6 @@ import {
   MessageCircle,
   Lock,
   Navigation,
-  Map as MapIcon,
 } from 'lucide-react';
 import { buildGoogleMapsDirectionsUrl, buildGoogleMapsEmbedUrl } from '../utils/maps';
 
@@ -77,7 +76,6 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
   const [estSearch, setEstSearch] = useState('');
   const [estSportFilter, setEstSportFilter] = useState<SportType | 'all'>('all');
   const [detailSubTab, setDetailSubTab] = useState<'canchas' | 'opiniones'>('canchas');
-  const [showEmbeddedMap, setShowEmbeddedMap] = useState(false);
 
   useBackHandler(Boolean(selectedEstablishmentKey), () => setSelectedEstablishmentKey(null), 'establishment-detail');
 
@@ -354,16 +352,6 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                       <Navigation className="w-3.5 h-3.5" />
                       <span>¿Cómo llegar?</span>
                     </a>
-                    {selectedMapsEmbedUrl && (
-                      <button
-                        type="button"
-                        onClick={() => setShowEmbeddedMap((v) => !v)}
-                        className="px-3.5 py-2 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-canvas)] hover:border-[var(--border-strong)] text-[var(--text-primary)] font-medium text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-                      >
-                        <MapIcon className="w-3.5 h-3.5 text-[var(--accent-soft-text)]" />
-                        <span>{showEmbeddedMap ? 'Ocultar mapa' : 'Ver mapa'}</span>
-                      </button>
-                    )}
                     {waHref && (
                       <a
                         href={waHref}
@@ -386,18 +374,6 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                     )}
                   </div>
                 </div>
-
-                {showEmbeddedMap && selectedMapsEmbedUrl && (
-                  <div className="mt-3 rounded-xl overflow-hidden border border-[var(--border-hairline)] bg-[var(--bg-canvas)]">
-                    <iframe
-                      title={`Mapa de ${selectedEst.name}`}
-                      src={selectedMapsEmbedUrl}
-                      className="w-full h-56 sm:h-64 border-0"
-                      loading="lazy"
-                      referrerPolicy="no-referrer-when-downgrade"
-                    />
-                  </div>
-                )}
               </div>
             </div>
 

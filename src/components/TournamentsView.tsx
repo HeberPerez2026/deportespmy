@@ -463,7 +463,7 @@ export const TournamentsView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-[var(--border-hairline)] pb-5">
         <div>
           <span className="text-xs font-bold uppercase tracking-wider text-[var(--accent-soft-text)]">
