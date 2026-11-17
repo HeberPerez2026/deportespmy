@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { AdminUser, SiteContent } from '../../types';
+import { AdminUser, SiteContent, FilterTag } from '../../types';
+import { DEFAULT_FILTER_TAGS } from '../../data/mockData';
 import {
   Crown,
   UserPlus,
@@ -21,10 +22,14 @@ import {
   RotateCcw,
   Search,
   Users,
+  Filter,
+  Tag,
+  Plus,
+  Sparkles,
 } from 'lucide-react';
 
 interface TextFieldConfig {
-  key: keyof SiteContent;
+  key: keyof Omit<SiteContent, 'filterTags'>;
   label: string;
   multiline?: boolean;
 }
@@ -130,6 +135,19 @@ const SITE_CONTENT_GROUPS: TextGroupConfig[] = [
   },
 ];
 
+const SUGGESTED_SPORTS = [
+  { id: 'pickleball', label: 'Pickleball', defaultSurface: 'Copa acrílica pro' },
+  { id: 'hockey', label: 'Hockey', defaultSurface: 'Césped sintético de agua' },
+  { id: 'squash', label: 'Squash', defaultSurface: 'Parquet flotante pulido' },
+  { id: 'voley', label: 'Vóley', defaultSurface: 'Piso vinílico amortiguado' },
+  { id: 'natacion', label: 'Natación', defaultSurface: 'Pileta climatizada 25m' },
+  { id: 'crossfit', label: 'Crossfit / Box', defaultSurface: 'Piso de caucho alta densidad' },
+  { id: 'rugby', label: 'Rugby', defaultSurface: 'Césped natural nivelado' },
+  { id: 'beach_tennis', label: 'Beach Tennis', defaultSurface: 'Arena fina de playa' },
+  { id: 'boxeo', label: 'Boxeo / Marcial', defaultSurface: 'Ring y tatami olímpico' },
+  { id: 'basquet', label: 'Básquet', defaultSurface: 'Parquet de madera flotante' },
+];
+
 export const SuperAdminPanel: React.FC = () => {
   const {
     admins,
@@ -147,13 +165,111 @@ export const SuperAdminPanel: React.FC = () => {
     resetSiteContent,
     reviews,
     deleteReview,
+    filterTags,
+    updateFilterTags,
+    courts,
   } = useApp();
 
-  const [subSection, setSubSection] = useState<'admins' | 'texts' | 'reviews' | 'footer'>('admins');
+  const [subSection, setSubSection] = useState<'admins' | 'filters' | 'texts' | 'reviews' | 'footer'>('admins');
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Filter Tags Management state
+  const [tagSearch, setTagSearch] = useState('');
+  const [isAddTagModalOpen, setIsAddTagModalOpen] = useState(false);
+  const [newTagLabel, setNewTagLabel] = useState('');
+  const [newTagId, setNewTagId] = useState('');
+  const [newTagSurface, setNewTagSurface] = useState('');
+  const [editingTag, setEditingTag] = useState<FilterTag | null>(null);
+  const [deleteTagConfirmId, setDeleteTagConfirmId] = useState<string | null>(null);
+  const [restoreTagsConfirm, setRestoreTagsConfirm] = useState(false);
+  const [tagMessage, setTagMessage] = useState<string | null>(null);
+
+  const showTagNotification = (msg: string) => {
+    setTagMessage(msg);
+    setTimeout(() => setTagMessage(null), 3500);
+  };
+
+  const handleCreateTag = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTagLabel.trim()) return;
+
+    const rawId = (newTagId.trim() || newTagLabel.trim())
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '') || `sport_${Date.now()}`;
+
+    if (filterTags.some((t) => t.id === rawId)) {
+      alert(`Ya existe una etiqueta con el identificador "${rawId}". Por favor elegí otro identificador.`);
+      return;
+    }
+
+    const newTag: FilterTag = {
+      id: rawId,
+      label: newTagLabel.trim(),
+      defaultSurface: newTagSurface.trim() || 'Superficie deportiva estándar',
+    };
+
+    const nextTags = [...filterTags, newTag];
+    await updateFilterTags(nextTags);
+    setIsAddTagModalOpen(false);
+    setNewTagLabel('');
+    setNewTagId('');
+    setNewTagSurface('');
+    showTagNotification(`¡Etiqueta "${newTag.label}" creada correctamente!`);
+  };
+
+  const handleQuickAddSuggested = async (suggested: { id: string; label: string; defaultSurface: string }) => {
+    if (filterTags.some((t) => t.id === suggested.id)) {
+      showTagNotification(`La etiqueta "${suggested.label}" ya está agregada.`);
+      return;
+    }
+    const nextTags = [...filterTags, suggested];
+    await updateFilterTags(nextTags);
+    showTagNotification(`Etiqueta "${suggested.label}" agregada.`);
+  };
+
+  const handleSaveEditTag = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTag || !editingTag.label.trim()) return;
+
+    const nextTags = filterTags.map((t) =>
+      t.id === editingTag.id
+        ? { ...t, label: editingTag.label.trim(), defaultSurface: editingTag.defaultSurface.trim() }
+        : t
+    );
+    await updateFilterTags(nextTags);
+    showTagNotification(`Etiqueta "${editingTag.label}" actualizada.`);
+    setEditingTag(null);
+  };
+
+  const handleDeleteTag = async (tagId: string) => {
+    const nextTags = filterTags.filter((t) => t.id !== tagId);
+    await updateFilterTags(nextTags);
+    setDeleteTagConfirmId(null);
+    showTagNotification('Etiqueta eliminada.');
+  };
+
+  const handleRestoreDefaultTags = async () => {
+    await updateFilterTags(DEFAULT_FILTER_TAGS);
+    setRestoreTagsConfirm(false);
+    showTagNotification('Se restablecieron las etiquetas a los valores iniciales.');
+  };
+
+  const filteredTags = filterTags.filter((tag) => {
+    if (!tagSearch.trim()) return true;
+    const q = tagSearch.toLowerCase().trim();
+    return (
+      tag.label.toLowerCase().includes(q) ||
+      tag.id.toLowerCase().includes(q) ||
+      tag.defaultSurface.toLowerCase().includes(q)
+    );
+  });
 
   // New admin user state
   const [username, setUsername] = useState('');
@@ -294,6 +410,19 @@ export const SuperAdminPanel: React.FC = () => {
         >
           <Users className="w-4 h-4" />
           <span>Administradores ({admins.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSubSection('filters')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 whitespace-nowrap cursor-pointer border transition-colors ${
+            subSection === 'filters'
+              ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)] shadow-sm'
+              : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          <Filter className="w-4 h-4" />
+          <span>Etiquetas de Filtro ({filterTags.length})</span>
         </button>
 
         <button
@@ -530,6 +659,180 @@ export const SuperAdminPanel: React.FC = () => {
         </div>
       )}
 
+      {/* SECTION: SPORT FILTER TAGS MANAGEMENT */}
+      {subSection === 'filters' && (
+        <div className="space-y-6">
+          {/* Header Card */}
+          <div className="bg-[var(--bg-surface)] text-[var(--text-primary)] p-6 sm:p-7 rounded-xl border border-[var(--border-hairline)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--accent-soft-text)] mb-1">
+                <Crown className="w-4 h-4" />
+                <span>Gestión de Deportes & Filtros · SuperAdmin</span>
+              </div>
+              <h2 className="font-heading text-2xl font-bold">
+                Administración de Etiquetas y Filtros Deportivos
+              </h2>
+              <p className="text-xs text-[var(--text-secondary)] mt-1 max-w-2xl">
+                Personalizá las disciplinas deportivas y etiquetas de filtro del portal. Los cambios se sincronizan en vivo en la portada, el directorio de complejos, el catálogo de turnos y las opciones de creación de canchas para administradores.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2.5 self-start sm:self-auto flex-wrap">
+              <button
+                type="button"
+                onClick={() => setRestoreTagsConfirm(true)}
+                className="px-3.5 py-2.5 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] border border-[var(--border-strong)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] font-semibold text-xs flex items-center gap-1.5 cursor-pointer transition-colors"
+                title="Restablecer a etiquetas predeterminadas"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Restaurar Valores Iniciales</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setNewTagLabel('');
+                  setNewTagId('');
+                  setNewTagSurface('');
+                  setIsAddTagModalOpen(true);
+                }}
+                className="px-5 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs sm:text-sm flex items-center gap-2 cursor-pointer transition-colors shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Nueva Etiqueta Deportiva</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Tag Notification Message */}
+          {tagMessage && (
+            <div className="flex items-center gap-2 p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-500" />
+              <span>{tagMessage}</span>
+            </div>
+          )}
+
+          {/* Quick Suggestions for Sports Not Yet Added */}
+          {(() => {
+            const availableSuggestions = SUGGESTED_SPORTS.filter(
+              (sug) => !filterTags.some((t) => t.id === sug.id || t.label.toLowerCase() === sug.label.toLowerCase())
+            );
+            if (availableSuggestions.length === 0) return null;
+            return (
+              <div className="p-4 rounded-xl bg-[var(--bg-surface)] border border-[var(--border-hairline)] space-y-2.5">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--text-primary)]">
+                  <Sparkles className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <span>Sugerencias rápidas para agregar en 1 clic:</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {availableSuggestions.map((sug) => (
+                    <button
+                      key={sug.id}
+                      type="button"
+                      onClick={() => handleQuickAddSuggested(sug)}
+                      className="px-3 py-1.5 rounded-lg bg-[var(--bg-canvas)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent-soft-text)] hover:border-[var(--accent)] border border-[var(--border-hairline)] text-xs font-medium text-[var(--text-secondary)] transition-colors cursor-pointer flex items-center gap-1.5"
+                    >
+                      <Plus className="w-3 h-3 text-[var(--accent)]" />
+                      <span>{sug.label}</span>
+                      <span className="text-[10px] text-[var(--text-muted)]">({sug.defaultSurface})</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Filter Tags List / Table */}
+          <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] overflow-hidden">
+            <div className="p-4 sm:p-5 border-b border-[var(--border-hairline)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-sm text-[var(--text-primary)] flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-[var(--accent)]" />
+                  <span>Etiquetas Activas en la Plataforma ({filteredTags.length})</span>
+                </h3>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Estas etiquetas definen las categorías visibles en el menú de búsqueda, filtros de fecha y catálogo.
+                </p>
+              </div>
+
+              <div className="relative w-full sm:w-64">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                <input
+                  type="text"
+                  placeholder="Buscar etiquetas o superficies..."
+                  value={tagSearch}
+                  onChange={(e) => setTagSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                />
+              </div>
+            </div>
+
+            {filteredTags.length === 0 ? (
+              <div className="p-8 text-center text-xs text-[var(--text-muted)]">
+                No se encontraron etiquetas que coincidan con la búsqueda.
+              </div>
+            ) : (
+              <div className="divide-y divide-[var(--border-hairline)]">
+                {filteredTags.map((tag) => {
+                  const linkedCourtsCount = courts.filter((c) => c.sport === tag.id).length;
+                  return (
+                    <div
+                      key={tag.id}
+                      className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-[var(--bg-subtle)] transition-colors"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="px-2.5 py-0.5 rounded-md bg-[var(--accent-soft)] text-[var(--accent-soft-text)] text-xs font-bold font-heading">
+                            {tag.label}
+                          </span>
+                          <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[var(--bg-canvas)] border border-[var(--border-hairline)] text-[var(--text-muted)]">
+                            id: {tag.id}
+                          </span>
+                          <span
+                            className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
+                              linkedCourtsCount > 0
+                                ? 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30'
+                                : 'bg-[var(--bg-canvas)] text-[var(--text-muted)] border border-[var(--border-hairline)]'
+                            }`}
+                          >
+                            {linkedCourtsCount} {linkedCourtsCount === 1 ? 'cancha activa' : 'canchas activas'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-[var(--text-secondary)]">
+                          <span className="font-semibold text-[var(--text-muted)]">Superficie predeterminada:</span>{' '}
+                          {tag.defaultSurface}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setEditingTag({ ...tag })}
+                          className="px-3 py-1.5 rounded-lg bg-[var(--bg-canvas)] hover:bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                          <span>Editar</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setDeleteTagConfirmId(tag.id)}
+                          className="px-3 py-1.5 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors"
+                          title="Eliminar esta etiqueta"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Eliminar</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* SECTION 2: EDITABLE PLAYER VIEW TEXTS */}
       {subSection === 'texts' && (
         <form onSubmit={handleSaveTexts} className="space-y-6">
@@ -633,7 +936,7 @@ export const SuperAdminPanel: React.FC = () => {
                       {field.multiline ? (
                         <textarea
                           rows={2}
-                          value={draftTexts[field.key] || ''}
+                          value={(draftTexts[field.key] as string) || ''}
                           onChange={(e) =>
                             setDraftTexts((prev) => ({
                               ...prev,
@@ -645,7 +948,7 @@ export const SuperAdminPanel: React.FC = () => {
                       ) : (
                         <input
                           type="text"
-                          value={draftTexts[field.key] || ''}
+                          value={(draftTexts[field.key] as string) || ''}
                           onChange={(e) =>
                             setDraftTexts((prev) => ({
                               ...prev,
@@ -1204,6 +1507,293 @@ export const SuperAdminPanel: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ADD FILTER TAG MODAL */}
+      {isAddTagModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-[var(--text-primary)] my-8">
+            <div className="flex justify-between items-center pb-3 border-b border-[var(--border-hairline)]">
+              <div>
+                <h3 className="text-base font-bold font-heading text-[var(--text-primary)] uppercase tracking-wide flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-[var(--accent)]" />
+                  <span>Nueva Etiqueta Deportiva</span>
+                </h3>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Configurá el nombre visible y la superficie sugerida para el filtro
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAddTagModalOpen(false)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Quick Prefill Suggestions */}
+            <div className="space-y-1.5">
+              <span className="text-[11px] font-semibold text-[var(--text-secondary)]">Plantillas rápidas:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {SUGGESTED_SPORTS.map((sug) => (
+                  <button
+                    key={sug.id}
+                    type="button"
+                    onClick={() => {
+                      setNewTagLabel(sug.label);
+                      setNewTagId(sug.id);
+                      setNewTagSurface(sug.defaultSurface);
+                    }}
+                    className="px-2 py-1 rounded bg-[var(--bg-canvas)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent-soft-text)] text-[10px] font-medium border border-[var(--border-hairline)] transition-colors cursor-pointer"
+                  >
+                    {sug.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <form onSubmit={handleCreateTag} className="space-y-3.5 text-xs">
+              <div>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">
+                  Nombre Visible del Deporte *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: Pickleball, Hockey sobre Césped, Squash"
+                  value={newTagLabel}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setNewTagLabel(val);
+                    if (!newTagId || newTagId.startsWith('sport_') || SUGGESTED_SPORTS.some((s) => s.id === newTagId)) {
+                      setNewTagId(
+                        val
+                          .toLowerCase()
+                          .normalize('NFD')
+                          .replace(/[\u0300-\u036f]/g, '')
+                          .replace(/[^a-z0-9]/g, '_')
+                          .replace(/_+/g, '_')
+                          .replace(/^_|_$/g, '')
+                      );
+                    }
+                  }}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">
+                  Identificador Único (Slug interno)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: pickleball, hockey, squash"
+                  value={newTagId}
+                  onChange={(e) =>
+                    setNewTagId(
+                      e.target.value
+                        .toLowerCase()
+                        .normalize('NFD')
+                        .replace(/[\u0300-\u036f]/g, '')
+                        .replace(/[^a-z0-9]/g, '_')
+                    )
+                  }
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                />
+                <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                  Se utiliza internamente para vincular las canchas y filtros de búsqueda.
+                </p>
+              </div>
+
+              <div>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">
+                  Superficie Sugerida por Defecto
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Césped Sintético Forbex 50mm, Parquet flotante, Resina acrílica"
+                  value={newTagSurface}
+                  onChange={(e) => setNewTagSurface(e.target.value)}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border-hairline)]">
+                <button
+                  type="button"
+                  onClick={() => setIsAddTagModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs shadow-md cursor-pointer"
+                >
+                  Crear Etiqueta
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT FILTER TAG MODAL */}
+      {editingTag && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 text-[var(--text-primary)] my-8">
+            <div className="flex justify-between items-center pb-3 border-b border-[var(--border-hairline)]">
+              <div>
+                <h3 className="text-base font-bold font-heading text-[var(--text-primary)] uppercase tracking-wide flex items-center gap-2">
+                  <Edit3 className="w-4 h-4 text-[var(--accent)]" />
+                  <span>Editar Etiqueta Deportiva</span>
+                </h3>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Modificá el nombre visible o la superficie sugerida
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingTag(null)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditTag} className="space-y-3.5 text-xs">
+              <div>
+                <span className="font-bold text-[var(--text-secondary)] block mb-1">
+                  Identificador Interno (Código fijo)
+                </span>
+                <div className="px-3 py-2 bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl font-mono text-xs text-[var(--text-muted)]">
+                  {editingTag.id}
+                </div>
+                <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                  El identificador no se modifica para preservar el historial de canchas y turnos existentes.
+                </p>
+              </div>
+
+              <div>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">
+                  Nombre Visible del Deporte *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingTag.label}
+                  onChange={(e) => setEditingTag({ ...editingTag, label: e.target.value })}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">
+                  Superficie Sugerida por Defecto
+                </label>
+                <input
+                  type="text"
+                  value={editingTag.defaultSurface}
+                  onChange={(e) => setEditingTag({ ...editingTag, defaultSurface: e.target.value })}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border-hairline)]">
+                <button
+                  type="button"
+                  onClick={() => setEditingTag(null)}
+                  className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs shadow-md cursor-pointer"
+                >
+                  Guardar Cambios
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM DELETE FILTER TAG MODAL */}
+      {deleteTagConfirmId && (() => {
+        const targetTag = filterTags.find((t) => t.id === deleteTagConfirmId);
+        const linkedCount = courts.filter((c) => c.sport === deleteTagConfirmId).length;
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4">
+              <div className="w-12 h-12 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-[var(--text-primary)] font-heading">
+                ¿Eliminar la etiqueta "{targetTag?.label || deleteTagConfirmId}"?
+              </h3>
+              <p className="text-xs text-[var(--text-secondary)]">
+                {linkedCount > 0 ? (
+                  <span className="text-amber-600 dark:text-amber-400 font-semibold block">
+                    Atención: Hay {linkedCount} {linkedCount === 1 ? 'cancha registrada' : 'canchas registradas'} con este deporte. La etiqueta dejará de aparecer en los filtros principales.
+                  </span>
+                ) : (
+                  'Esta etiqueta se eliminará de las opciones de filtrado y catálogo para jugadores y administradores.'
+                )}
+              </p>
+              <div className="flex justify-center gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteTagConfirmId(null)}
+                  className="px-4 py-2 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-semibold text-xs cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteTag(deleteTagConfirmId)}
+                  className="px-5 py-2 rounded-lg bg-rose-600 text-white font-bold text-xs hover:bg-rose-500 cursor-pointer"
+                >
+                  Sí, Eliminar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* CONFIRM RESTORE DEFAULT FILTER TAGS MODAL */}
+      {restoreTagsConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl max-w-sm w-full p-6 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto">
+              <RotateCcw className="w-6 h-6" />
+            </div>
+            <h3 className="text-lg font-bold text-[var(--text-primary)] font-heading">
+              ¿Restablecer Etiquetas de Fábrica?
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+              Esta acción restaurará el listado original de 8 deportes predeterminados (Fútbol 5, Fútbol 7, Pádel, Tenis, Básquet, Pickleball, Hockey y Vóley).
+            </p>
+            <div className="flex justify-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setRestoreTagsConfirm(false)}
+                className="px-4 py-2 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-semibold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleRestoreDefaultTags}
+                className="px-5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs cursor-pointer"
+              >
+                Sí, Restablecer
+              </button>
+            </div>
           </div>
         </div>
       )}

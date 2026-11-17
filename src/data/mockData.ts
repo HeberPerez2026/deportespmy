@@ -1,4 +1,4 @@
-import { Court, Booking, Review, MonthlyStats, WhatsAppNotificationLog, BusinessProfile, AdminUser, DeveloperContact, SiteContent } from '../types';
+import { Court, Booking, Review, MonthlyStats, WhatsAppNotificationLog, BusinessProfile, AdminUser, DeveloperContact, SiteContent, FilterTag } from '../types';
 
 // Helper to get formatted date string: YYYY-MM-DD
 export function getIsoDate(daysFromToday = 0): string {
@@ -75,6 +75,17 @@ export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
   youtubeUrl: '',
   socialFeedUrl: ''
 };
+
+export const DEFAULT_FILTER_TAGS: FilterTag[] = [
+  { id: 'futbol5', label: 'Fútbol 5', defaultSurface: 'Césped Sintético Forbex 50mm' },
+  { id: 'futbol7', label: 'Fútbol 7', defaultSurface: 'Césped Sintético Monofilamento FIFA' },
+  { id: 'padel', label: 'Pádel', defaultSurface: 'Césped Texturado Azul WPT + Vidrio 12mm' },
+  { id: 'tenis', label: 'Tenis', defaultSurface: 'Polvo de Ladrillo Batido Tradicional' },
+  { id: 'basquet', label: 'Básquet', defaultSurface: 'Piso Flotante de Madera Guatambú' },
+  { id: 'pickleball', label: 'Pickleball', defaultSurface: 'Pintura Acrílica Cushion Coated' },
+  { id: 'hockey', label: 'Hockey', defaultSurface: 'Césped Sintético de Arena' },
+  { id: 'voley', label: 'Vóley', defaultSurface: 'Piso Deportivo Sintético Indoor' },
+];
 
 // Default Developer Contact for footer, editable by SuperAdmin
 export const DEFAULT_DEVELOPER_CONTACT: DeveloperContact = {
@@ -153,6 +164,7 @@ export const DEFAULT_SITE_CONTENT: SiteContent = {
   reviewsEmptyTitle: 'Aún no hay opiniones registradas',
   reviewsEmptySubtitle: 'Las valoraciones aparecerán aquí a medida que los jugadores compartan su experiencia.',
   reviewsModalTitle: 'Dejar opinión sobre la cancha',
+  filterTags: DEFAULT_FILTER_TAGS,
 };
 
 // Initial system accounts: superadmin requested by user

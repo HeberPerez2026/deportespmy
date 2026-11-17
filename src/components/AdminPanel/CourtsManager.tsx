@@ -26,44 +26,19 @@ import {
   AlertTriangle,
   Upload,
   Loader2,
-  Camera
+  Camera,
+  Percent
 } from 'lucide-react';
 
-const SPORT_OPTIONS: { id: SportType; label: string; defaultSurface: string; defaultImg: string }[] = [
-  { 
-    id: 'futbol5', 
-    label: 'Fútbol 5', 
-    defaultSurface: 'Césped Sintético Forbex 50mm',
-    defaultImg: SPORT_DEFAULT_IMAGES.futbol5
-  },
-  { 
-    id: 'futbol7', 
-    label: 'Fútbol 7', 
-    defaultSurface: 'Césped Sintético Monofilamento FIFA',
-    defaultImg: SPORT_DEFAULT_IMAGES.futbol7
-  },
-  { 
-    id: 'padel', 
-    label: 'Pádel Panorámico', 
-    defaultSurface: 'Césped Texturado Azul WPT + Vidrio 12mm',
-    defaultImg: SPORT_DEFAULT_IMAGES.padel
-  },
-  { 
-    id: 'tenis', 
-    label: 'Tenis Polvo de Ladrillo', 
-    defaultSurface: 'Polvo de Ladrillo Batido Tradicional',
-    defaultImg: SPORT_DEFAULT_IMAGES.tenis
-  },
-  { 
-    id: 'basquet', 
-    label: 'Básquetbol / Parquet', 
-    defaultSurface: 'Piso Flotante de Madera Guatambú',
-    defaultImg: SPORT_DEFAULT_IMAGES.basquet
-  },
-];
-
 export const CourtsManager: React.FC = () => {
-  const { adminCourts: courts, addCourt, deleteCourt, updateCourt, businessProfile } = useApp();
+  const { adminCourts: courts, addCourt, deleteCourt, updateCourt, businessProfile, filterTags, getSportLabel } = useApp();
+
+  const sportOptions = filterTags.map(tag => ({
+    id: tag.id as SportType,
+    label: tag.label,
+    defaultSurface: tag.defaultSurface,
+    defaultImg: SPORT_DEFAULT_IMAGES[tag.id as SportType] || SPORT_DEFAULT_IMAGES.futbol5
+  }));
   
   const [editingCourt, setEditingCourt] = useState<Court | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -71,9 +46,9 @@ export const CourtsManager: React.FC = () => {
 
   // New court form state
   const [name, setName] = useState('');
-  const [sport, setSport] = useState<SportType>('futbol5');
+  const [sport, setSport] = useState<SportType>(sportOptions[0]?.id || 'futbol5');
   const [establishment, setEstablishment] = useState(businessProfile.complexName || 'Complejo Deportivo Puerto Madryn');
-  const [surface, setSurface] = useState(SPORT_OPTIONS[0].defaultSurface);
+  const [surface, setSurface] = useState(sportOptions[0]?.defaultSurface || 'Césped Sintético Forbex 50mm');
   const [isIndoor, setIsIndoor] = useState(true);
   const [hasLighting, setHasLighting] = useState(true);
   const [hourlyRateDay, setHourlyRateDay] = useState(18000);
@@ -81,8 +56,8 @@ export const CourtsManager: React.FC = () => {
   const [horaInicio, setHoraInicio] = useState<string>(DEFAULT_HORA_INICIO);
   const [horaFin, setHoraFin] = useState<string>(DEFAULT_HORA_FIN);
   const [nightStartHour, setNightStartHour] = useState<number>(DEFAULT_NIGHT_START_HOUR);
-  const [depositRequired] = useState(50);
-  const [imageUrl, setImageUrl] = useState(SPORT_OPTIONS[0].defaultImg);
+  const [depositRequired, setDepositRequired] = useState(50);
+  const [imageUrl, setImageUrl] = useState(sportOptions[0]?.defaultImg || SPORT_DEFAULT_IMAGES.futbol5);
   const [attachedImages, setAttachedImages] = useState<string[]>([]);
   const [newImageUrlInput, setNewImageUrlInput] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -95,7 +70,7 @@ export const CourtsManager: React.FC = () => {
 
   const handleSportChange = (newSport: SportType) => {
     setSport(newSport);
-    const opt = SPORT_OPTIONS.find(s => s.id === newSport);
+    const opt = sportOptions.find(s => s.id === newSport);
     if (opt) {
       setSurface(opt.defaultSurface);
       setImageUrl(opt.defaultImg);
@@ -228,7 +203,7 @@ export const CourtsManager: React.FC = () => {
     if (!editingCourt) return;
     const currentGallery = getEditingGallery(editingCourt);
     const nextGallery = currentGallery.filter((_, i) => i !== idx);
-    const sportOpt = SPORT_OPTIONS.find(s => s.id === editingCourt.sport);
+    const sportOpt = sportOptions.find(s => s.id === editingCourt.sport);
     setEditingCourt({
       ...editingCourt,
       images: nextGallery,
@@ -243,7 +218,7 @@ export const CourtsManager: React.FC = () => {
 
     const amenities = amenitiesInput.split(',').map(s => s.trim()).filter(Boolean);
     const finalGallery = attachedImages.length > 0 ? attachedImages : [imageUrl.trim()].filter(Boolean);
-    const primaryImage = finalGallery[0] || SPORT_OPTIONS[0].defaultImg;
+    const primaryImage = finalGallery[0] || sportOptions[0]?.defaultImg || SPORT_DEFAULT_IMAGES.futbol5;
 
     const openNum = parseSlotHourOrder(horaInicio);
     const closeNum = Math.max(openNum, parseSlotHourOrder(horaFin));
@@ -360,7 +335,7 @@ export const CourtsManager: React.FC = () => {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" />
                   
                   <span className="absolute top-3 left-3 bg-black/75 text-white text-[10px] font-semibold px-2.5 py-0.5 rounded-md uppercase tracking-wider">
-                    {court.sport}
+                    {getSportLabel(court.sport)}
                   </span>
 
                   <span className={`absolute top-3 right-3 text-[10px] font-bold px-2.5 py-0.5 rounded-md ${court.status === 'active' ? 'bg-[var(--accent)] text-[var(--accent-ink)]' : 'bg-rose-600 text-white'}`}>
@@ -396,6 +371,15 @@ export const CourtsManager: React.FC = () => {
                         ${court.hourlyRateNight.toLocaleString('es-AR')}
                       </strong>
                     </div>
+                  </div>
+
+                  <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[var(--bg-subtle)] text-[var(--text-secondary)] text-[11px] border border-[var(--border-hairline)]">
+                    <span className="flex items-center gap-1 text-[var(--text-muted)]">
+                      <Percent className="w-3 h-3 text-[var(--accent)]" /> Seña de reserva:
+                    </span>
+                    <strong className="font-mono font-bold text-[var(--accent-soft-text)]">
+                      {(court.depositRequired ?? 50) === 0 ? 'Sin seña (0%)' : `${court.depositRequired ?? 50}%`}
+                    </strong>
                   </div>
 
                   {(() => {
@@ -499,7 +483,7 @@ export const CourtsManager: React.FC = () => {
               <div>
                 <label className="font-semibold text-[var(--text-secondary)] block mb-1.5">Tipo de Deporte</label>
                 <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
-                  {SPORT_OPTIONS.map((opt) => (
+                  {sportOptions.map((opt) => (
                     <button
                       key={opt.id}
                       type="button"
@@ -559,6 +543,58 @@ export const CourtsManager: React.FC = () => {
                     onChange={(e) => setHourlyRateNight(Number(e.target.value))}
                     className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
                   />
+                </div>
+              </div>
+
+              {/* Configuración de Seña de Reserva */}
+              <div className="p-3.5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                    <Percent className="w-3.5 h-3.5 text-[var(--accent)]" />
+                    Porcentaje de Seña a Cobrar
+                  </span>
+                  <span className="font-mono text-xs font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded-md tabular-nums">
+                    {depositRequired}% de seña
+                  </span>
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Monto requerido al jugador para confirmar el turno por MercadoPago o transferencia (0% = sin seña previa, 100% = pago total).
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {[0, 20, 30, 40, 50, 70, 100].map((pct) => (
+                    <button
+                      key={pct}
+                      type="button"
+                      onClick={() => setDepositRequired(pct)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                        depositRequired === pct
+                          ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)]'
+                          : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
+                      }`}
+                    >
+                      {pct === 0 ? 'Sin Seña (0%)' : pct === 100 ? 'Total (100%)' : `${pct}%`}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3 pt-1">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={depositRequired}
+                    onChange={(e) => setDepositRequired(Number(e.target.value))}
+                    className="flex-1 h-2 rounded-lg bg-[var(--bg-elevated)] accent-[var(--accent)] cursor-pointer"
+                  />
+                  <span className="font-mono text-xs font-bold w-12 text-right tabular-nums text-[var(--text-primary)]">
+                    {depositRequired}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] bg-[var(--bg-surface)] px-2.5 py-1.5 rounded-lg border border-[var(--border-hairline)] text-[var(--text-secondary)]">
+                  <span>Ejemplo seña diurna (${hourlyRateDay.toLocaleString('es-AR')}):</span>
+                  <span className="font-mono font-bold text-[var(--accent-soft-text)]">
+                    ${Math.round(hourlyRateDay * (depositRequired / 100)).toLocaleString('es-AR')}
+                  </span>
                 </div>
               </div>
 
@@ -776,6 +812,32 @@ export const CourtsManager: React.FC = () => {
 
             <form onSubmit={handleSaveEdit} className="space-y-3 text-xs">
               <div>
+                <label className="font-semibold text-[var(--text-secondary)] block mb-1.5">Tipo de Deporte</label>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+                  {sportOptions.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        setEditingCourt({
+                          ...editingCourt,
+                          sport: opt.id,
+                          surface: opt.defaultSurface || editingCourt.surface,
+                        });
+                      }}
+                      className={`p-2 rounded-xl text-center border font-bold text-[11px] transition-all cursor-pointer ${
+                        editingCourt.sport === opt.id
+                          ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)] shadow-sm'
+                          : 'bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
                 <label className="font-semibold text-[var(--text-secondary)] block mb-1">Nombre</label>
                 <input
                   type="text"
@@ -813,6 +875,58 @@ export const CourtsManager: React.FC = () => {
                     onChange={(e) => setEditingCourt({ ...editingCourt, hourlyRateNight: Number(e.target.value) })}
                     className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
                   />
+                </div>
+              </div>
+
+              {/* Porcentaje de Seña a Cobrar */}
+              <div className="p-3 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                    <Percent className="w-3.5 h-3.5 text-[var(--accent)]" />
+                    Porcentaje de Seña a Cobrar
+                  </span>
+                  <span className="font-mono text-xs font-bold text-[var(--accent)] bg-[var(--accent-soft)] px-2 py-0.5 rounded-md tabular-nums">
+                    {editingCourt.depositRequired ?? 50}% de seña
+                  </span>
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Monto requerido al jugador para confirmar la reserva (0% = sin seña previa, 100% = pago total).
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {[0, 20, 30, 40, 50, 70, 100].map((pct) => (
+                    <button
+                      key={pct}
+                      type="button"
+                      onClick={() => setEditingCourt({ ...editingCourt, depositRequired: pct })}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                        (editingCourt.depositRequired ?? 50) === pct
+                          ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)]'
+                          : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
+                      }`}
+                    >
+                      {pct === 0 ? 'Sin Seña (0%)' : pct === 100 ? 'Total (100%)' : `${pct}%`}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3 pt-1">
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={editingCourt.depositRequired ?? 50}
+                    onChange={(e) => setEditingCourt({ ...editingCourt, depositRequired: Number(e.target.value) })}
+                    className="flex-1 h-2 rounded-lg bg-[var(--bg-elevated)] accent-[var(--accent)] cursor-pointer"
+                  />
+                  <span className="font-mono text-xs font-bold w-12 text-right tabular-nums text-[var(--text-primary)]">
+                    {editingCourt.depositRequired ?? 50}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] bg-[var(--bg-surface)] px-2.5 py-1.5 rounded-lg border border-[var(--border-hairline)] text-[var(--text-secondary)]">
+                  <span>Ejemplo seña diurna (${(editingCourt.hourlyRateDay || 0).toLocaleString('es-AR')}):</span>
+                  <span className="font-mono font-bold text-[var(--accent-soft-text)]">
+                    ${Math.round((editingCourt.hourlyRateDay || 0) * ((editingCourt.depositRequired ?? 50) / 100)).toLocaleString('es-AR')}
+                  </span>
                 </div>
               </div>
 

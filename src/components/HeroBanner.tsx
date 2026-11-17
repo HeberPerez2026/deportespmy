@@ -15,15 +15,12 @@ export const HeroBanner: React.FC = () => {
     setSearchQuery,
     courts,
     siteContent,
+    filterTags,
   } = useApp();
 
   const sportsFilter: { id: SportType | 'all'; label: string }[] = [
     { id: 'all', label: siteContent.heroAllSportsLabel },
-    { id: 'futbol5', label: 'Fútbol 5' },
-    { id: 'padel', label: 'Pádel' },
-    { id: 'futbol7', label: 'Fútbol 7' },
-    { id: 'tenis', label: 'Tenis' },
-    { id: 'basquet', label: 'Básquetbol' },
+    ...filterTags.map(tag => ({ id: tag.id, label: tag.label }))
   ];
 
   const activeCourtsCount = courts.filter((c) => c.status === 'active').length;

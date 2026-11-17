@@ -1,4 +1,10 @@
-export type SportType = 'futbol5' | 'futbol7' | 'padel' | 'tenis' | 'basquet';
+export type SportType = string;
+
+export interface FilterTag {
+  id: string;
+  label: string;
+  defaultSurface: string;
+}
 
 export interface Court {
   id: string;
@@ -222,6 +228,7 @@ export interface SiteContent {
   reviewsEmptyTitle: string;
   reviewsEmptySubtitle: string;
   reviewsModalTitle: string;
+  filterTags: FilterTag[];
 }
 
 export interface AdminUser {

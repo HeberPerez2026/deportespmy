@@ -114,7 +114,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
       if (firstAvail) setSelectedSlotTime(firstAvail.startTime);
     }
   }, [slots, selectedSlotTime]);
-  const depositAmount = Math.round(totalPrice * (court.depositRequired / 100));
+  const depositPercent = typeof court.depositRequired === 'number' && !isNaN(court.depositRequired) && court.depositRequired >= 0 && court.depositRequired <= 100 ? court.depositRequired : 50;
+  const depositAmount = Math.round(totalPrice * (depositPercent / 100));
   const amountToPayNow = paymentOption === 'deposit' ? depositAmount : totalPrice;
   const balanceDue = totalPrice - amountToPayNow;
 
@@ -686,13 +687,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-[var(--accent-soft-text)]">Seña 50%</span>
+                      <span className="text-xs font-bold text-[var(--accent-soft-text)]">Seña {depositPercent}%</span>
                       <span className="font-mono text-sm font-bold text-[var(--text-primary)] tabular-nums">
                         ${depositAmount.toLocaleString('es-AR')}
                       </span>
                     </div>
                     <p className="text-[11px] text-[var(--text-secondary)] mt-1">
-                      Abonás la mitad ahora y el saldo de ${depositAmount.toLocaleString('es-AR')} en cancha.
+                      Abonás el {depositPercent}% ahora y el saldo de ${(totalPrice - depositAmount).toLocaleString('es-AR')} en cancha.
                     </p>
                   </button>
 
@@ -1049,7 +1050,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   <span className="font-mono tabular-nums">${totalPrice.toLocaleString('es-AR')}</span>
                 </div>
                 <div className="flex justify-between text-[var(--accent-soft-text)] font-bold pt-1.5 border-t border-[var(--border-hairline)]">
-                  <span>A pagar ahora ({paymentOption === 'deposit' ? 'Seña 50%' : 'Total 100%'}):</span>
+                  <span>A pagar ahora ({paymentOption === 'deposit' ? `Seña ${depositPercent}%` : 'Total 100%'}):</span>
                   <span className="font-mono text-base tabular-nums">${amountToPayNow.toLocaleString('es-AR')}</span>
                 </div>
                 {balanceDue > 0 && (
@@ -1413,7 +1414,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                       : confirmedBooking.paymentStatus === 'total_pagado'
                       ? 'Total 100% pagado'
                       : confirmedBooking.status === 'confirmed'
-                      ? 'Seña 50% abonada'
+                      ? `Seña ${depositPercent}% abonada`
                       : 'Pago pendiente'}
                   </span>
                 </div>

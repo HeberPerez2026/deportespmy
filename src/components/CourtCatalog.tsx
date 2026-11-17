@@ -44,6 +44,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
     isAdminAuthenticated,
     setActiveTab,
     siteContent,
+    getSportLabel,
   } = useApp();
 
   const [activeBookingCourt, setActiveBookingCourt] = useState<Court | null>(null);
@@ -178,7 +179,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
           {filteredCourts.map((court) => {
             const slots = getSlotsForCourtAndDate(court.id, selectedDate);
             const availableSlotsCount = slots.filter((s) => s.status === 'available').length;
-            const sportLabel = SPORT_DISPLAY_LABELS[court.sport] || court.sport;
+            const sportLabel = getSportLabel(court.sport);
             const gallery = resolveCourtGallery(court.sport, court.images, court.imageUrl);
             const activePhotoIdx = (photoIndexByCourt[court.id] || 0) % gallery.length;
             const activePhoto = gallery[activePhotoIdx];

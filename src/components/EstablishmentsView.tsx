@@ -66,6 +66,8 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
     isAdminAuthenticated,
     setActiveTab,
     siteContent,
+    filterTags,
+    getSportLabel,
   } = useApp();
 
   const [estSearch, setEstSearch] = useState('');
@@ -322,7 +324,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                     {selectedEst.sports.length > 0 && (
                       <p>
                         <span className="font-semibold text-[var(--text-primary)]">Disciplinas: </span>
-                        {selectedEst.sports.map((sp) => SPORT_DISPLAY_LABELS[sp] || sp).join(' · ')}
+                        {selectedEst.sports.map((sp) => getSportLabel(sp)).join(' · ')}
                       </p>
                     )}
                     {paymentMethodsList.length > 0 && (
@@ -452,7 +454,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                         : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                     }`}
                   >
-                    {SPORT_DISPLAY_LABELS[sp] || sp}
+                    {getSportLabel(sp)}
                   </button>
                 ))}
               </div>
@@ -532,18 +534,18 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
               >
                 {siteContent.estAllSportsLabel} ({establishments.length})
               </button>
-              {(Object.keys(SPORT_DISPLAY_LABELS) as SportType[]).map((sp) => (
+              {filterTags.map((tag) => (
                 <button
-                  key={sp}
+                  key={tag.id}
                   type="button"
-                  onClick={() => setEstSportFilter(sp)}
+                  onClick={() => setEstSportFilter(tag.id)}
                   className={`px-3 py-2 rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
-                    estSportFilter === sp
+                    estSportFilter === tag.id
                       ? 'bg-[var(--accent-soft)] text-[var(--accent-soft-text)] border-[var(--accent)]'
                       : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)]'
                   }`}
                 >
-                  {SPORT_DISPLAY_LABELS[sp]}
+                  {tag.label}
                 </button>
               ))}
             </div>
@@ -662,7 +664,7 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                     <div className="p-5 space-y-2.5 text-xs">
                       {est.sports.length > 0 ? (
                         <p className="font-semibold text-[var(--text-primary)]">
-                          {est.sports.map((sp) => SPORT_DISPLAY_LABELS[sp] || sp).join(' · ')}
+                          {est.sports.map((sp) => getSportLabel(sp)).join(' · ')}
                         </p>
                       ) : (
                         <p className="text-[var(--text-muted)]">Complejo en configuración</p>

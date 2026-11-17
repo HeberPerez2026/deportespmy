@@ -15,7 +15,8 @@ import {
   AdminUser,
   DeveloperContact,
   SiteContent,
-  PushSubscriptionRecord
+  PushSubscriptionRecord,
+  FilterTag
 } from '../types';
 import { 
   INITIAL_COURTS, 
@@ -27,7 +28,8 @@ import {
   DEFAULT_DEVELOPER_CONTACT,
   DEFAULT_SITE_CONTENT,
   INITIAL_ADMINS,
-  getIsoDate 
+  getIsoDate,
+  DEFAULT_FILTER_TAGS
 } from '../data/mockData';
 import { 
   subscribeToCourts,
@@ -107,6 +109,9 @@ interface AppContextType {
   getBusinessProfileForCourt: (court?: Court | null) => BusinessProfile;
   developerContact: DeveloperContact;
   siteContent: SiteContent;
+  filterTags: FilterTag[];
+  updateFilterTags: (tags: FilterTag[]) => Promise<void>;
+  getSportLabel: (sportId: string) => string;
   admins: AdminUser[];
   
   // Navigation & Filters
@@ -800,6 +805,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
     await saveSiteContentToFirestore(nextContent);
   }, [siteContent]);
+
+  const filterTags = siteContent.filterTags || DEFAULT_FILTER_TAGS;
+
+  const updateFilterTags = useCallback(async (tags: FilterTag[]) => {
+    await updateSiteContent({ filterTags: tags });
+  }, [updateSiteContent]);
+
+  const getSportLabel = useCallback((sportId: string): string => {
+    const tags = siteContent.filterTags || DEFAULT_FILTER_TAGS;
+    const match = tags.find(t => t.id === sportId);
+    return match ? match.label : sportId;
+  }, [siteContent.filterTags]);
 
   const resetSiteContent = useCallback(async () => {
     setSiteContent(DEFAULT_SITE_CONTENT);
@@ -1785,6 +1802,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     getBusinessProfileForCourt,
     developerContact,
     siteContent,
+    filterTags,
+    updateFilterTags,
+    getSportLabel,
     admins,
     selectedDate,
     setSelectedDate,
@@ -1864,6 +1884,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     getBusinessProfileForCourt,
     developerContact,
     siteContent,
+    filterTags,
     admins,
     selectedDate,
     selectedSport,
@@ -1887,6 +1908,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     toggleAdminPaymentPause,
     updateDeveloperContact,
     updateSiteContent,
+    updateFilterTags,
+    getSportLabel,
     resetSiteContent,
     addAdminUser,
     updateAdminUser,

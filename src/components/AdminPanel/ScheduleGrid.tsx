@@ -432,14 +432,20 @@ export const ScheduleGrid: React.FC = () => {
 
                     <div>
                       <label className="font-bold text-[var(--text-secondary)] block mb-1">Cobro Inicial</label>
-                      <select
-                        value={isDepositOnly ? 'seña' : 'total'}
-                        onChange={(e) => setIsDepositOnly(e.target.value === 'seña')}
-                        className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-                      >
-                        <option value="total">Total 100% (${modalSlot.slot.price.toLocaleString('es-AR')})</option>
-                        <option value="seña">Seña 50% (${Math.round(modalSlot.slot.price * 0.5).toLocaleString('es-AR')})</option>
-                      </select>
+                      {(() => {
+                        const courtDeposit = typeof modalSlot.court.depositRequired === 'number' && !isNaN(modalSlot.court.depositRequired) && modalSlot.court.depositRequired >= 0 && modalSlot.court.depositRequired <= 100 ? modalSlot.court.depositRequired : 50;
+                        const depAmount = Math.round(modalSlot.slot.price * (courtDeposit / 100));
+                        return (
+                          <select
+                            value={isDepositOnly ? 'seña' : 'total'}
+                            onChange={(e) => setIsDepositOnly(e.target.value === 'seña')}
+                            className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                          >
+                            <option value="total">Total 100% (${modalSlot.slot.price.toLocaleString('es-AR')})</option>
+                            <option value="seña">Seña {courtDeposit}% (${depAmount.toLocaleString('es-AR')})</option>
+                          </select>
+                        );
+                      })()}
                     </div>
                   </div>
 

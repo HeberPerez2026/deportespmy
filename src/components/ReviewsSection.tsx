@@ -86,6 +86,8 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
     isAdminAuthenticated,
     isSuperAdmin,
     siteContent,
+    filterTags,
+    getSportLabel,
   } = useApp();
 
   const scopedCourts = courtsOverride ?? courts;
@@ -315,11 +317,7 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
         <div className="flex items-center gap-1.5 flex-wrap">
           {[
             { id: 'all', label: 'Todas' },
-            { id: 'futbol5', label: 'Fútbol 5' },
-            { id: 'padel', label: 'Pádel' },
-            { id: 'futbol7', label: 'Fútbol 7' },
-            { id: 'tenis', label: 'Tenis' },
-            { id: 'basquet', label: 'Básquet' },
+            ...filterTags.map((tag) => ({ id: tag.id, label: tag.label })),
           ].map((f) => (
             <button
               key={f.id}
@@ -546,7 +544,7 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
                   {scopedCourts.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
-                      {c.establishment && !complexNameOverride ? ` — ${c.establishment}` : ''} ({c.sport})
+                      {c.establishment && !complexNameOverride ? ` — ${c.establishment}` : ''} ({getSportLabel(c.sport)})
                     </option>
                   ))}
                 </select>
