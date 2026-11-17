@@ -35,6 +35,14 @@ service cloud.firestore {
           && data.joinedPlayers.size() <= 30
           && (data.joinedPlayers.size() == 0 || data.joinedPlayers[0] is map)
         ))
+        && (!('totalPlayers' in data) || (data.totalPlayers is number && data.totalPlayers >= 1 && data.totalPlayers <= 40))
+        && (!('perPlayerAmount' in data) || (data.perPlayerAmount is number && data.perPlayerAmount >= 0))
+        && (!('recurringGroupId' in data) || (data.recurringGroupId is string && data.recurringGroupId.size() <= 80))
+        && (!('recurringIndex' in data) || (data.recurringIndex is number && data.recurringIndex >= 1 && data.recurringIndex <= 104))
+        && (!('recurringTotal' in data) || (data.recurringTotal is number && data.recurringTotal >= 1 && data.recurringTotal <= 104))
+        && (!('rescheduledFrom' in data) || data.rescheduledFrom is map)
+        && (!('rescheduledAt' in data) || (data.rescheduledAt is string && data.rescheduledAt.size() <= 64))
+        && (!('reminderSentAt' in data) || (data.reminderSentAt is string && data.reminderSentAt.size() <= 64))
         && data.status is string && (
           data.status == 'confirmed' ||
           data.status == 'cancelled' ||
@@ -112,6 +120,39 @@ service cloud.firestore {
         ));
     }
 
+    function isValidTournament(data) {
+      return data.title is string && data.title.size() >= 1 && data.title.size() <= 140
+        && data.sport is string && data.sport.size() <= 32
+        && data.date is string && data.date.size() <= 16
+        && data.startTime is string && data.startTime.size() <= 10
+        && data.endTime is string && data.endTime.size() <= 10
+        && data.maxTeams is number && data.maxTeams >= 2 && data.maxTeams <= 128
+        && data.entryFee is number && data.entryFee >= 0
+        && (!('blockCourts' in data) || data.blockCourts is bool)
+        && (!('endDate' in data) || (data.endDate is string && data.endDate.size() <= 16))
+        && (!('establishment' in data) || (data.establishment is string && data.establishment.size() <= 128))
+        && (!('adminId' in data) || (data.adminId is string && data.adminId.size() <= 64))
+        && (!('format' in data) || (data.format is string && data.format.size() <= 80))
+        && (!('prizeDescription' in data) || (data.prizeDescription is string && data.prizeDescription.size() <= 300))
+        && (!('description' in data) || (data.description is string && data.description.size() <= 1000))
+        && (!('courtIds' in data) || (
+          data.courtIds is list
+          && data.courtIds.size() <= 30
+        ))
+        && (!('teams' in data) || (
+          data.teams is list
+          && data.teams.size() <= 128
+          && (data.teams.size() == 0 || data.teams[0] is map)
+        ))
+        && data.status is string && (
+          data.status == 'open' ||
+          data.status == 'full' ||
+          data.status == 'ongoing' ||
+          data.status == 'finished' ||
+          data.status == 'cancelled'
+        );
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;
@@ -166,6 +207,13 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if isValidId(playerId) && isValidAvailablePlayer(incoming());
       allow delete: if isValidId(playerId);
+    }
+
+    // Tournaments & Events collection
+    match /tournaments/{tournamentId} {
+      allow read: if true;
+      allow create, update: if isValidId(tournamentId) && isValidTournament(incoming());
+      allow delete: if isValidId(tournamentId);
     }
 
     // Connection check

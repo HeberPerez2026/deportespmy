@@ -22,7 +22,9 @@ import {
   Facebook,
   Youtube,
   Play,
-  Sparkles
+  Sparkles,
+  MapPin,
+  Clock
 } from 'lucide-react';
 
 export const AdminProfileSettings: React.FC = () => {
@@ -45,6 +47,19 @@ export const AdminProfileSettings: React.FC = () => {
   const [tiktokUrl, setTiktokUrl] = useState(businessProfile.tiktokUrl || '');
   const [youtubeUrl, setYoutubeUrl] = useState(businessProfile.youtubeUrl || '');
   const [socialFeedUrl, setSocialFeedUrl] = useState(businessProfile.socialFeedUrl || '');
+  const [mapsUrl, setMapsUrl] = useState(businessProfile.mapsUrl || '');
+  const [latitude, setLatitude] = useState(
+    typeof businessProfile.latitude === 'number' ? String(businessProfile.latitude) : ''
+  );
+  const [longitude, setLongitude] = useState(
+    typeof businessProfile.longitude === 'number' ? String(businessProfile.longitude) : ''
+  );
+  const [cancellationWindowHours, setCancellationWindowHours] = useState(
+    String(businessProfile.cancellationWindowHours ?? 24)
+  );
+  const [reminderHoursBefore, setReminderHoursBefore] = useState(
+    String(businessProfile.reminderHoursBefore ?? 2)
+  );
 
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -154,6 +169,11 @@ export const AdminProfileSettings: React.FC = () => {
     setTiktokUrl(businessProfile.tiktokUrl || '');
     setYoutubeUrl(businessProfile.youtubeUrl || '');
     setSocialFeedUrl(businessProfile.socialFeedUrl || '');
+    setMapsUrl(businessProfile.mapsUrl || '');
+    setLatitude(typeof businessProfile.latitude === 'number' ? String(businessProfile.latitude) : '');
+    setLongitude(typeof businessProfile.longitude === 'number' ? String(businessProfile.longitude) : '');
+    setCancellationWindowHours(String(businessProfile.cancellationWindowHours ?? 24));
+    setReminderHoursBefore(String(businessProfile.reminderHoursBefore ?? 2));
   }, [businessProfile]);
 
   const handleConnectMercadoPago = async () => {
@@ -239,7 +259,12 @@ export const AdminProfileSettings: React.FC = () => {
       facebookUrl: facebookUrl.trim(),
       tiktokUrl: tiktokUrl.trim(),
       youtubeUrl: youtubeUrl.trim(),
-      socialFeedUrl: socialFeedUrl.trim()
+      socialFeedUrl: socialFeedUrl.trim(),
+      mapsUrl: mapsUrl.trim(),
+      latitude: latitude.trim() && !Number.isNaN(Number(latitude)) ? Number(latitude) : undefined,
+      longitude: longitude.trim() && !Number.isNaN(Number(longitude)) ? Number(longitude) : undefined,
+      cancellationWindowHours: Math.max(0, Math.min(168, Number(cancellationWindowHours) || 24)),
+      reminderHoursBefore: Math.max(0.5, Math.min(12, Number(reminderHoursBefore) || 2)),
     });
 
     setSavedSuccess(true);
@@ -684,6 +709,96 @@ export const AdminProfileSettings: React.FC = () => {
             <span className="text-[10px] text-[var(--text-muted)] mt-0.5 block">
               Si dejás este campo vacío, el sistema utilizará la plantilla profesional predeterminada.
             </span>
+          </div>
+        </div>
+
+        {/* Section 3B: Mapa / Cómo Llegar & Políticas de Cancelación / Recordatorio Push */}
+        <div className="bg-[var(--bg-surface)] p-6 rounded-xl border border-[var(--border-hairline)] space-y-4">
+          <div className="flex items-center gap-2 font-bold text-[var(--text-primary)] text-sm border-b border-[var(--border-hairline)] pb-3">
+            <MapPin className="w-4 h-4 text-[var(--accent)]" />
+            <span>Mapa “¿Cómo llegar?” &amp; Reglas de Turnos</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div className="sm:col-span-2">
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1">
+                Link directo de Google Maps (Opcional)
+              </label>
+              <input
+                type="url"
+                value={mapsUrl}
+                onChange={(e) => setMapsUrl(e.target.value)}
+                placeholder="Ej: https://maps.app.goo.gl/... o https://www.google.com/maps?q=-42.769,-65.038"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs font-mono text-[var(--text-primary)]"
+              />
+              <span className="text-[10px] text-[var(--text-muted)] mt-0.5 block">
+                Si queda vacío, el botón “¿Cómo llegar?” buscará automáticamente usando el nombre y dirección del complejo en Puerto Madryn.
+              </span>
+            </div>
+
+            <div>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1">
+                Latitud GPS (Opcional)
+              </label>
+              <input
+                type="text"
+                value={latitude}
+                onChange={(e) => setLatitude(e.target.value)}
+                placeholder="Ej: -42.7692"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs font-mono text-[var(--text-primary)]"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1">
+                Longitud GPS (Opcional)
+              </label>
+              <input
+                type="text"
+                value={longitude}
+                onChange={(e) => setLongitude(e.target.value)}
+                placeholder="Ej: -65.0385"
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs font-mono text-[var(--text-primary)]"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span>Ventana para cancelar / reprogramar online (hs antes)</span>
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={168}
+                value={cancellationWindowHours}
+                onChange={(e) => setCancellationWindowHours(e.target.value)}
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs font-mono text-[var(--text-primary)]"
+              />
+              <span className="text-[10px] text-[var(--text-muted)] mt-0.5 block">
+                Por defecto 24 hs. Se muestra en el checkout y habilita autogestión en “Mis Reservas”.
+              </span>
+            </div>
+
+            <div>
+              <label className="font-semibold text-[var(--text-secondary)] block mb-1 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span>Recordatorio Push automático previo al partido (hs antes)</span>
+              </label>
+              <select
+                value={reminderHoursBefore}
+                onChange={(e) => setReminderHoursBefore(e.target.value)}
+                className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs font-semibold text-[var(--text-primary)]"
+              >
+                <option value="1">1 hora antes del partido</option>
+                <option value="1.5">1 hora y 30 min antes</option>
+                <option value="2">2 horas antes (Recomendado)</option>
+                <option value="3">3 horas antes</option>
+              </select>
+              <span className="text-[10px] text-[var(--text-muted)] mt-0.5 block">
+                El servidor envía un aviso Push automático al celular del jugador antes de su turno.
+              </span>
+            </div>
           </div>
         </div>
 

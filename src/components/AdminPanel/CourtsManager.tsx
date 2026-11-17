@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Court, SportType } from '../../types';
 import { processImageUpload } from '../../utils/imageUpload';
 import { SPORT_DEFAULT_IMAGES, resolveCourtCoverImage, FALLBACK_COURT_SVG } from '../../data/courtMedia';
+import { useBackHandler } from '../../hooks/useBackHandler';
 import {
   DEFAULT_HORA_INICIO,
   DEFAULT_HORA_FIN,
@@ -43,6 +44,10 @@ export const CourtsManager: React.FC = () => {
   const [editingCourt, setEditingCourt] = useState<Court | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  useBackHandler(isAddModalOpen, () => setIsAddModalOpen(false), 'admin-add-court');
+  useBackHandler(Boolean(editingCourt), () => setEditingCourt(null), 'admin-edit-court');
+  useBackHandler(Boolean(deleteConfirmId), () => setDeleteConfirmId(null), 'admin-delete-court');
 
   // New court form state
   const [name, setName] = useState('');

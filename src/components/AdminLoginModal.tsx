@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { useBackHandler } from '../hooks/useBackHandler';
 import { ShieldCheck, X, KeyRound, AlertCircle, User } from 'lucide-react';
 
 interface AdminLoginModalProps {
@@ -17,6 +18,8 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useBackHandler(isOpen, onClose, 'admin-login-modal');
 
   if (!isOpen) return null;
 

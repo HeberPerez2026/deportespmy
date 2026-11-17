@@ -5,6 +5,7 @@ import { CourtCatalog } from './CourtCatalog';
 import { ReviewsSection } from './ReviewsSection';
 import { SocialFeedShowcase } from './SocialFeedShowcase';
 import { EMPTY_BUSINESS_PROFILE, getIsoDate } from '../data/mockData';
+import { useBackHandler } from '../hooks/useBackHandler';
 import {
   resolveCourtCoverImage,
   SPORT_DEFAULT_IMAGES,
@@ -23,7 +24,10 @@ import {
   X,
   MessageCircle,
   Lock,
+  Navigation,
+  Map as MapIcon,
 } from 'lucide-react';
+import { buildGoogleMapsDirectionsUrl, buildGoogleMapsEmbedUrl } from '../utils/maps';
 
 interface EstablishmentsViewProps {
   onOpenAdminLogin?: () => void;
@@ -73,6 +77,9 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
   const [estSearch, setEstSearch] = useState('');
   const [estSportFilter, setEstSportFilter] = useState<SportType | 'all'>('all');
   const [detailSubTab, setDetailSubTab] = useState<'canchas' | 'opiniones'>('canchas');
+  const [showEmbeddedMap, setShowEmbeddedMap] = useState(false);
+
+  useBackHandler(Boolean(selectedEstablishmentKey), () => setSelectedEstablishmentKey(null), 'establishment-detail');
 
   const establishments = useMemo<EstablishmentItem[]>(() => {
     const groups = new Map<
@@ -248,6 +255,8 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
     const paymentMethodsList: string[] = [];
     if (selectedEst.mpAvailable) paymentMethodsList.push('Mercado Pago');
     if (selectedEst.transferAvailable) paymentMethodsList.push('Transferencia CBU/Alias');
+    const selectedMapsDirectionsUrl = buildGoogleMapsDirectionsUrl(selectedEst.profile, selectedEst.name);
+    const selectedMapsEmbedUrl = buildGoogleMapsEmbedUrl(selectedEst.profile, selectedEst.name);
 
     return (
       <div className="min-h-screen bg-[var(--bg-canvas)]">
@@ -336,6 +345,25 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2">
+                    <a
+                      href={selectedMapsDirectionsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3.5 py-2 rounded-lg border border-[var(--accent)]/40 bg-[var(--accent-soft)] hover:opacity-90 text-[var(--accent-soft-text)] font-semibold text-xs inline-flex items-center gap-1.5 transition-opacity whitespace-nowrap"
+                    >
+                      <Navigation className="w-3.5 h-3.5" />
+                      <span>¿Cómo llegar?</span>
+                    </a>
+                    {selectedMapsEmbedUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setShowEmbeddedMap((v) => !v)}
+                        className="px-3.5 py-2 rounded-lg border border-[var(--border-hairline)] bg-[var(--bg-canvas)] hover:border-[var(--border-strong)] text-[var(--text-primary)] font-medium text-xs inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <MapIcon className="w-3.5 h-3.5 text-[var(--accent-soft-text)]" />
+                        <span>{showEmbeddedMap ? 'Ocultar mapa' : 'Ver mapa'}</span>
+                      </button>
+                    )}
                     {waHref && (
                       <a
                         href={waHref}
@@ -358,6 +386,18 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                     )}
                   </div>
                 </div>
+
+                {showEmbeddedMap && selectedMapsEmbedUrl && (
+                  <div className="mt-3 rounded-xl overflow-hidden border border-[var(--border-hairline)] bg-[var(--bg-canvas)]">
+                    <iframe
+                      title={`Mapa de ${selectedEst.name}`}
+                      src={selectedMapsEmbedUrl}
+                      className="w-full h-56 sm:h-64 border-0"
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -687,6 +727,19 @@ export const EstablishmentsView: React.FC<EstablishmentsViewProps> = ({ onOpenAd
                           )}
                         </div>
                       )}
+
+                      <div>
+                        <a
+                          href={buildGoogleMapsDirectionsUrl(est.profile, est.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--accent-soft-text)] hover:underline"
+                        >
+                          <Navigation className="w-3 h-3" />
+                          <span>¿Cómo llegar? en Google Maps</span>
+                        </a>
+                      </div>
 
                       <SocialFeedShowcase profile={est.profile} complexName={est.name} compact />
                     </div>

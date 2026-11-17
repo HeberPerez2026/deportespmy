@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { AdminUser, SiteContent, FilterTag } from '../../types';
 import { DEFAULT_FILTER_TAGS } from '../../data/mockData';
+import { useBackHandler } from '../../hooks/useBackHandler';
 import {
   Crown,
   UserPlus,
@@ -187,6 +188,14 @@ export const SuperAdminPanel: React.FC = () => {
   const [restoreTagsConfirm, setRestoreTagsConfirm] = useState(false);
   const [tagMessage, setTagMessage] = useState<string | null>(null);
 
+  useBackHandler(isAddModalOpen, () => setIsAddModalOpen(false), 'superadmin-add-admin');
+  useBackHandler(Boolean(editingAdmin), () => setEditingAdmin(null), 'superadmin-edit-admin');
+  useBackHandler(Boolean(deleteConfirmId), () => setDeleteConfirmId(null), 'superadmin-delete-admin');
+  useBackHandler(isAddTagModalOpen, () => setIsAddTagModalOpen(false), 'superadmin-add-tag');
+  useBackHandler(Boolean(editingTag), () => setEditingTag(null), 'superadmin-edit-tag');
+  useBackHandler(Boolean(deleteTagConfirmId), () => setDeleteTagConfirmId(null), 'superadmin-delete-tag');
+  useBackHandler(restoreTagsConfirm, () => setRestoreTagsConfirm(false), 'superadmin-restore-tags');
+
   const showTagNotification = (msg: string) => {
     setTagMessage(msg);
     setTimeout(() => setTagMessage(null), 3500);
@@ -295,6 +304,8 @@ export const SuperAdminPanel: React.FC = () => {
   // Review Moderation state
   const [reviewSearch, setReviewSearch] = useState('');
   const [deleteReviewConfirmId, setDeleteReviewConfirmId] = useState<string | null>(null);
+
+  useBackHandler(Boolean(deleteReviewConfirmId), () => setDeleteReviewConfirmId(null), 'superadmin-delete-review');
 
   useEffect(() => {
     setDraftTexts(siteContent);

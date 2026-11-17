@@ -7,8 +7,24 @@ import {
   onSnapshot 
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Booking, Review, Court, BusinessProfile, AdminUser, DeveloperContact, SiteContent, PushSubscriptionRecord, AvailablePlayer } from '../types';
+import { Booking, Review, Court, BusinessProfile, AdminUser, DeveloperContact, SiteContent, PushSubscriptionRecord, AvailablePlayer, Tournament } from '../types';
 import { normalizeCourtSchedule } from '../utils/scheduleHours';
+
+function stripUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUndefinedDeep(item)) as unknown as T;
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (v !== undefined) {
+        out[k] = stripUndefinedDeep(v);
+      }
+    }
+    return out as T;
+  }
+  return value;
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -83,7 +99,7 @@ export const subscribeToCourts = (
 // Save Court to Firestore
 export const saveCourtToFirestore = async (court: Court): Promise<boolean> => {
   try {
-    await setDoc(doc(db, 'courts', court.id), court);
+    await setDoc(doc(db, 'courts', court.id), stripUndefinedDeep(court));
     return true;
   } catch (err) {
     console.warn('[Firestore] Save court error:', err);
@@ -130,7 +146,7 @@ export const subscribeToBookings = (
 // Save Booking
 export const saveBookingToFirestore = async (booking: Booking): Promise<boolean> => {
   try {
-    await setDoc(doc(db, 'bookings', booking.id), booking);
+    await setDoc(doc(db, 'bookings', booking.id), stripUndefinedDeep(booking));
     return true;
   } catch (err) {
     console.warn('[Firestore] Save booking error:', err);
@@ -249,7 +265,12 @@ export const subscribeToBusinessProfile = (
             facebookUrl: data.facebookUrl || '',
             tiktokUrl: data.tiktokUrl || '',
             youtubeUrl: data.youtubeUrl || '',
-            socialFeedUrl: data.socialFeedUrl || ''
+            socialFeedUrl: data.socialFeedUrl || '',
+            mapsUrl: data.mapsUrl || '',
+            latitude: typeof data.latitude === 'number' ? data.latitude : undefined,
+            longitude: typeof data.longitude === 'number' ? data.longitude : undefined,
+            cancellationWindowHours: typeof data.cancellationWindowHours === 'number' ? data.cancellationWindowHours : 24,
+            reminderHoursBefore: typeof data.reminderHoursBefore === 'number' ? data.reminderHoursBefore : 2,
           });
         } else if (profileKey) {
           // If a new admin does not have a profile saved yet, return 100% empty fields
@@ -280,7 +301,10 @@ export const subscribeToBusinessProfile = (
             facebookUrl: '',
             tiktokUrl: '',
             youtubeUrl: '',
-            socialFeedUrl: ''
+            socialFeedUrl: '',
+            mapsUrl: '',
+            cancellationWindowHours: 24,
+            reminderHoursBefore: 2,
           });
         }
       },
@@ -331,7 +355,7 @@ export const saveBusinessProfileToFirestore = async (
 ): Promise<boolean> => {
   const docId = profileKey ? `profile_${profileKey.toLowerCase().replace(/[^a-z0-9_-]/g, '')}` : 'businessProfile';
   try {
-    await setDoc(doc(db, 'settings', docId), profile);
+    await setDoc(doc(db, 'settings', docId), stripUndefinedDeep(profile));
     return true;
   } catch (err) {
     console.warn('[Firestore] Save business profile error:', err);
@@ -545,6 +569,48 @@ export const deleteAvailablePlayerFromFirestore = async (playerId: string): Prom
     return true;
   } catch (err) {
     console.warn('[Firestore] Delete availablePlayer error:', err);
+    return false;
+  }
+};
+
+// Real-time listener for Tournaments & Events
+export const subscribeToTournaments = (
+  onUpdate: (tournaments: Tournament[]) => void
+): (() => void) => {
+  try {
+    return onSnapshot(
+      collection(db, 'tournaments'),
+      (snapshot) => {
+        const list: Tournament[] = [];
+        snapshot.forEach((d) => list.push({ ...(d.data() as Tournament), id: d.id }));
+        onUpdate(list);
+      },
+      (error) => {
+        console.warn('[Firestore] Tournaments subscription error:', error);
+      }
+    );
+  } catch (err) {
+    console.warn('[Firestore] Error attaching tournaments listener:', err);
+    return () => {};
+  }
+};
+
+export const saveTournamentToFirestore = async (tournament: Tournament): Promise<boolean> => {
+  try {
+    await setDoc(doc(db, 'tournaments', tournament.id), stripUndefinedDeep(tournament));
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Save tournament error:', err);
+    return false;
+  }
+};
+
+export const deleteTournamentFromFirestore = async (tournamentId: string): Promise<boolean> => {
+  try {
+    await deleteDoc(doc(db, 'tournaments', tournamentId));
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] Delete tournament error:', err);
     return false;
   }
 };

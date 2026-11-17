@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Booking } from '../types';
+import { useBackHandler } from '../hooks/useBackHandler';
 import {
   X,
   Users,
@@ -17,7 +18,10 @@ import {
   MessageCircle,
   AlertCircle,
   Send,
+  Navigation,
+  DollarSign,
 } from 'lucide-react';
+import { buildGoogleMapsDirectionsUrl } from '../utils/maps';
 
 interface JoinMatchModalProps {
   booking: Booking;
@@ -40,6 +44,8 @@ export const JoinMatchModal: React.FC<JoinMatchModalProps> = ({ booking, onClose
     enablePushNotifications,
   } = useApp();
 
+  useBackHandler(true, onClose, 'join-match-modal');
+
   // Keep synced with live Firestore state
   const liveBooking =
     bookings.find(
@@ -57,6 +63,17 @@ export const JoinMatchModal: React.FC<JoinMatchModalProps> = ({ booking, onClose
   const remainingPlayers = liveBooking.lookingForPlayers
     ? Math.max(0, (liveBooking.neededPlayers || 0) - joinedPlayers.length)
     : 0;
+  const estimatedPlayersTotal =
+    liveBooking.totalPlayers && liveBooking.totalPlayers > 1
+      ? liveBooking.totalPlayers
+      : Math.max(2, (liveBooking.neededPlayers || 0) + 1);
+  const perPlayerShare =
+    liveBooking.perPlayerAmount && liveBooking.perPlayerAmount > 0
+      ? liveBooking.perPlayerAmount
+      : liveBooking.totalAmount > 0
+      ? Math.round(liveBooking.totalAmount / estimatedPlayersTotal)
+      : 0;
+  const mapsDirectionsUrl = buildGoogleMapsDirectionsUrl(profile, complexName);
 
   const [name, setName] = useState(userName || '');
   const [phone, setPhone] = useState(userPhone || '');
@@ -182,13 +199,39 @@ export const JoinMatchModal: React.FC<JoinMatchModalProps> = ({ booking, onClose
                   Organiza: <strong className="text-[var(--text-primary)]">{liveBooking.clientName}</strong>
                 </span>
               </div>
-              {profile.address && (
-                <div className="flex items-center gap-1.5">
-                  <MapPin className="w-3.5 h-3.5 text-[var(--text-muted)]" />
-                  <span className="truncate">{profile.address}</span>
+              {(profile.address || complexName) && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <MapPin className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
+                  <span className="truncate">{profile.address || complexName}</span>
+                  <a
+                    href={mapsDirectionsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--accent-soft-text)] hover:underline shrink-0"
+                  >
+                    <Navigation className="w-3 h-3" />
+                    <span>¿Cómo llegar?</span>
+                  </a>
                 </div>
               )}
             </div>
+
+            {perPlayerShare > 0 && (
+              <div className="pt-2 border-t border-[var(--border-hairline)] flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                <span className="inline-flex items-center gap-1.5 text-[var(--text-secondary)]">
+                  <DollarSign className="w-3.5 h-3.5 text-[var(--accent-soft-text)]" />
+                  <span>
+                    Parte estimada por jugador ({estimatedPlayersTotal} jug.):
+                  </span>
+                </span>
+                <strong className="font-mono text-xs text-[var(--accent-soft-text)] tabular-nums">
+                  ${perPlayerShare.toLocaleString('es-AR')}
+                  <span className="text-[10px] font-normal text-[var(--text-muted)] ml-1">
+                    (Total ${liveBooking.totalAmount.toLocaleString('es-AR')})
+                  </span>
+                </strong>
+              </div>
+            )}
 
             {liveBooking.lookingForPlayersMessage && (
               <div className="pt-2 border-t border-[var(--border-hairline)] text-[var(--text-primary)]">

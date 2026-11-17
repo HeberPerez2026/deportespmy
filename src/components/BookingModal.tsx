@@ -31,10 +31,13 @@ import {
   BellRing,
   Download,
   Users,
-  Send
+  Send,
+  Navigation,
 } from 'lucide-react';
 import { downloadBookingReceiptPng } from '../utils/receiptDownload';
+import { buildGoogleMapsDirectionsUrl } from '../utils/maps';
 import { JoinMatchModal } from './JoinMatchModal';
+import { useBackHandler } from '../hooks/useBackHandler';
 
 interface BookingModalProps {
   court: Court;
@@ -64,8 +67,11 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
     isPushEnabled,
     enablePushNotifications,
     requestPlayersForBooking,
-    stopLookingForPlayers
+    stopLookingForPlayers,
+    updateBookingSplitConfig
   } = useApp();
+
+  useBackHandler(true, onClose, 'booking-modal');
 
   const effectiveProfile = getBusinessProfileForCourt(court);
   const courtAdminId = getAdminIdForCourt(court);
@@ -109,6 +115,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const [lfpNote, setLfpNote] = useState<string>('');
   const [isSendingLfp, setIsSendingLfp] = useState(false);
   const [lfpFeedback, setLfpFeedback] = useState<string | null>(null);
+  const [splitPlayersCount, setSplitPlayersCount] = useState<number>(
+    court.sport === 'padel' || court.sport === 'tenis' ? 4 : court.sport === 'futbol5' ? 10 : 12
+  );
+  const [splitSavedNotice, setSplitSavedNotice] = useState(false);
 
   // Available slots for selected date (scoped estrictamente a hora_inicio..hora_fin)
   const slots = getSlotsForCourtAndDate(court.id, selectedDate);
@@ -167,6 +177,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
       synced.balanceDue !== confirmedBooking.balanceDue ||
       synced.lookingForPlayers !== confirmedBooking.lookingForPlayers ||
       synced.neededPlayers !== confirmedBooking.neededPlayers ||
+      synced.totalPlayers !== confirmedBooking.totalPlayers ||
+      synced.perPlayerAmount !== confirmedBooking.perPlayerAmount ||
       (synced.joinedPlayers?.length || 0) !== (confirmedBooking.joinedPlayers?.length || 0)
     ) {
       setConfirmedBooking(synced);
@@ -1092,6 +1104,19 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 )}
               </div>
 
+              {/* Política visible de cancelación y reprogramación */}
+              <div className="p-3 bg-[var(--bg-subtle)]/70 rounded-lg border border-[var(--border-hairline)] flex items-start gap-2 text-[11px] text-[var(--text-secondary)]">
+                <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold text-[var(--text-primary)]">
+                    Política de cancelación y reprogramación:
+                  </span>{' '}
+                  Podés reprogramar o cancelar sin penalidad desde <strong>“Mis reservas”</strong> hasta{' '}
+                  <strong className="font-mono">{effectiveProfile.cancellationWindowHours ?? 24} hs antes</strong>{' '}
+                  del inicio del partido (si abonaste con Mercado Pago, la devolución de la seña es automática).
+                </div>
+              </div>
+
               <div className="flex justify-between pt-1">
                 <button
                   type="button"
@@ -1363,15 +1388,24 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                   )}
                 </div>
 
-                <div className="pt-2 border-t border-[var(--border-hairline)]">
+                <div className="pt-2 border-t border-[var(--border-hairline)] flex flex-col sm:flex-row gap-2">
                   <button
                     type="button"
                     onClick={() => downloadBookingReceiptPng(confirmedBooking, effectiveProfile.complexName)}
-                    className="w-full py-2 px-3 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs flex items-center justify-center gap-1.5 border border-[var(--border-hairline)] transition-colors cursor-pointer"
+                    className="flex-1 py-2 px-3 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs flex items-center justify-center gap-1.5 border border-[var(--border-hairline)] transition-colors cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5 text-[var(--accent-soft-text)]" />
-                    <span>Descargar comprobante (.png)</span>
+                    <span>Comprobante (.png)</span>
                   </button>
+                  <a
+                    href={buildGoogleMapsDirectionsUrl(effectiveProfile, effectiveProfile.complexName)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-2 px-3 rounded-lg bg-[var(--accent-soft)] hover:opacity-90 text-[var(--accent-soft-text)] font-semibold text-xs flex items-center justify-center gap-1.5 border border-[var(--border-hairline)] transition-opacity"
+                  >
+                    <Navigation className="w-3.5 h-3.5" />
+                    <span>¿Cómo llegar?</span>
+                  </a>
                 </div>
               </div>
 
@@ -1753,6 +1787,42 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                       ))}
                     </div>
                   )}
+
+                  {/* División de seña / cancha entre jugadores */}
+                  <div className="pt-2 border-t border-[var(--border-hairline)] space-y-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="text-[11px] font-bold text-[var(--text-primary)]">
+                        Dividir costo entre jugadores:
+                      </span>
+                      <span className="font-mono text-xs font-bold text-[var(--accent-soft-text)]">
+                        ${Math.round(confirmedBooking.totalAmount / Math.max(1, splitPlayersCount)).toLocaleString('es-AR')} c/u
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={2}
+                        max={24}
+                        value={splitPlayersCount}
+                        onChange={(e) => {
+                          setSplitSavedNotice(false);
+                          setSplitPlayersCount(Math.max(2, Math.min(24, Number(e.target.value) || 2)));
+                        }}
+                        className="w-20 bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-[var(--text-primary)]"
+                      />
+                      <span className="text-[11px] text-[var(--text-secondary)]">jugadores</span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await updateBookingSplitConfig(confirmedBooking.id, splitPlayersCount);
+                          setSplitSavedNotice(true);
+                        }}
+                        className="ml-auto px-3 py-1.5 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[11px] font-semibold text-[var(--text-primary)] cursor-pointer"
+                      >
+                        {splitSavedNotice ? 'Guardado ✓' : 'Guardar división'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 

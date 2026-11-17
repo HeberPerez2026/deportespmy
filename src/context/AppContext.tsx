@@ -18,7 +18,9 @@ import {
   PushSubscriptionRecord,
   FilterTag,
   AvailablePlayer,
-  JoinedPlayer
+  JoinedPlayer,
+  Tournament,
+  TournamentTeam
 } from '../types';
 import { 
   INITIAL_COURTS, 
@@ -58,7 +60,10 @@ import {
   subscribeToPushSubscriptions,
   subscribeToAvailablePlayers,
   saveAvailablePlayerToFirestore,
-  deleteAvailablePlayerFromFirestore
+  deleteAvailablePlayerFromFirestore,
+  subscribeToTournaments,
+  saveTournamentToFirestore,
+  deleteTournamentFromFirestore
 } from '../services/centralSync';
 import {
   isPushSupported,
@@ -101,6 +106,11 @@ interface BookingInput {
   paymentMethod: PaymentMethod;
   paymentReference?: string;
   status?: 'confirmed' | 'pending_payment';
+  totalPlayers?: number;
+  perPlayerAmount?: number;
+  recurringGroupId?: string;
+  recurringIndex?: number;
+  recurringTotal?: number;
 }
 
 interface AppContextType {
@@ -267,6 +277,43 @@ interface AppContextType {
     player: AvailablePlayer,
     booking: Booking
   ) => Promise<{ ok: boolean; sentCount: number }>;
+
+  // Recurring weekly bookings (Turnos fijos / abonos)
+  createRecurringAdminBookings: (
+    input: BookingInput & { weeksCount: number }
+  ) => Promise<{ createdBookings: Booking[]; skippedDates: string[] }>;
+  cancelRecurringSeries: (recurringGroupId: string) => Promise<{ cancelledCount: number }>;
+
+  // Self-service cancellation & rescheduling + Split costs
+  getHoursUntilBookingStart: (booking: Booking) => number;
+  rescheduleBooking: (
+    bookingId: string,
+    newDate: string,
+    newStartTime: string
+  ) => Promise<{ ok: boolean; booking?: Booking; message: string }>;
+  cancelBookingByPlayer: (bookingId: string) => Promise<{
+    success: boolean;
+    mpRefunded: boolean;
+    manualRefundRequired?: boolean;
+    refundAmount: number;
+    refundId?: string;
+    message?: string;
+  }>;
+  toggleJoinedPlayerPayment: (bookingId: string, joinedPlayerId: string, amount?: number) => Promise<void>;
+  updateBookingSplitConfig: (bookingId: string, totalPlayers: number) => Promise<void>;
+
+  // Tournaments & Events
+  tournaments: Tournament[];
+  createTournament: (
+    input: Omit<Tournament, 'id' | 'teams' | 'createdAt' | 'status'> & { status?: Tournament['status'] }
+  ) => Promise<Tournament>;
+  updateTournament: (tournament: Tournament) => Promise<void>;
+  deleteTournament: (tournamentId: string) => Promise<void>;
+  registerTeamInTournament: (
+    tournamentId: string,
+    team: Omit<TournamentTeam, 'id' | 'registeredAt'>
+  ) => Promise<{ ok: boolean; message: string }>;
+  toggleTournamentTeamPaid: (tournamentId: string, teamId: string) => Promise<void>;
   
   // DB tools
   exportDatabaseJson: () => string;
@@ -287,6 +334,7 @@ const STORAGE_KEYS = {
   USER_NAME: 'deportespmy_user_name',
   USER_EMAIL: 'deportespmy_user_email',
   CURRENT_ADMIN: 'deportespmy_current_admin_v6',
+  TOURNAMENTS: 'deportespmy_tournaments_v1',
 };
 
 const STORAGE_MY_AVAILABLE_ID = 'deportespmy_my_available_player_id_v1';
@@ -426,6 +474,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [trackedBookingCodes, setTrackedBookingCodes] = useState<string[]>(() => getTrackedBookingCodes());
   const [pushSubscriptions, setPushSubscriptions] = useState<PushSubscriptionRecord[]>([]);
   const [rawAvailablePlayers, setRawAvailablePlayers] = useState<AvailablePlayer[]>([]);
+  const [tournaments, setTournaments] = useState<Tournament[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.TOURNAMENTS);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [dayTick, setDayTick] = useState<number>(() => Date.now());
   const [myAvailablePlayerIdState, setMyAvailablePlayerIdState] = useState<string | null>(() => {
     try {
@@ -653,6 +709,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setRawAvailablePlayers(active);
     });
 
+    // 10. Subscribe to Tournaments & Events
+    const unsubTournaments = subscribeToTournaments((remoteTournaments) => {
+      setTournaments(remoteTournaments);
+      try {
+        localStorage.setItem(STORAGE_KEYS.TOURNAMENTS, JSON.stringify(remoteTournaments));
+      } catch {}
+    });
+
     return () => {
       unsubCourts();
       unsubBookings();
@@ -664,6 +728,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unsubAdmins();
       unsubPushSubs();
       unsubAvailablePlayers();
+      unsubTournaments();
     };
   }, [currentAdminUser?.username]);
 
@@ -1300,10 +1365,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const fixedDurationMinutes = 60;
     const endTime = calculateEndTime(input.startTime, fixedDurationMinutes);
 
-    // Prevent double booking on overlapping active slots (midnight-safe order)
+    // Prevent double booking on overlapping active slots or tournament blocks
     const startH = parseSlotHourOrder(input.startTime);
     const endH = startH + 1;
-    const hasCollision = bookings.some(b => {
+    const hasBookingCollision = bookings.some(b => {
       if (b.courtId !== input.courtId || b.date !== input.date) return false;
       if (b.status !== 'confirmed' && b.status !== 'pending_payment' && b.status !== 'awaiting_approval') return false;
       const bStart = parseSlotHourOrder(b.startTime);
@@ -1311,8 +1376,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const bEnd = rawEnd > bStart ? rawEnd : bStart + Math.max(1, Math.ceil((b.durationMinutes || 60) / 60));
       return startH < bEnd && endH > bStart;
     });
-    if (hasCollision) {
-      throw new Error('Este horario acaba de ser reservado. Por favor elegí otro turno disponible.');
+    const blockingTournament = tournaments.find(t => {
+      if (!t.blockCourts || t.status === 'cancelled' || t.status === 'finished') return false;
+      if (!t.courtIds.includes(input.courtId)) return false;
+      const tEndDate = t.endDate || t.date;
+      if (input.date < t.date || input.date > tEndDate) return false;
+      const tStart = parseSlotHourOrder(t.startTime);
+      const tEnd = parseSlotHourOrder(t.endTime);
+      return startH < tEnd && endH > tStart;
+    });
+    if (hasBookingCollision || blockingTournament) {
+      throw new Error(
+        blockingTournament
+          ? `Esta cancha está reservada para el torneo/evento "${blockingTournament.title}".`
+          : 'Este horario acaba de ser reservado. Por favor elegí otro turno disponible.'
+      );
     }
 
     // Security check for player online payments: reject paused or unconfigured payment methods
@@ -1341,15 +1419,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    const depositPercent = Math.min(100, Math.max(10, Number(court.depositRequired) || 50));
     const amountPaid = bookingStatus === 'pending_payment'
       ? 0
-      : (input.isDepositOnly ? Math.round(input.totalAmount * 0.5) : input.totalAmount);
+      : (input.isDepositOnly ? Math.round(input.totalAmount * (depositPercent / 100)) : input.totalAmount);
     const balanceDue = input.totalAmount - amountPaid;
     const paymentStatus: PaymentStatus = bookingStatus === 'pending_payment'
       ? 'pendiente_mostrador'
       : (input.isDepositOnly ? 'seña_pagada' : 'total_pagado');
     const bookingCode = `PMY-${Math.floor(1000 + Math.random() * 9000)}`;
     const deviceId = !isAdminAuthenticated ? getOrCreatePushDeviceId() : undefined;
+    const totalPlayers = input.totalPlayers && input.totalPlayers >= 2 ? Math.round(input.totalPlayers) : undefined;
+    const perPlayerAmount = totalPlayers ? Math.round(input.totalAmount / totalPlayers) : undefined;
 
     const newBooking: Booking = {
       id: `bk-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1379,6 +1460,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       whatsappSentAt: bookingStatus === 'confirmed' ? new Date().toISOString() : undefined,
       adminId: ownerAdminId,
       ...(deviceId ? { pushDeviceId: deviceId } : {}),
+      ...(totalPlayers ? { totalPlayers, perPlayerAmount } : {}),
+      ...(input.recurringGroupId ? { recurringGroupId: input.recurringGroupId } : {}),
+      ...(input.recurringIndex ? { recurringIndex: input.recurringIndex } : {}),
+      ...(input.recurringTotal ? { recurringTotal: input.recurringTotal } : {}),
     };
 
     const nextBookings = [newBooking, ...bookings];
@@ -1430,7 +1515,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     return newBooking;
-  }, [courts, getBusinessProfileForCourt, getAdminIdForCourt, bookings, currentAdminUser, isAdminAuthenticated]);
+  }, [courts, getBusinessProfileForCourt, getAdminIdForCourt, bookings, tournaments, currentAdminUser, isAdminAuthenticated]);
 
   // Submit payment receipt (for manual Mercado Pago Alias/Link or CBU)
   const submitPaymentReceipt = useCallback((bookingCodeOrId: string, receiptUrl: string, paymentReference?: string): Booking | undefined => {
@@ -2017,6 +2102,405 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { ok: res.ok, sentCount: res.sentCount };
   }, []);
 
+  // Recurring weekly admin bookings (Turnos fijos / abonos)
+  const createRecurringAdminBookings = useCallback(async (
+    input: BookingInput & { weeksCount: number }
+  ): Promise<{ createdBookings: Booking[]; skippedDates: string[] }> => {
+    const court = courts.find(c => c.id === input.courtId);
+    if (!court) throw new Error('Cancha no encontrada.');
+
+    const weeksCount = Math.min(24, Math.max(2, Math.round(Number(input.weeksCount) || 4)));
+    const courtProfile = getBusinessProfileForCourt(court);
+    const ownerAdminId = getAdminIdForCourt(court) || normalizeAdminKey(currentAdminUser?.username) || 'admin';
+    const fixedDurationMinutes = 60;
+    const endTime = calculateEndTime(input.startTime, fixedDurationMinutes);
+    const startH = parseSlotHourOrder(input.startTime);
+    const endH = startH + 1;
+    const recurringGroupId = `rec-${Date.now().toString(36)}-${Math.floor(Math.random() * 1000)}`;
+
+    const [baseY, baseM, baseD] = input.date.split('-').map(Number);
+    const baseUtc = Date.UTC(baseY, baseM - 1, baseD);
+
+    const createdBookings: Booking[] = [];
+    const skippedDates: string[] = [];
+
+    for (let w = 0; w < weeksCount; w++) {
+      const dt = new Date(baseUtc + w * 7 * 86400000);
+      const dateStr = dt.toISOString().split('T')[0];
+
+      const hasBookingCollision = [...bookings, ...createdBookings].some(b => {
+        if (b.courtId !== input.courtId || b.date !== dateStr) return false;
+        if (b.status !== 'confirmed' && b.status !== 'pending_payment' && b.status !== 'awaiting_approval') return false;
+        const bStart = parseSlotHourOrder(b.startTime);
+        const rawEnd = parseSlotHourOrder(b.endTime);
+        const bEnd = rawEnd > bStart ? rawEnd : bStart + Math.max(1, Math.ceil((b.durationMinutes || 60) / 60));
+        return startH < bEnd && endH > bStart;
+      });
+
+      const hasTournamentBlock = tournaments.some(t => {
+        if (!t.blockCourts || t.status === 'cancelled' || t.status === 'finished') return false;
+        if (!t.courtIds.includes(input.courtId)) return false;
+        const tEndDate = t.endDate || t.date;
+        if (dateStr < t.date || dateStr > tEndDate) return false;
+        const tStart = parseSlotHourOrder(t.startTime);
+        const tEnd = parseSlotHourOrder(t.endTime);
+        return startH < tEnd && endH > tStart;
+      });
+
+      if (hasBookingCollision || hasTournamentBlock) {
+        skippedDates.push(dateStr);
+        continue;
+      }
+
+      const bookingStatus = input.status || 'confirmed';
+      const depositPercent = Math.min(100, Math.max(10, Number(court.depositRequired) || 50));
+      const amountPaid = bookingStatus === 'pending_payment'
+        ? 0
+        : (input.isDepositOnly ? Math.round(input.totalAmount * (depositPercent / 100)) : input.totalAmount);
+      const balanceDue = input.totalAmount - amountPaid;
+      const paymentStatus: PaymentStatus = bookingStatus === 'pending_payment'
+        ? 'pendiente_mostrador'
+        : (input.isDepositOnly ? 'seña_pagada' : 'total_pagado');
+      const bookingCode = `PMY-${Math.floor(1000 + Math.random() * 9000)}`;
+      const seriesLabel = `[Turno fijo ${w + 1}/${weeksCount}]`;
+      const combinedNotes = input.notes?.trim() ? `${seriesLabel} ${input.notes.trim()}` : seriesLabel;
+
+      const bk: Booking = {
+        id: `bk-${Date.now()}-${w}-${Math.floor(Math.random() * 1000)}`,
+        bookingCode,
+        courtId: input.courtId,
+        courtName: court.name,
+        establishment: court.establishment || courtProfile.complexName || '',
+        sport: court.sport,
+        date: dateStr,
+        startTime: input.startTime,
+        endTime,
+        durationMinutes: fixedDurationMinutes,
+        clientName: input.clientName,
+        clientPhone: input.clientPhone,
+        clientEmail: input.clientEmail,
+        notes: combinedNotes,
+        totalAmount: input.totalAmount,
+        amountPaid,
+        balanceDue,
+        paymentMethod: input.paymentMethod,
+        paymentStatus,
+        isDepositOnly: input.isDepositOnly,
+        paymentReference: input.paymentReference || (bookingStatus === 'pending_payment' ? undefined : `ABONO-${w + 1}`),
+        status: bookingStatus,
+        createdAt: new Date().toISOString(),
+        whatsappSent: bookingStatus === 'confirmed',
+        whatsappSentAt: bookingStatus === 'confirmed' ? new Date().toISOString() : undefined,
+        adminId: ownerAdminId,
+        recurringGroupId,
+        recurringIndex: w + 1,
+        recurringTotal: weeksCount,
+      };
+      createdBookings.push(bk);
+    }
+
+    if (createdBookings.length > 0) {
+      const nextBookings = [...createdBookings.slice().reverse(), ...bookings];
+      setBookings(nextBookings);
+      try {
+        localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(nextBookings));
+      } catch {}
+      await Promise.all(createdBookings.map((b) => saveBookingToFirestore(b)));
+    }
+
+    return { createdBookings, skippedDates };
+  }, [courts, bookings, tournaments, getBusinessProfileForCourt, getAdminIdForCourt, currentAdminUser]);
+
+  const cancelRecurringSeries = useCallback(async (recurringGroupId: string): Promise<{ cancelledCount: number }> => {
+    const targets = bookings.filter(
+      (b) => b.recurringGroupId === recurringGroupId && b.status !== 'cancelled' && b.status !== 'completed'
+    );
+    if (targets.length === 0) return { cancelledCount: 0 };
+
+    const targetIds = new Set(targets.map((t) => t.id));
+    const updatedList = bookings.map((b) =>
+      targetIds.has(b.id)
+        ? { ...b, status: 'cancelled' as const, lookingForPlayers: false, neededPlayers: 0 }
+        : b
+    );
+    setBookings(updatedList);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(updatedList));
+    } catch {}
+    await Promise.all(
+      updatedList
+        .filter((b) => targetIds.has(b.id))
+        .map((b) => saveBookingToFirestore(b))
+    );
+    return { cancelledCount: targets.length };
+  }, [bookings]);
+
+  const getHoursUntilBookingStart = useCallback((booking: Booking): number => {
+    if (!booking?.date || !booking?.startTime) return 999;
+    const kickoffMs = Date.parse(`${booking.date}T${booking.startTime}:00-03:00`);
+    if (!Number.isFinite(kickoffMs)) return 999;
+    return (kickoffMs - Date.now()) / 3600000;
+  }, []);
+
+  const rescheduleBooking = useCallback(async (
+    bookingId: string,
+    newDate: string,
+    newStartTime: string
+  ): Promise<{ ok: boolean; booking?: Booking; message: string }> => {
+    const booking = bookings.find(b => b.id === bookingId || b.bookingCode === bookingId);
+    if (!booking) return { ok: false, message: 'Reserva no encontrada.' };
+    if (booking.status === 'cancelled' || booking.status === 'completed') {
+      return { ok: false, message: 'No es posible reprogramar un turno cancelado o finalizado.' };
+    }
+
+    const court = courts.find(c => c.id === booking.courtId);
+    if (!court) return { ok: false, message: 'La cancha asociada no existe.' };
+    const courtProfile = getBusinessProfileForCourt(court);
+    const windowHours = Number(courtProfile.cancellationWindowHours ?? 24);
+    const hoursRemaining = getHoursUntilBookingStart(booking);
+
+    if (!isAdminAuthenticated && hoursRemaining < windowHours) {
+      return {
+        ok: false,
+        message: `El complejo permite reprogramar con al menos ${windowHours} hs de anticipación (faltan ${Math.max(0, Math.round(hoursRemaining))} hs). Contactá por WhatsApp al complejo.`,
+      };
+    }
+
+    const targetMs = Date.parse(`${newDate}T${newStartTime}:00-03:00`);
+    if (Number.isFinite(targetMs) && targetMs <= Date.now()) {
+      return { ok: false, message: 'Elegí una fecha y horario futuros para reprogramar.' };
+    }
+
+    const newEndTime = calculateEndTime(newStartTime, 60);
+    const startH = parseSlotHourOrder(newStartTime);
+    const endH = startH + 1;
+
+    const hasCollision = bookings.some(b => {
+      if (b.id === booking.id) return false;
+      if (b.courtId !== booking.courtId || b.date !== newDate) return false;
+      if (b.status !== 'confirmed' && b.status !== 'pending_payment' && b.status !== 'awaiting_approval') return false;
+      const bStart = parseSlotHourOrder(b.startTime);
+      const rawEnd = parseSlotHourOrder(b.endTime);
+      const bEnd = rawEnd > bStart ? rawEnd : bStart + Math.max(1, Math.ceil((b.durationMinutes || 60) / 60));
+      return startH < bEnd && endH > bStart;
+    });
+
+    const hasTournamentBlock = tournaments.some(t => {
+      if (!t.blockCourts || t.status === 'cancelled' || t.status === 'finished') return false;
+      if (!t.courtIds.includes(booking.courtId)) return false;
+      const tEndDate = t.endDate || t.date;
+      if (newDate < t.date || newDate > tEndDate) return false;
+      const tStart = parseSlotHourOrder(t.startTime);
+      const tEnd = parseSlotHourOrder(t.endTime);
+      return startH < tEnd && endH > tStart;
+    });
+
+    if (hasCollision || hasTournamentBlock) {
+      return { ok: false, message: 'Ese horario ya se encuentra ocupado o bloqueado por evento. Elegí otro disponible.' };
+    }
+
+    const { nightStartHour } = getNormalizedCourtSchedule(court);
+    const newPrice = startH >= nightStartHour ? court.hourlyRateNight : court.hourlyRateDay;
+    const paid = Number(booking.amountPaid || 0);
+    const nextBalanceDue = Math.max(0, newPrice - paid);
+    const perPlayerAmount = booking.totalPlayers && booking.totalPlayers >= 2
+      ? Math.round(newPrice / booking.totalPlayers)
+      : booking.perPlayerAmount;
+
+    const updatedBooking: Booking = {
+      ...booking,
+      date: newDate,
+      startTime: newStartTime,
+      endTime: newEndTime,
+      totalAmount: newPrice,
+      balanceDue: nextBalanceDue,
+      perPlayerAmount,
+      rescheduledFrom: {
+        date: booking.date,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+      },
+      rescheduledAt: new Date().toISOString(),
+      reminderSentAt: undefined,
+    };
+
+    const nextBookings = bookings.map(b => (b.id === booking.id ? updatedBooking : b));
+    setBookings(nextBookings);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(nextBookings));
+    } catch {}
+    await saveBookingToFirestore(updatedBooking);
+
+    sendBookingPushNotification({
+      booking: updatedBooking,
+      eventType: 'admin_reminder',
+      customTitle: `Turno reprogramado #${updatedBooking.bookingCode}`,
+      customBody: `Nuevo horario en ${updatedBooking.courtName}: ${newDate.split('-').reverse().join('/')} ${newStartTime} hs.`,
+    });
+
+    return {
+      ok: true,
+      booking: updatedBooking,
+      message: `Turno reprogramado para el ${newDate.split('-').reverse().join('/')} a las ${newStartTime} hs.`,
+    };
+  }, [bookings, courts, tournaments, getBusinessProfileForCourt, getHoursUntilBookingStart, isAdminAuthenticated]);
+
+  const cancelBookingByPlayer = useCallback(async (bookingId: string) => {
+    const booking = bookings.find(b => b.id === bookingId || b.bookingCode === bookingId);
+    if (!booking) {
+      return { success: false, mpRefunded: false, refundAmount: 0, message: 'Reserva no encontrada.' };
+    }
+    const court = courts.find(c => c.id === booking.courtId);
+    const courtProfile = getBusinessProfileForCourt(court);
+    const windowHours = Number(courtProfile.cancellationWindowHours ?? 24);
+    const hoursRemaining = getHoursUntilBookingStart(booking);
+
+    if (hoursRemaining < windowHours) {
+      return {
+        success: false,
+        mpRefunded: false,
+        refundAmount: 0,
+        message: `La política del complejo exige al menos ${windowHours} hs de anticipación para cancelar online (faltan ${Math.max(0, Math.round(hoursRemaining))} hs). Contactá al complejo por WhatsApp.`,
+      };
+    }
+
+    return await cancelBooking(booking.id, { notifyWhatsApp: false });
+  }, [bookings, courts, getBusinessProfileForCourt, getHoursUntilBookingStart, cancelBooking]);
+
+  const toggleJoinedPlayerPayment = useCallback(async (
+    bookingId: string,
+    joinedPlayerId: string,
+    amount?: number
+  ) => {
+    const target = bookings.find(b => b.id === bookingId || b.bookingCode === bookingId);
+    if (!target) return;
+    const share = amount ?? target.perPlayerAmount ?? (target.totalPlayers ? Math.round(target.totalAmount / target.totalPlayers) : 0);
+    const nextJoined = (target.joinedPlayers || []).map(jp => {
+      if (jp.id !== joinedPlayerId) return jp;
+      const nextPaid = !jp.paid;
+      return {
+        ...jp,
+        paid: nextPaid,
+        paidAmount: nextPaid ? (jp.paidAmount || share) : 0,
+        paidAt: nextPaid ? new Date().toISOString() : undefined,
+      };
+    });
+    const updated: Booking = { ...target, joinedPlayers: nextJoined };
+    const nextBookings = bookings.map(b => (b.id === target.id ? updated : b));
+    setBookings(nextBookings);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(nextBookings));
+    } catch {}
+    await saveBookingToFirestore(updated);
+  }, [bookings]);
+
+  const updateBookingSplitConfig = useCallback(async (bookingId: string, totalPlayers: number) => {
+    const target = bookings.find(b => b.id === bookingId || b.bookingCode === bookingId);
+    if (!target) return;
+    const cleanCount = Math.min(22, Math.max(2, Math.round(totalPlayers)));
+    const perPlayerAmount = Math.round(target.totalAmount / cleanCount);
+    const updated: Booking = { ...target, totalPlayers: cleanCount, perPlayerAmount };
+    const nextBookings = bookings.map(b => (b.id === target.id ? updated : b));
+    setBookings(nextBookings);
+    try {
+      localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(nextBookings));
+    } catch {}
+    await saveBookingToFirestore(updated);
+  }, [bookings]);
+
+  // Tournaments & Events CRUD
+  const createTournament = useCallback(async (
+    input: Omit<Tournament, 'id' | 'teams' | 'createdAt' | 'status'> & { status?: Tournament['status'] }
+  ): Promise<Tournament> => {
+    const newTournament: Tournament = {
+      ...input,
+      id: `trn-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      adminId: input.adminId || normalizeAdminKey(currentAdminUser?.username) || undefined,
+      status: input.status || 'open',
+      teams: [],
+      createdAt: new Date().toISOString(),
+    };
+    const next = [newTournament, ...tournaments];
+    setTournaments(next);
+    try {
+      localStorage.setItem(STORAGE_KEYS.TOURNAMENTS, JSON.stringify(next));
+    } catch {}
+    await saveTournamentToFirestore(newTournament);
+    return newTournament;
+  }, [tournaments, currentAdminUser]);
+
+  const updateTournament = useCallback(async (tournament: Tournament) => {
+    const next = tournaments.map(t => (t.id === tournament.id ? tournament : t));
+    setTournaments(next);
+    try {
+      localStorage.setItem(STORAGE_KEYS.TOURNAMENTS, JSON.stringify(next));
+    } catch {}
+    await saveTournamentToFirestore(tournament);
+  }, [tournaments]);
+
+  const deleteTournament = useCallback(async (tournamentId: string) => {
+    const next = tournaments.filter(t => t.id !== tournamentId);
+    setTournaments(next);
+    try {
+      localStorage.setItem(STORAGE_KEYS.TOURNAMENTS, JSON.stringify(next));
+    } catch {}
+    await deleteTournamentFromFirestore(tournamentId);
+  }, [tournaments]);
+
+  const registerTeamInTournament = useCallback(async (
+    tournamentId: string,
+    team: Omit<TournamentTeam, 'id' | 'registeredAt'>
+  ): Promise<{ ok: boolean; message: string }> => {
+    const t = tournaments.find(item => item.id === tournamentId);
+    if (!t) return { ok: false, message: 'Torneo no encontrado.' };
+    if (t.status !== 'open') return { ok: false, message: 'Las inscripciones para este torneo ya cerraron.' };
+    if (t.teams.length >= t.maxTeams) return { ok: false, message: 'Cupos completos.' };
+
+    const duplicatePhone = t.teams.some(
+      existing => existing.captainPhone.replace(/\D/g, '') === team.captainPhone.replace(/\D/g, '')
+    );
+    if (duplicatePhone) {
+      return { ok: false, message: 'Este teléfono ya inscribió un equipo en este torneo.' };
+    }
+
+    const newTeam: TournamentTeam = {
+      ...team,
+      id: `tm-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      registeredAt: new Date().toISOString(),
+      paid: false,
+    };
+    const nextTeams = [...t.teams, newTeam];
+    const nextStatus: Tournament['status'] = nextTeams.length >= t.maxTeams ? 'full' : t.status;
+    const updated: Tournament = { ...t, teams: nextTeams, status: nextStatus };
+
+    const nextList = tournaments.map(item => (item.id === tournamentId ? updated : item));
+    setTournaments(nextList);
+    try {
+      localStorage.setItem(STORAGE_KEYS.TOURNAMENTS, JSON.stringify(nextList));
+    } catch {}
+    await saveTournamentToFirestore(updated);
+
+    return {
+      ok: true,
+      message: `¡Equipo "${team.teamName}" inscripto en ${t.title}!`,
+    };
+  }, [tournaments]);
+
+  const toggleTournamentTeamPaid = useCallback(async (tournamentId: string, teamId: string) => {
+    const t = tournaments.find(item => item.id === tournamentId);
+    if (!t) return;
+    const updated: Tournament = {
+      ...t,
+      teams: t.teams.map(tm => (tm.id === teamId ? { ...tm, paid: !tm.paid } : tm)),
+    };
+    const nextList = tournaments.map(item => (item.id === tournamentId ? updated : item));
+    setTournaments(nextList);
+    try {
+      localStorage.setItem(STORAGE_KEYS.TOURNAMENTS, JSON.stringify(nextList));
+    } catch {}
+    await saveTournamentToFirestore(updated);
+  }, [tournaments]);
+
   // Generate Slots for a Court on a specific Date using court's custom open/close hours
   const getSlotsForCourtAndDate = useCallback((courtId: string, date: string): TimeSlot[] => {
     const court = courts.find(c => c.id === courtId);
@@ -2032,6 +2516,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (b.courtId !== courtId || b.date !== date) return false;
       if (b.status === 'confirmed' || b.status === 'pending_payment' || b.status === 'awaiting_approval') return true;
       return false;
+    });
+
+    const activeDayTournaments = tournaments.filter(t => {
+      if (!t.blockCourts || t.status === 'cancelled' || t.status === 'finished') return false;
+      if (!t.courtIds.includes(courtId)) return false;
+      const tEndDate = t.endDate || t.date;
+      return date >= t.date && date <= tEndDate;
     });
 
     return hourOrders.map((hourNum) => {
@@ -2050,11 +2541,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return hourNum >= bStartHour && hourNum < bEndHour;
       });
 
+      const matchingTournament = activeDayTournaments.find(t => {
+        const tStart = parseSlotHourOrder(t.startTime);
+        const tEnd = parseSlotHourOrder(t.endTime);
+        return hourNum >= tStart && hourNum < tEnd;
+      });
+
       let status: SlotStatus = 'available';
       let blockedReason: string | undefined = undefined;
       let missingPlayersCount: number | undefined = undefined;
 
-      if (matchingBooking) {
+      if (matchingTournament) {
+        status = 'blocked';
+        blockedReason = `Torneo/Evento: ${matchingTournament.title}`;
+      } else if (matchingBooking) {
         if (matchingBooking.clientName.startsWith('[BLOQUEADO')) {
           status = 'blocked';
           blockedReason = matchingBooking.notes;
@@ -2086,7 +2586,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         missingPlayersCount,
       };
     });
-  }, [courts, bookings]);
+  }, [courts, bookings, tournaments]);
 
   // Compute Dynamic Monthly Stats (strictly scoped by adminId for complex admins)
   const getMonthlyStats = useCallback((monthKey: string): MonthlyStats => {
@@ -2307,6 +2807,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     registerAvailablePlayer,
     unregisterAvailablePlayer,
     inviteAvailablePlayerToBooking,
+    createRecurringAdminBookings,
+    cancelRecurringSeries,
+    getHoursUntilBookingStart,
+    rescheduleBooking,
+    cancelBookingByPlayer,
+    toggleJoinedPlayerPayment,
+    updateBookingSplitConfig,
+    tournaments,
+    createTournament,
+    updateTournament,
+    deleteTournament,
+    registerTeamInTournament,
+    toggleTournamentTeamPaid,
     exportDatabaseJson,
     importDatabaseJson,
     resetDatabase,
@@ -2388,6 +2901,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     registerAvailablePlayer,
     unregisterAvailablePlayer,
     inviteAvailablePlayerToBooking,
+    createRecurringAdminBookings,
+    cancelRecurringSeries,
+    getHoursUntilBookingStart,
+    rescheduleBooking,
+    cancelBookingByPlayer,
+    toggleJoinedPlayerPayment,
+    updateBookingSplitConfig,
+    tournaments,
+    createTournament,
+    updateTournament,
+    deleteTournament,
+    registerTeamInTournament,
+    toggleTournamentTeamPaid,
     exportDatabaseJson,
     importDatabaseJson,
     resetDatabase,

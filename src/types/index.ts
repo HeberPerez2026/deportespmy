@@ -58,6 +58,9 @@ export interface JoinedPlayer {
   notes?: string;
   pushDeviceId?: string;
   joinedAt: string;
+  paid?: boolean;
+  paidAmount?: number;
+  paidAt?: string;
 }
 
 export interface AvailablePlayer {
@@ -120,6 +123,26 @@ export interface Booking {
   lookingForPlayersMessage?: string;
   lookingForPlayersUpdatedAt?: string;
   joinedPlayers?: JoinedPlayer[];
+
+  // Split payment across players
+  totalPlayers?: number;
+  perPlayerAmount?: number;
+
+  // Weekly recurring bookings (Turnos fijos / abonos)
+  recurringGroupId?: string;
+  recurringIndex?: number;
+  recurringTotal?: number;
+
+  // Self-service rescheduling metadata
+  rescheduledFrom?: {
+    date: string;
+    startTime: string;
+    endTime: string;
+  };
+  rescheduledAt?: string;
+
+  // Pre-match automated Web Push reminder marker
+  reminderSentAt?: string;
 }
 
 export interface Review {
@@ -175,6 +198,11 @@ export interface BusinessProfile {
   tiktokUrl?: string;
   youtubeUrl?: string;
   socialFeedUrl?: string;
+  mapsUrl?: string;
+  latitude?: number;
+  longitude?: number;
+  cancellationWindowHours?: number;
+  reminderHoursBefore?: number;
 }
 
 export interface DeveloperContact {
@@ -190,6 +218,7 @@ export interface SiteContent {
   navTurnosLabel: string;
   navComplejosLabel: string;
   navOpinionesLabel: string;
+  navTorneosLabel?: string;
 
   // Portada / Hero
   heroLocationEyebrow: string;
@@ -325,9 +354,43 @@ export type BookingPushEventType =
   | 'balance_paid'
   | 'booking_cancelled'
   | 'admin_reminder'
+  | 'pre_match_reminder'
   | 'looking_for_players'
   | 'player_joined_match'
   | 'player_invite_match';
+
+export interface TournamentTeam {
+  id: string;
+  teamName: string;
+  captainName: string;
+  captainPhone: string;
+  playersCount?: number;
+  notes?: string;
+  registeredAt: string;
+  paid?: boolean;
+}
+
+export interface Tournament {
+  id: string;
+  title: string;
+  sport: SportType;
+  establishment?: string;
+  adminId?: string;
+  date: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD opcional
+  startTime: string; // HH:mm
+  endTime: string; // HH:mm
+  courtIds: string[];
+  blockCourts: boolean;
+  maxTeams: number;
+  entryFee: number;
+  prizeDescription?: string;
+  description?: string;
+  format?: string;
+  status: 'open' | 'full' | 'ongoing' | 'finished' | 'cancelled';
+  teams: TournamentTeam[];
+  createdAt: string;
+}
 
 export interface PushSubscriptionRecord {
   id: string;

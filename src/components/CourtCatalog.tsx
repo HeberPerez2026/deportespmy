@@ -23,7 +23,10 @@ import {
   Lock,
   Building2,
   Users,
+  Navigation,
+  ShieldCheck,
 } from 'lucide-react';
+import { buildGoogleMapsDirectionsUrl } from '../utils/maps';
 
 interface CourtCatalogProps {
   onOpenAdminLogin?: () => void;
@@ -52,6 +55,7 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
     setActiveTab,
     siteContent,
     getSportLabel,
+    getBusinessProfileForCourt,
   } = useApp();
 
   const [activeBookingCourt, setActiveBookingCourt] = useState<Court | null>(null);
@@ -223,6 +227,12 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
 
             const schedule = getNormalizedCourtSchedule(court);
             const scheduleLabel = `${schedule.hora_inicio} a ${schedule.hora_fin} hs`;
+            const courtProfile = getBusinessProfileForCourt(court);
+            const mapsUrl = buildGoogleMapsDirectionsUrl(
+              courtProfile,
+              court.establishment || courtProfile.complexName
+            );
+            const cancelHours = courtProfile.cancellationWindowHours ?? 24;
 
             return (
               <article
@@ -345,6 +355,23 @@ export const CourtCatalog: React.FC<CourtCatalogProps> = ({
                         {court.amenities.join(' · ')}
                       </p>
                     )}
+
+                    {/* Map link + cancellation policy micro-row */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-secondary)]">
+                      <a
+                        href={mapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 font-semibold text-[var(--accent-soft-text)] hover:underline"
+                      >
+                        <Navigation className="w-3 h-3" />
+                        <span>¿Cómo llegar? ({courtProfile.address || court.establishment || 'Ver mapa'})</span>
+                      </a>
+                      <span className="inline-flex items-center gap-1 text-[var(--text-muted)]">
+                        <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                        <span>Cancelación/cambio sin cargo hasta {cancelHours} hs antes</span>
+                      </span>
+                    </div>
 
                     {/* Quick Time Slots Strip (Amplitud horaria completa configurada por el admin) */}
                     <div>

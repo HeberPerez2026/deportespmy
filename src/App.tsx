@@ -12,6 +12,12 @@ import { AdminLoginModal } from './components/AdminLoginModal';
 import { Footer } from './components/Footer';
 import { AvailablePlayersModal } from './components/AvailablePlayersModal';
 import { JoinMatchModal } from './components/JoinMatchModal';
+import { TournamentsView } from './components/TournamentsView';
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { useBackHandler } from './hooks/useBackHandler';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
+import { buildGoogleMapsDirectionsUrl } from './utils/maps';
+import { getIsoDate } from './data/mockData';
 import {
   CheckCircle,
   AlertCircle,
@@ -30,12 +36,19 @@ import {
   Clock,
   Users,
   Send,
-  Trash2
+  Trash2,
+  Trophy,
+  WifiOff,
+  Navigation,
+  RefreshCw,
+  ShieldCheck,
+  DollarSign,
 } from 'lucide-react';
 import { downloadBookingReceiptPng } from './utils/receiptDownload';
 import { Booking } from './types';
 
 const MainContent: React.FC = () => {
+  const isOnline = useOnlineStatus();
   const { 
     activeTab, 
     setActiveTab, 
@@ -46,6 +59,12 @@ const MainContent: React.FC = () => {
     businessProfile,
     courts,
     getBusinessProfileForCourt,
+    getSlotsForCourtAndDate,
+    getHoursUntilBookingStart,
+    rescheduleBooking,
+    cancelBookingByPlayer,
+    toggleJoinedPlayerPayment,
+    updateBookingSplitConfig,
     setSelectedEstablishmentKey,
     siteContent,
     pushSupported,
@@ -97,6 +116,47 @@ const MainContent: React.FC = () => {
   const [lfpNoteInput, setLfpNoteInput] = useState<string>('');
   const [lfpSendingId, setLfpSendingId] = useState<string | null>(null);
   const [lfpFeedbackByBooking, setLfpFeedbackByBooking] = useState<Record<string, string>>({});
+
+  // Self-service cancel, reschedule & split cost inside Mis Reservas
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [bookingActionFeedback, setBookingActionFeedback] = useState<Record<string, { ok: boolean; text: string }>>({});
+  const [rescheduleTargetBooking, setRescheduleTargetBooking] = useState<Booking | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState<string>(getIsoDate(0));
+  const [rescheduleSlotTime, setRescheduleSlotTime] = useState<string>('');
+  const [reschedulingBusy, setReschedulingBusy] = useState(false);
+  const [rescheduleError, setRescheduleError] = useState<string | null>(null);
+  const [splitPlayersDraft, setSplitPlayersDraft] = useState<Record<string, number>>({});
+
+  // Intercept browser/mobile Back button: redirect to main page / close modals instead of leaving the app
+  useBackHandler(
+    !isAdminAuthenticated && activeTab !== 'turnos',
+    () => {
+      setSelectedEstablishmentKey(null);
+      setActiveTab('turnos');
+    },
+    'player-tab'
+  );
+  useBackHandler(isAdminLoginOpen, () => setIsAdminLoginOpen(false), 'admin-login');
+  useBackHandler(isMyBookingsOpen, () => setIsMyBookingsOpen(false), 'my-bookings');
+  useBackHandler(
+    Boolean(rescheduleTargetBooking),
+    () => {
+      setRescheduleTargetBooking(null);
+      setRescheduleError(null);
+    },
+    'reschedule-booking-modal'
+  );
+  useBackHandler(isAvailablePlayersOpen, () => setIsAvailablePlayersOpen(false), 'available-players');
+  useBackHandler(
+    Boolean(paymentSuccessModal),
+    () => {
+      setSuccessPushFeedback(null);
+      setPaymentSuccessModal(null);
+    },
+    'payment-success'
+  );
+  useBackHandler(Boolean(paymentFailureModal), () => setPaymentFailureModal(null), 'payment-failure');
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -366,6 +426,19 @@ const MainContent: React.FC = () => {
 
               <button
                 type="button"
+                onClick={() => setActiveTab('torneos')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  activeTab === 'torneos'
+                    ? 'bg-[var(--accent)] text-[var(--accent-ink)] shadow-xs'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]'
+                }`}
+              >
+                <Trophy className="w-3.5 h-3.5" />
+                <span>{siteContent.navTorneosLabel || 'Torneos'}</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setActiveTab('valoraciones')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
                   activeTab === 'valoraciones'
@@ -403,6 +476,8 @@ const MainContent: React.FC = () => {
                   Mis reservas{trackedBookingCodes.length > 0 ? ` (${trackedBookingCodes.length})` : ''}
                 </span>
               </button>
+
+              <PWAInstallButton variant="chip" />
 
               {pushSupported && (
                 <button
@@ -482,6 +557,15 @@ const MainContent: React.FC = () => {
         </div>
       )}
 
+      {!isOnline && (
+        <div className="bg-amber-500/15 border-b border-amber-500/35 px-4 py-2 text-xs text-amber-800 dark:text-amber-200 flex items-center justify-center gap-2">
+          <WifiOff className="w-4 h-4 shrink-0" />
+          <span>
+            Estás sin conexión a internet. Podés consultar turnos e información en caché; al reconectarte se sincronizarán tus reservas.
+          </span>
+        </div>
+      )}
+
       <main className="flex-1">
         {isAdminAuthenticated ? (
           <AdminDashboard />
@@ -523,6 +607,10 @@ const MainContent: React.FC = () => {
 
             {activeTab === 'establecimientos' && (
               <EstablishmentsView onOpenAdminLogin={() => setIsAdminLoginOpen(true)} />
+            )}
+
+            {activeTab === 'torneos' && (
+              <TournamentsView />
             )}
 
             {activeTab === 'valoraciones' && (
@@ -820,6 +908,16 @@ const MainContent: React.FC = () => {
                     const matchedCourt = courts.find((c) => c.id === b.courtId);
                     const bProfile = getBusinessProfileForCourt(matchedCourt);
                     const isFocused = focusedBookingCode === (b.bookingCode || '').toUpperCase();
+                    const cancelWindowHours = bProfile.cancellationWindowHours ?? 24;
+                    const hoursRemaining = getHoursUntilBookingStart(b);
+                    const withinFreeWindow = hoursRemaining >= cancelWindowHours;
+                    const bMapsUrl = buildGoogleMapsDirectionsUrl(bProfile, bProfile.complexName);
+                    const actionFeedback = bookingActionFeedback[b.id];
+                    const defaultPlayers =
+                      b.totalPlayers ||
+                      (b.sport === 'padel' || b.sport === 'tenis' ? 4 : b.sport === 'futbol5' ? 10 : 12);
+                    const draftPlayers = splitPlayersDraft[b.id] ?? defaultPlayers;
+                    const perPlayerCost = Math.round(b.totalAmount / Math.max(1, draftPlayers));
 
                     return (
                       <div
@@ -830,9 +928,16 @@ const MainContent: React.FC = () => {
                       >
                         <div className="flex items-center justify-between gap-2">
                           <div>
-                            <span className="font-mono text-xs font-bold text-[var(--accent-soft-text)]">
-                              #{b.bookingCode}
-                            </span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-xs font-bold text-[var(--accent-soft-text)]">
+                                #{b.bookingCode}
+                              </span>
+                              {b.recurringGroupId && (
+                                <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-600 dark:text-sky-300 text-[10px] font-bold">
+                                  Fijo {b.recurringIndex}/{b.recurringTotal}
+                                </span>
+                              )}
+                            </div>
                             <h4 className="text-sm font-bold text-[var(--text-primary)]">
                               {b.courtName}
                             </h4>
@@ -874,15 +979,40 @@ const MainContent: React.FC = () => {
                           </div>
                         </div>
 
+                        {/* Política visible de cancelación / reprogramación */}
+                        {b.status !== 'cancelled' && (
+                          <div className="flex items-start gap-1.5 px-2.5 py-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)] text-[11px] text-[var(--text-secondary)]">
+                            <ShieldCheck className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${withinFreeWindow ? 'text-emerald-500' : 'text-amber-500'}`} />
+                            <span>
+                              Ventana sin cargo: <strong className="font-mono">{cancelWindowHours} hs antes</strong>.{' '}
+                              {withinFreeWindow
+                                ? `Faltan ${Math.max(1, Math.floor(hoursRemaining))} hs (podés reprogramar o cancelar).`
+                                : hoursRemaining > 0
+                                ? `Faltan menos de ${cancelWindowHours} hs (${Math.max(1, Math.floor(hoursRemaining))} hs restantes).`
+                                : 'Horario ya iniciado o finalizado.'}
+                            </span>
+                          </div>
+                        )}
+
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
                             onClick={() => downloadBookingReceiptPng(b, bProfile.complexName)}
-                            className="flex-1 py-2 px-3 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs inline-flex items-center justify-center gap-1.5 border border-[var(--border-hairline)] cursor-pointer"
+                            className="py-2 px-3 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs inline-flex items-center justify-center gap-1.5 border border-[var(--border-hairline)] cursor-pointer"
                           >
                             <Download className="w-3.5 h-3.5 text-[var(--accent-soft-text)]" />
-                            <span>Comprobante PNG</span>
+                            <span>PNG</span>
                           </button>
+
+                          <a
+                            href={bMapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="py-2 px-3 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs inline-flex items-center justify-center gap-1.5 border border-[var(--border-hairline)]"
+                          >
+                            <Navigation className="w-3.5 h-3.5 text-[var(--accent-soft-text)]" />
+                            <span>¿Cómo llegar?</span>
+                          </a>
 
                           {pushSupported && pushPermission !== 'denied' && b.status !== 'cancelled' && (
                             <button
@@ -902,7 +1032,7 @@ const MainContent: React.FC = () => {
                               className="py-2 px-3 rounded-lg bg-[var(--accent-soft)] hover:opacity-90 text-[var(--accent-soft-text)] font-semibold text-xs inline-flex items-center justify-center gap-1.5 border border-[var(--border-hairline)] cursor-pointer"
                             >
                               <BellRing className="w-3.5 h-3.5" />
-                              <span>Avisos Push</span>
+                              <span>Push</span>
                             </button>
                           )}
 
@@ -938,7 +1068,134 @@ const MainContent: React.FC = () => {
                           )}
                         </div>
 
-                        {/* Missing Players Editor & Joined Players List */}
+                        {/* Self-service Reprogramar & Cancelar buttons */}
+                        {b.status !== 'cancelled' && hoursRemaining > 0 && (
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              disabled={!withinFreeWindow}
+                              onClick={() => {
+                                setRescheduleTargetBooking(b);
+                                setRescheduleDate(b.date || getIsoDate(0));
+                                setRescheduleSlotTime('');
+                                setRescheduleError(null);
+                              }}
+                              title={
+                                withinFreeWindow
+                                  ? 'Cambiar fecha u horario de este turno'
+                                  : `Solo disponible hasta ${cancelWindowHours} hs antes del turno`
+                              }
+                              className="px-3 py-1.5 rounded-lg bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] disabled:opacity-45 disabled:cursor-not-allowed border border-[var(--border-hairline)] text-xs font-semibold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5 text-[var(--accent-soft-text)]" />
+                              <span>Reprogramar</span>
+                            </button>
+
+                            {confirmCancelId === b.id ? (
+                              <div className="flex items-center gap-1.5 ml-auto">
+                                <button
+                                  type="button"
+                                  disabled={cancellingId === b.id}
+                                  onClick={async () => {
+                                    setCancellingId(b.id);
+                                    try {
+                                      const res = await cancelBookingByPlayer(b.id);
+                                      setBookingActionFeedback((prev) => ({
+                                        ...prev,
+                                        [b.id]: {
+                                          ok: res.success,
+                                          text:
+                                            res.message ||
+                                            (res.mpRefunded
+                                              ? `Reserva cancelada y devolución automática en Mercado Pago por $${res.refundAmount.toLocaleString('es-AR')}.`
+                                              : res.success
+                                              ? 'Reserva cancelada correctamente.'
+                                              : 'No se pudo cancelar fuera de término.'),
+                                        },
+                                      }));
+                                      setConfirmCancelId(null);
+                                    } finally {
+                                      setCancellingId(null);
+                                    }
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer disabled:opacity-50"
+                                >
+                                  {cancellingId === b.id ? 'Cancelando...' : 'Confirmar cancelación'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmCancelId(null)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-subtle)] text-xs font-semibold text-[var(--text-secondary)] cursor-pointer"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={!withinFreeWindow}
+                                onClick={() => setConfirmCancelId(b.id)}
+                                title={
+                                  withinFreeWindow
+                                    ? 'Cancelar reserva y liberar horario'
+                                    : `Solo disponible hasta ${cancelWindowHours} hs antes del turno`
+                                }
+                                className="ml-auto px-3 py-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 disabled:opacity-45 disabled:cursor-not-allowed border border-rose-500/30 text-xs font-semibold text-rose-600 dark:text-rose-400 cursor-pointer"
+                              >
+                                Cancelar reserva
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {actionFeedback && (
+                          <div
+                            className={`p-2.5 rounded-lg text-xs border ${
+                              actionFeedback.ok
+                                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-rose-500/10 border-rose-500/30 text-rose-700 dark:text-rose-300'
+                            }`}
+                          >
+                            {actionFeedback.text}
+                          </div>
+                        )}
+
+                        {/* División de costo por jugador */}
+                        {b.status !== 'cancelled' && (
+                          <div className="pt-2.5 border-t border-[var(--border-hairline)] flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <div className="flex items-center gap-1.5 text-[var(--text-secondary)]">
+                              <DollarSign className="w-3.5 h-3.5 text-[var(--accent-soft-text)]" />
+                              <span>Dividir entre</span>
+                              <input
+                                type="number"
+                                min={2}
+                                max={24}
+                                value={draftPlayers}
+                                onChange={(e) => {
+                                  const nextVal = Math.max(2, Math.min(24, Number(e.target.value) || 2));
+                                  setSplitPlayersDraft((prev) => ({ ...prev, [b.id]: nextVal }));
+                                }}
+                                onBlur={() => updateBookingSplitConfig(b.id, draftPlayers)}
+                                className="w-14 bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded px-2 py-0.5 text-center font-mono font-bold text-[var(--text-primary)]"
+                              />
+                              <span>jug.</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-[var(--accent-soft-text)]">
+                                ${perPlayerCost.toLocaleString('es-AR')} c/u
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => updateBookingSplitConfig(b.id, draftPlayers)}
+                                className="px-2 py-1 rounded bg-[var(--bg-surface)] hover:bg-[var(--bg-subtle)] border border-[var(--border-hairline)] text-[11px] font-semibold cursor-pointer"
+                              >
+                                Aplicar
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Missing Players Editor & Joined Players List with per-player payment control */}
                         {(editingLfpBookingId === b.id || b.lookingForPlayers || (b.joinedPlayers?.length || 0) > 0) && b.status !== 'cancelled' && (
                           <div className="pt-3 border-t border-[var(--border-hairline)] space-y-2.5 text-xs">
                             {b.lookingForPlayers && (() => {
@@ -1040,12 +1297,12 @@ const MainContent: React.FC = () => {
                             {(b.joinedPlayers?.length || 0) > 0 && (
                               <div className="space-y-1.5">
                                 <span className="text-[11px] font-bold text-[var(--text-primary)] block">
-                                  Jugadores sumados ({b.joinedPlayers!.length}):
+                                  Control de jugadores sumados y su parte (${perPlayerCost.toLocaleString('es-AR')} c/u):
                                 </span>
                                 {b.joinedPlayers!.map((jp) => {
                                   const jpPhone = (jp.phone || '').replace(/\D/g, '');
                                   const waUrl = jpPhone
-                                    ? `https://wa.me/${jpPhone}?text=${encodeURIComponent(`¡Hola ${jp.name}! Gracias por sumarte al partido #${b.bookingCode} (${b.courtName}, ${b.date} ${b.startTime} hs).`)}`
+                                    ? `https://wa.me/${jpPhone}?text=${encodeURIComponent(`¡Hola ${jp.name}! Gracias por sumarte al partido #${b.bookingCode} (${b.courtName}, ${b.date} ${b.startTime} hs). La parte por jugador es $${perPlayerCost.toLocaleString('es-AR')}.`)}`
                                     : '';
                                   return (
                                     <div
@@ -1064,6 +1321,18 @@ const MainContent: React.FC = () => {
                                         )}
                                       </div>
                                       <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleJoinedPlayerPayment(b.id, jp.id, perPlayerCost)}
+                                          className={`px-2 py-1 rounded text-[11px] font-bold border cursor-pointer transition-colors ${
+                                            jp.paid
+                                              ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-600 dark:text-emerald-400'
+                                              : 'bg-[var(--bg-canvas)] border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                                          }`}
+                                          title="Marcar o desmarcar pago de su parte"
+                                        >
+                                          {jp.paid ? `Pagó $${(jp.paidAmount || perPlayerCost).toLocaleString('es-AR')} ✓` : 'Pendiente'}
+                                        </button>
                                         {waUrl && (
                                           <a
                                             href={waUrl}
@@ -1096,6 +1365,137 @@ const MainContent: React.FC = () => {
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Reprogramación de Turno */}
+      {rescheduleTargetBooking && (
+        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full shadow-2xl overflow-hidden text-[var(--text-primary)]">
+            <div className="flex items-center justify-between px-5 py-4 bg-[var(--bg-elevated)] border-b border-[var(--border-hairline)]">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="w-4 h-4 text-[var(--accent-soft-text)]" />
+                <div>
+                  <h3 className="font-heading text-base font-bold">
+                    Reprogramar #{rescheduleTargetBooking.bookingCode}
+                  </h3>
+                  <p className="text-[11px] text-[var(--text-secondary)]">
+                    {rescheduleTargetBooking.courtName} · Turno actual: {rescheduleTargetBooking.date} {rescheduleTargetBooking.startTime} hs
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setRescheduleTargetBooking(null);
+                  setRescheduleError(null);
+                }}
+                className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-[var(--text-secondary)] mb-1.5">
+                  Nueva fecha
+                </label>
+                <input
+                  type="date"
+                  min={getIsoDate(0)}
+                  value={rescheduleDate}
+                  onChange={(e) => {
+                    setRescheduleDate(e.target.value);
+                    setRescheduleSlotTime('');
+                    setRescheduleError(null);
+                  }}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[var(--text-secondary)] mb-1.5">
+                  Horarios disponibles en {rescheduleDate}
+                </label>
+                <div className="grid grid-cols-4 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                  {getSlotsForCourtAndDate(rescheduleTargetBooking.courtId, rescheduleDate).map((slot) => {
+                    const isAvail = slot.status === 'available';
+                    const isSelected = rescheduleSlotTime === slot.startTime;
+                    return (
+                      <button
+                        key={slot.id}
+                        type="button"
+                        disabled={!isAvail}
+                        onClick={() => setRescheduleSlotTime(slot.startTime)}
+                        className={`py-2 px-1 rounded-lg font-mono font-semibold text-xs border transition-colors ${
+                          !isAvail
+                            ? 'bg-[var(--bg-subtle)] text-[var(--text-muted)] border-transparent opacity-45 line-through cursor-not-allowed'
+                            : isSelected
+                            ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)] cursor-pointer'
+                            : 'bg-[var(--bg-canvas)] hover:bg-[var(--bg-subtle)] text-[var(--text-primary)] border-[var(--border-hairline)] cursor-pointer'
+                        }`}
+                      >
+                        {slot.startTime}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {rescheduleError && (
+                <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-medium">
+                  {rescheduleError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-hairline)]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRescheduleTargetBooking(null);
+                    setRescheduleError(null);
+                  }}
+                  className="px-4 py-2 rounded-lg bg-[var(--bg-subtle)] text-[var(--text-primary)] font-semibold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={!rescheduleSlotTime || reschedulingBusy}
+                  onClick={async () => {
+                    if (!rescheduleSlotTime) return;
+                    setReschedulingBusy(true);
+                    setRescheduleError(null);
+                    try {
+                      const res = await rescheduleBooking(
+                        rescheduleTargetBooking.id,
+                        rescheduleDate,
+                        rescheduleSlotTime
+                      );
+                      if (!res.ok) {
+                        setRescheduleError(res.message);
+                        return;
+                      }
+                      setBookingActionFeedback((prev) => ({
+                        ...prev,
+                        [rescheduleTargetBooking.id]: {
+                          ok: true,
+                          text: res.message,
+                        },
+                      }));
+                      setRescheduleTargetBooking(null);
+                    } finally {
+                      setReschedulingBusy(false);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 text-[var(--accent-ink)] font-bold cursor-pointer"
+                >
+                  {reschedulingBusy ? 'Reprogramando...' : 'Confirmar cambio'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

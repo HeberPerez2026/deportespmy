@@ -8,6 +8,7 @@ import { WhatsAppLogView } from './WhatsAppLogView';
 import { DatabaseSyncView } from './DatabaseSyncView';
 import { AdminProfileSettings } from './AdminProfileSettings';
 import { SuperAdminPanel } from './SuperAdminPanel';
+import { TournamentsManager } from './TournamentsManager';
 import { 
   Calendar, 
   BarChart3, 
@@ -18,7 +19,8 @@ import {
   ShieldCheck, 
   RefreshCw, 
   Building2,
-  Crown
+  Crown,
+  Trophy
 } from 'lucide-react';
 
 export const AdminDashboard: React.FC = () => {
@@ -33,11 +35,12 @@ export const AdminDashboard: React.FC = () => {
     currentAdminUser,
     isSyncing,
     cloudConnected,
-    refreshFromCloud
+    refreshFromCloud,
+    tournaments
   } = useApp();
 
   // Admin sub-tabs state with the exact requested order
-  const [adminSubTab, setAdminSubTab] = useState<'courts' | 'schedule' | 'cashbox' | 'stats' | 'whatsapp' | 'profile' | 'sync'>('courts');
+  const [adminSubTab, setAdminSubTab] = useState<'courts' | 'schedule' | 'cashbox' | 'tournaments' | 'stats' | 'whatsapp' | 'profile' | 'sync'>('courts');
 
   // Today calculations for complex admins
   const todayBookings = bookings.filter(b => b.date === selectedDate && b.status === 'confirmed' && !b.clientName.startsWith('[BLOQUEADO'));
@@ -192,6 +195,19 @@ export const AdminDashboard: React.FC = () => {
 
         <button
           type="button"
+          onClick={() => setAdminSubTab('tournaments')}
+          className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer border ${
+            adminSubTab === 'tournaments'
+              ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)]'
+              : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          <Trophy className="w-4 h-4" />
+          <span>Torneos ({tournaments.length})</span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setAdminSubTab('stats')}
           className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors cursor-pointer border ${
             adminSubTab === 'stats'
@@ -247,6 +263,7 @@ export const AdminDashboard: React.FC = () => {
         {adminSubTab === 'courts' && <CourtsManager />}
         {adminSubTab === 'schedule' && <ScheduleGrid />}
         {adminSubTab === 'cashbox' && <TransactionsView />}
+        {adminSubTab === 'tournaments' && <TournamentsManager />}
         {adminSubTab === 'stats' && <MonthlyStatsView />}
         {adminSubTab === 'whatsapp' && <WhatsAppLogView />}
         {adminSubTab === 'profile' && <AdminProfileSettings />}

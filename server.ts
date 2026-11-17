@@ -3,7 +3,7 @@ import express from 'express';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { createApiApp } from './server/createApp.ts';
+import { createApiApp, runPreMatchReminderSweep } from './server/createApp.ts';
 
 function getCliArg(name: string): string | undefined {
   const exactIdx = process.argv.indexOf(name);
@@ -81,6 +81,13 @@ async function startServer() {
 
   httpServer.listen(port, host, () => {
     console.log(`🚀 Servidor DeportesPMY iniciado en http://${host}:${port}`);
+    // Barrido automático de recordatorios Push previos al partido (cada 5 min)
+    setTimeout(() => {
+      runPreMatchReminderSweep().catch(() => {});
+    }, 20000);
+    setInterval(() => {
+      runPreMatchReminderSweep().catch(() => {});
+    }, 5 * 60 * 1000);
   });
 }
 

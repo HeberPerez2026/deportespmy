@@ -43,7 +43,10 @@ export const DEFAULT_BUSINESS_PROFILE: BusinessProfile = {
   facebookUrl: '',
   tiktokUrl: '',
   youtubeUrl: '',
-  socialFeedUrl: ''
+  socialFeedUrl: '',
+  mapsUrl: '',
+  cancellationWindowHours: 24,
+  reminderHoursBefore: 2,
 };
 
 export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
@@ -73,7 +76,10 @@ export const EMPTY_BUSINESS_PROFILE: BusinessProfile = {
   facebookUrl: '',
   tiktokUrl: '',
   youtubeUrl: '',
-  socialFeedUrl: ''
+  socialFeedUrl: '',
+  mapsUrl: '',
+  cancellationWindowHours: 24,
+  reminderHoursBefore: 2,
 };
 
 export const DEFAULT_FILTER_TAGS: FilterTag[] = [
@@ -100,6 +106,7 @@ export const DEFAULT_SITE_CONTENT: SiteContent = {
   navTurnosLabel: 'Turnos',
   navComplejosLabel: 'Complejos',
   navOpinionesLabel: 'Opiniones',
+  navTorneosLabel: 'Torneos',
 
   heroLocationEyebrow: 'Puerto Madryn, Chubut · Reservas Online · Turnos de 1 hora',
   heroTitle: 'Reservá tu cancha en Puerto Madryn',

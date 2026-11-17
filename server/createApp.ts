@@ -668,6 +668,11 @@ function buildBookingPushContent(input: {
         body = body || `${inviter} te invitó a sumarte (${schedule || 'hoy'})${missing > 0 ? ` · Faltan ${missing}` : ''}. Tocá para anotarte.`;
         break;
       }
+      case 'pre_match_reminder': {
+        title = title || `¡Tu partido empieza pronto! · ${court}`;
+        body = body || `Turno #${code} (${schedule}). ${balance > 0 ? `Saldo pendiente en cancha: $${balance.toLocaleString('es-AR')}.` : 'Todo listo para salir a jugar.'}`;
+        break;
+      }
       default:
         title = title || `Actualización de turno #${code}`;
         body = body || `${court}${schedule ? ` · ${schedule}` : ''}. Tocá para ver el estado actualizado.`;
@@ -1833,6 +1838,15 @@ export function createApiApp() {
     }
   });
 
+  app.post('/api/push/run-reminders', async (_req, res) => {
+    try {
+      const summary = await runPreMatchReminderSweep();
+      res.json({ ok: true, ...summary });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err?.message || 'Error ejecutando recordatorios previos.' });
+    }
+  });
+
   // Ensure /api/* routes always respond with JSON (never fall through to SPA HTML)
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'Ruta de API no encontrada.' });
@@ -1846,4 +1860,124 @@ export function createApiApp() {
   });
 
   return app;
+}
+
+let isReminderSweepRunning = false;
+
+export async function runPreMatchReminderSweep(): Promise<{
+  checked: number;
+  eligible: number;
+  sentCount: number;
+}> {
+  if (isReminderSweepRunning) {
+    return { checked: 0, eligible: 0, sentCount: 0 };
+  }
+  if (!firebaseCfg?.projectId || !firebaseCfg?.firestoreDatabaseId || !firebaseCfg?.apiKey) {
+    return { checked: 0, eligible: 0, sentCount: 0 };
+  }
+
+  isReminderSweepRunning = true;
+  let checked = 0;
+  let eligible = 0;
+  let sentCount = 0;
+
+  try {
+    const baseUrl = `https://firestore.googleapis.com/v1/projects/${firebaseCfg.projectId}/databases/${firebaseCfg.firestoreDatabaseId}/documents`;
+    const keyParam = `key=${encodeURIComponent(firebaseCfg.apiKey)}`;
+
+    const [bookingsResp, settingsResp] = await Promise.all([
+      resilientFetch(`${baseUrl}/bookings?pageSize=300&${keyParam}`),
+      resilientFetch(`${baseUrl}/settings?pageSize=100&${keyParam}`),
+    ]);
+
+    if (!bookingsResp.ok) {
+      return { checked: 0, eligible: 0, sentCount: 0 };
+    }
+
+    const reminderHoursMap = new Map<string, number>();
+    let defaultReminderHours = 2;
+
+    if (settingsResp.ok) {
+      const settingsJson: any = await settingsResp.json();
+      const settingDocs = Array.isArray(settingsJson?.documents) ? settingsJson.documents : [];
+      for (const sDoc of settingDocs) {
+        const docId = String(sDoc?.name || '').split('/').pop() || '';
+        const hrsRaw = sDoc?.fields?.reminderHoursBefore?.doubleValue ?? sDoc?.fields?.reminderHoursBefore?.integerValue;
+        const hrs = Number(hrsRaw);
+        if (Number.isFinite(hrs) && hrs > 0 && hrs <= 12) {
+          if (docId === 'businessProfile') {
+            defaultReminderHours = hrs;
+          } else if (docId.startsWith('profile_')) {
+            reminderHoursMap.set(normalizeAdminId(docId.replace('profile_', '')), hrs);
+          }
+        }
+      }
+    }
+
+    const bookingsJson: any = await bookingsResp.json();
+    const docs = Array.isArray(bookingsJson?.documents) ? bookingsJson.documents : [];
+    const nowMs = Date.now();
+
+    for (const docItem of docs) {
+      const docName = String(docItem?.name || '');
+      const f = docItem?.fields || {};
+      checked += 1;
+
+      const status = f.status?.stringValue || '';
+      const reminderSentAt = f.reminderSentAt?.stringValue || '';
+      const clientPhone = f.clientPhone?.stringValue || '';
+      const notes = f.notes?.stringValue || '';
+      const dateStr = f.date?.stringValue || '';
+      const startTime = f.startTime?.stringValue || '';
+
+      if (status !== 'confirmed' || reminderSentAt) continue;
+      if (clientPhone.startsWith('BLOQUEO') || notes.startsWith('[BLOQUEO')) continue;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || !/^\d{2}:\d{2}$/.test(startTime)) continue;
+
+      // Argentina UTC-03:00
+      const kickoffMs = Date.parse(`${dateStr}T${startTime}:00-03:00`);
+      if (!Number.isFinite(kickoffMs)) continue;
+
+      const adminKey = normalizeAdminId(f.adminId?.stringValue || '');
+      const leadHours = reminderHoursMap.get(adminKey) ?? defaultReminderHours;
+      const minutesUntilKickoff = (kickoffMs - nowMs) / 60000;
+
+      if (minutesUntilKickoff >= 10 && minutesUntilKickoff <= leadHours * 60) {
+        eligible += 1;
+        const bookingCode = f.bookingCode?.stringValue || 'PMY';
+        const pushRes = await dispatchBookingPushNotification({
+          eventType: 'pre_match_reminder',
+          bookingCode,
+          clientPhone,
+          pushDeviceId: f.pushDeviceId?.stringValue || '',
+          courtName: f.courtName?.stringValue || 'Cancha',
+          date: dateStr,
+          startTime,
+          endTime: f.endTime?.stringValue || '',
+          amountPaid: Number(f.amountPaid?.doubleValue ?? f.amountPaid?.integerValue ?? 0),
+          balanceDue: Number(f.balanceDue?.doubleValue ?? f.balanceDue?.integerValue ?? 0),
+        });
+
+        sentCount += pushRes.sentCount || 0;
+
+        // Mark reminderSentAt in Firestore even if matchedCount is 0 so we don't rescan endlessly
+        const patchUrl = `https://firestore.googleapis.com/v1/${docName}?updateMask.fieldPaths=reminderSentAt&${keyParam}`;
+        await resilientFetch(patchUrl, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              reminderSentAt: { stringValue: new Date().toISOString() },
+            },
+          }),
+        }).catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.warn('[Push Reminders] Error en barrido automático:', err);
+  } finally {
+    isReminderSweepRunning = false;
+  }
+
+  return { checked, eligible, sentCount };
 }

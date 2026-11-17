@@ -39,7 +39,15 @@
         "neededPlayers": { "type": "number" },
         "lookingForPlayersMessage": { "type": "string", "maxLength": 300 },
         "lookingForPlayersUpdatedAt": { "type": "string", "maxLength": 64 },
-        "joinedPlayers": { "type": "array", "description": "List of players who joined this match" }
+        "joinedPlayers": { "type": "array", "description": "List of players who joined this match" },
+        "totalPlayers": { "type": "number" },
+        "perPlayerAmount": { "type": "number" },
+        "recurringGroupId": { "type": "string", "maxLength": 80 },
+        "recurringIndex": { "type": "number" },
+        "recurringTotal": { "type": "number" },
+        "rescheduledFrom": { "type": "object", "description": "Previous slot before rescheduling" },
+        "rescheduledAt": { "type": "string", "maxLength": 64 },
+        "reminderSentAt": { "type": "string", "maxLength": 64 }
       },
       "required": [
         "bookingCode",
@@ -131,7 +139,12 @@
         "facebookUrl": { "type": "string", "maxLength": 256 },
         "tiktokUrl": { "type": "string", "maxLength": 256 },
         "youtubeUrl": { "type": "string", "maxLength": 256 },
-        "socialFeedUrl": { "type": "string", "maxLength": 500 }
+        "socialFeedUrl": { "type": "string", "maxLength": 500 },
+        "mapsUrl": { "type": "string", "maxLength": 500 },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "cancellationWindowHours": { "type": "number" },
+        "reminderHoursBefore": { "type": "number" }
       }
     },
     "DeveloperContact": {
@@ -220,6 +233,32 @@
         "pushDeviceId": { "type": "string", "maxLength": 128 }
       },
       "required": ["name", "phone", "date", "expiresAt"]
+    },
+    "Tournament": {
+      "title": "Tournament",
+      "description": "Sports tournament, lightning cup or private event optionally blocking courts",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 140 },
+        "sport": { "type": "string", "maxLength": 32 },
+        "establishment": { "type": "string", "maxLength": 128 },
+        "adminId": { "type": "string", "maxLength": 64 },
+        "date": { "type": "string", "maxLength": 16 },
+        "endDate": { "type": "string", "maxLength": 16 },
+        "startTime": { "type": "string", "maxLength": 10 },
+        "endTime": { "type": "string", "maxLength": 10 },
+        "courtIds": { "type": "array", "description": "Court IDs assigned/blocked for this event" },
+        "blockCourts": { "type": "boolean" },
+        "maxTeams": { "type": "number" },
+        "entryFee": { "type": "number" },
+        "prizeDescription": { "type": "string", "maxLength": 300 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "format": { "type": "string", "maxLength": 80 },
+        "status": { "type": "string", "maxLength": 32 },
+        "teams": { "type": "array", "description": "Registered teams" },
+        "createdAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["title", "sport", "date", "startTime", "endTime", "maxTeams", "entryFee", "status"]
     }
   },
   "firestore": {
@@ -258,6 +297,10 @@
     "/availablePlayers/{playerId}": {
       "schema": "AvailablePlayer",
       "description": "Daily expiring list of players available to join matches today"
+    },
+    "/tournaments/{tournamentId}": {
+      "schema": "Tournament",
+      "description": "Sports tournaments, lightning cups and events"
     }
   }
 }

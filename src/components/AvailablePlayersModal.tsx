@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp, getLocalDayDateString } from '../context/AppContext';
 import { AvailablePlayer, Booking, SportType } from '../types';
+import { useBackHandler } from '../hooks/useBackHandler';
 import {
   X,
   UserPlus,
@@ -40,6 +41,8 @@ export const AvailablePlayersModal: React.FC<AvailablePlayersModalProps> = ({ is
     isPushEnabled,
     enablePushNotifications,
   } = useApp();
+
+  useBackHandler(isOpen, onClose, 'available-players-modal');
 
   const [sportFilter, setSportFilter] = useState<string>('all');
   const [showJoinForm, setShowJoinForm] = useState<boolean>(false);

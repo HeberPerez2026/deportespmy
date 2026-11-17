@@ -2,6 +2,7 @@ import React from 'react';
 import { useApp } from '../context/AppContext';
 import { useTheme, COLOR_PALETTES } from '../context/ThemeContext';
 import { Phone, Mail, Globe, Palette, Sun, Moon } from 'lucide-react';
+import { PWAInstallButton } from './PWAInstallButton';
 
 export const Footer: React.FC = () => {
   const { developerContact } = useApp();
@@ -72,8 +73,10 @@ export const Footer: React.FC = () => {
             )}
           </div>
 
-          {/* Theme Mode Toggle (Claro / Oscuro) & Color Palette Selector */}
+          {/* Install App + Theme Mode Toggle (Claro / Oscuro) & Color Palette Selector */}
           <div className="flex flex-wrap items-center gap-3 pt-3 lg:pt-0 border-t lg:border-t-0 border-[var(--border-hairline)]">
+            <PWAInstallButton variant="footer" />
+
             <button
               type="button"
               onClick={toggleMode}

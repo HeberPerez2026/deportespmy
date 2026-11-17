@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Court, SportType } from '../types';
 import { processImageUpload } from '../utils/imageUpload';
+import { useBackHandler } from '../hooks/useBackHandler';
 import {
   Star,
   MessageSquare,
@@ -102,6 +103,9 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({
   const [replyText, setReplyText] = useState('');
   const [lightboxPhoto, setLightboxPhoto] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  useBackHandler(isWriteModalOpen, () => setIsWriteModalOpen(false), 'write-review-modal');
+  useBackHandler(Boolean(lightboxPhoto), () => setLightboxPhoto(null), 'review-photo-lightbox');
 
   const [courtId, setCourtId] = useState(scopedCourts[0]?.id || '');
   const [name, setName] = useState('');

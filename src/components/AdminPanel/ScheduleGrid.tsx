@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { Court, TimeSlot, Booking } from '../../types';
 import { getUnionHoursRange, getNormalizedCourtSchedule } from '../../utils/scheduleHours';
 import { getSafeReceiptUrl } from '../../utils/imageUpload';
+import { useBackHandler } from '../../hooks/useBackHandler';
 import { 
   Calendar, 
   Clock, 
@@ -19,7 +20,8 @@ import {
   DollarSign,
   Loader2,
   RotateCcw,
-  Bell
+  Bell,
+  Repeat
 } from 'lucide-react';
 
 export const ScheduleGrid: React.FC = () => {
@@ -30,6 +32,8 @@ export const ScheduleGrid: React.FC = () => {
     setSelectedDate,
     getSlotsForCourtAndDate,
     createManualAdminBooking,
+    createRecurringAdminBookings,
+    cancelRecurringSeries,
     cancelBooking,
     collectBalanceAtCourt,
     blockTimeSlot,
@@ -51,6 +55,8 @@ export const ScheduleGrid: React.FC = () => {
   const [notes, setNotes] = useState('Reserva telefónica / mostrador');
   const [isDepositOnly, setIsDepositOnly] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'efectivo_mostrador' | 'mercadopago' | 'transferencia'>('efectivo_mostrador');
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [weeksCount, setWeeksCount] = useState<number>(4);
   const [blockReason, setBlockReason] = useState('Mantenimiento de césped y pintura');
   const [isBlockingMode, setIsBlockingMode] = useState(false);
 
@@ -62,6 +68,25 @@ export const ScheduleGrid: React.FC = () => {
   const [refundFeedback, setRefundFeedback] = useState<string | null>(null);
   const [isSendingPush, setIsSendingPush] = useState(false);
 
+  useBackHandler(
+    Boolean(modalSlot || activeBookingDetails),
+    () => {
+      setModalSlot(null);
+      setActiveBookingDetails(null);
+    },
+    'admin-schedule-slot-modal'
+  );
+  useBackHandler(
+    Boolean(cancelConfirmBooking),
+    () => {
+      if (!isRefunding) {
+        setCancelConfirmBooking(null);
+        setRefundError(null);
+      }
+    },
+    'admin-schedule-cancel-modal'
+  );
+
   const hours = getUnionHoursRange(courts);
 
   const pendingBookingsForDate = bookings.filter(b => b.date === selectedDate && b.status === 'pending_payment');
@@ -71,6 +96,12 @@ export const ScheduleGrid: React.FC = () => {
     const booking = slot.bookingId 
       ? bookings.find(item => item.id === slot.bookingId || item.bookingCode === slot.bookingId)
       : bookings.find(item => item.courtId === court.id && item.date === slot.date && item.startTime === slot.startTime);
+
+    if (slot.status === 'blocked' && !booking) {
+      setRefundFeedback(slot.blockedReason || 'Horario bloqueado por torneo/evento.');
+      setTimeout(() => setRefundFeedback(null), 5000);
+      return;
+    }
 
     if (slot.status === 'booked' || slot.status === 'blocked' || slot.status === 'pending' || booking) {
       if (booking && booking.status !== 'cancelled') {
@@ -82,11 +113,13 @@ export const ScheduleGrid: React.FC = () => {
     // Available slot clicked: open manual creation
     setModalSlot({ court, slot });
     setIsBlockingMode(false);
+    setIsRecurring(false);
+    setWeeksCount(4);
     setClientName('');
     setClientPhone('+549280');
   };
 
-  const handleCreateManualBookingSubmit = (e: React.FormEvent) => {
+  const handleCreateManualBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!modalSlot) return;
 
@@ -97,6 +130,28 @@ export const ScheduleGrid: React.FC = () => {
     }
 
     if (!clientName.trim() || !clientPhone.trim()) return;
+
+    if (isRecurring) {
+      const { createdBookings, skippedDates } = await createRecurringAdminBookings({
+        courtId: modalSlot.court.id,
+        date: modalSlot.slot.date,
+        startTime: modalSlot.slot.startTime,
+        durationMinutes: 60,
+        clientName,
+        clientPhone,
+        clientEmail: clientEmail || `${clientName.toLowerCase().replace(/\s+/g, '')}@pmy.com`,
+        notes,
+        totalAmount: modalSlot.slot.price,
+        isDepositOnly,
+        paymentMethod,
+        weeksCount,
+      });
+      setModalSlot(null);
+      const skipMsg = skippedDates.length > 0 ? ` (${skippedDates.length} fechas omitidas por superposición)` : '';
+      setRefundFeedback(`Se crearon ${createdBookings.length} turnos fijos semanales${skipMsg}.`);
+      setTimeout(() => setRefundFeedback(null), 6500);
+      return;
+    }
 
     createManualAdminBooking({
       courtId: modalSlot.court.id,
@@ -277,8 +332,8 @@ export const ScheduleGrid: React.FC = () => {
                             title={slot.blockedReason || booking?.notes || 'Mantenimiento'}
                           >
                             <Lock className="w-3.5 h-3.5 text-[var(--text-muted)] mb-0.5" />
-                            <span className="text-[11px] font-black uppercase tracking-wider text-[var(--text-secondary)]">
-                              Bloqueado
+                            <span className="text-[10px] font-black uppercase tracking-wider text-[var(--text-secondary)] truncate max-w-[95%]">
+                              {slot.blockedReason?.startsWith('Torneo') ? 'Torneo' : 'Bloqueado'}
                             </span>
                           </button>
                         ) : isFullyPaid && booking ? (
@@ -290,8 +345,9 @@ export const ScheduleGrid: React.FC = () => {
                             <span className="font-bold text-[11px] text-sky-100 truncate max-w-[95%] leading-tight text-center">
                               {booking.clientName}
                             </span>
-                            <span className="text-xs font-black uppercase tracking-wider text-white mt-0.5">
-                              Pagado
+                            <span className="text-[11px] font-black uppercase tracking-wider text-white mt-0.5 flex items-center gap-1">
+                              {booking.recurringGroupId && <Repeat className="w-2.5 h-2.5" />}
+                              <span>{booking.recurringGroupId ? `Fijo ${booking.recurringIndex || ''}/${booking.recurringTotal || ''}` : 'Pagado'}</span>
                             </span>
                           </button>
                         ) : isReserved && booking ? (
@@ -307,8 +363,9 @@ export const ScheduleGrid: React.FC = () => {
                             <span className="font-bold text-[11px] text-[#090D12] truncate max-w-[95%] leading-tight text-center">
                               {booking.clientName}
                             </span>
-                            <span className="text-xs font-black uppercase tracking-wider text-[#090D12] mt-0.5">
-                              {needsApproval ? 'A Aprobar' : 'Reservado'}
+                            <span className="text-[11px] font-black uppercase tracking-wider text-[#090D12] mt-0.5 flex items-center gap-1">
+                              {booking.recurringGroupId && <Repeat className="w-2.5 h-2.5" />}
+                              <span>{needsApproval ? 'A Aprobar' : booking.recurringGroupId ? `Fijo ${booking.recurringIndex || ''}/${booking.recurringTotal || ''}` : 'Reservado'}</span>
                             </span>
                           </button>
                         ) : (
@@ -457,6 +514,39 @@ export const ScheduleGrid: React.FC = () => {
                       onChange={(e) => setNotes(e.target.value)}
                       className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                     />
+                  </div>
+
+                  {/* Turno Fijo / Abono Semanal Recurrente */}
+                  <div className="p-3 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-2.5">
+                    <label className="flex items-center justify-between gap-2 cursor-pointer select-none">
+                      <span className="flex items-center gap-2 font-bold text-[var(--text-primary)]">
+                        <Repeat className="w-3.5 h-3.5 text-[var(--accent)]" />
+                        <span>Repetir como Turno Fijo Semanal (Abono)</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={isRecurring}
+                        onChange={(e) => setIsRecurring(e.target.checked)}
+                        className="w-4 h-4 accent-[var(--accent)]"
+                      />
+                    </label>
+                    {isRecurring && (
+                      <div className="flex items-center justify-between gap-3 pt-1 border-t border-[var(--border-hairline)]">
+                        <span className="text-[11px] text-[var(--text-secondary)]">
+                          Repetir mismo día y hora durante:
+                        </span>
+                        <select
+                          value={weeksCount}
+                          onChange={(e) => setWeeksCount(Number(e.target.value))}
+                          className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg px-2.5 py-1.5 text-xs font-bold text-[var(--text-primary)]"
+                        >
+                          <option value={4}>4 semanas</option>
+                          <option value={6}>6 semanas</option>
+                          <option value={8}>8 semanas</option>
+                          <option value={12}>12 semanas</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -682,6 +772,25 @@ export const ScheduleGrid: React.FC = () => {
                       <span>Cancelar y Devolver</span>
                     </button>
                   </div>
+
+                  {activeBookingDetails.recurringGroupId && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const gid = activeBookingDetails.recurringGroupId!;
+                        const { cancelledCount } = await cancelRecurringSeries(gid);
+                        setActiveBookingDetails(null);
+                        setRefundFeedback(`Se cancelaron ${cancelledCount} turnos pendientes de la serie fija.`);
+                        setTimeout(() => setRefundFeedback(null), 6000);
+                      }}
+                      className="w-full py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-600 dark:text-amber-300 font-bold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Repeat className="w-3.5 h-3.5" />
+                      <span>
+                        Cancelar toda la serie fija ({activeBookingDetails.recurringIndex}/{activeBookingDetails.recurringTotal})
+                      </span>
+                    </button>
+                  )}
                 </div>
 
               </div>
