@@ -55,7 +55,9 @@ const MainContent: React.FC = () => {
     isAdminAuthenticated, 
     reviews, 
     bookings,
+    tournaments,
     confirmBookingPayment, 
+    confirmTournamentTeamPayment,
     businessProfile,
     courts,
     getBusinessProfileForCourt,
@@ -249,8 +251,14 @@ const MainContent: React.FC = () => {
         if (cancelled) return;
 
         if (data?.verified) {
+          const refId = `MP-${data.paymentId || paymentId || Date.now()}`;
+          const verifiedAmt = Number(data.amount) || undefined;
           if (bookingCode) {
-            confirmBookingPayment(bookingCode, `MP-${data.paymentId || paymentId || Date.now()}`, Number(data.amount) || undefined);
+            if (bookingCode.toUpperCase().startsWith('TRN-')) {
+              confirmTournamentTeamPayment(bookingCode, undefined, refId, verifiedAmt);
+            } else {
+              confirmBookingPayment(bookingCode, refId, verifiedAmt);
+            }
           }
           setPaymentSuccessModal({
             bookingCode: bookingCode || data.bookingCode || 'PMY-CONFIRMADO',
@@ -277,7 +285,7 @@ const MainContent: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [confirmBookingPayment]);
+  }, [confirmBookingPayment, confirmTournamentTeamPayment]);
 
   // Listen to Service Worker Push messages, notification clicks & local real-time match banners
   useEffect(() => {
@@ -424,18 +432,39 @@ const MainContent: React.FC = () => {
                 <span>{siteContent.navComplejosLabel}</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => setActiveTab('torneos')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-colors cursor-pointer ${
-                  activeTab === 'torneos'
-                    ? 'bg-[var(--accent)] text-[var(--accent-ink)] shadow-xs'
-                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]'
-                }`}
-              >
-                <Trophy className="w-3.5 h-3.5" />
-                <span>{siteContent.navTorneosLabel || 'Torneos'}</span>
-              </button>
+              {(() => {
+                const hasOngoing = tournaments.some((t) => t.status === 'ongoing');
+                const hasOpen = tournaments.some((t) => t.status === 'open');
+                const hasHighlight = hasOngoing || hasOpen;
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('torneos')}
+                    className={`relative px-3 py-1.5 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition-all cursor-pointer ${
+                      activeTab === 'torneos'
+                        ? 'bg-[var(--accent)] text-[var(--accent-ink)] shadow-xs'
+                        : hasHighlight
+                          ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border border-amber-500/40 hover:bg-amber-500/25 shadow-[0_0_12px_rgba(245,158,11,0.2)]'
+                          : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)]'
+                    }`}
+                  >
+                    <Trophy
+                      className={`w-3.5 h-3.5 ${
+                        hasHighlight && activeTab !== 'torneos'
+                          ? 'text-amber-500 animate-bounce motion-reduce:animate-none'
+                          : ''
+                      }`}
+                    />
+                    <span>{siteContent.navTorneosLabel || 'Torneos'}</span>
+                    {hasHighlight && (
+                      <span className="inline-flex items-center gap-1 ml-0.5 px-1.5 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider bg-amber-500 text-slate-950">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping motion-reduce:animate-none" />
+                        <span>{hasOngoing ? 'En curso' : 'Abierto'}</span>
+                      </span>
+                    )}
+                  </button>
+                );
+              })()}
 
               <button
                 type="button"

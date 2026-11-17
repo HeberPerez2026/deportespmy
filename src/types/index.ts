@@ -333,6 +333,8 @@ export interface MonthlyStats {
     bookingsCount: number;
     totalSpent: number;
   }[];
+  tournamentRevenue?: number;
+  tournamentTeamsPaid?: number;
 }
 
 export interface WhatsAppNotificationLog {
@@ -354,6 +356,7 @@ export type BookingPushEventType =
   | 'balance_paid'
   | 'booking_cancelled'
   | 'admin_reminder'
+  | 'admin_broadcast'
   | 'pre_match_reminder'
   | 'looking_for_players'
   | 'player_joined_match'
@@ -368,6 +371,17 @@ export interface TournamentTeam {
   notes?: string;
   registeredAt: string;
   paid?: boolean;
+  bookingCode?: string;
+  paymentMethod?: PaymentMethod;
+  paymentStatus?: 'pending' | 'awaiting_approval' | 'paid' | 'refunded';
+  paymentReference?: string;
+  amountPaid?: number;
+  receiptUrl?: string;
+  refunded?: boolean;
+  refundAmount?: number;
+  refundedAt?: string;
+  refundId?: string;
+  adminId?: string;
 }
 
 export interface Tournament {

@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Booking, Court, PaymentMethod } from '../types';
+import { Booking, Court, PaymentMethod, Tournament } from '../types';
 
 export type CashboxPeriodType = 'semanal' | 'mensual' | 'anual';
 
@@ -96,9 +96,10 @@ function formatMoney(amount: number): string {
 export function exportCashboxReportPdf(params: {
   bookings: Booking[];
   courts: Court[];
+  tournaments?: Tournament[];
   filters: CashboxReportFilters;
 }): { count: number; netCollected: number } {
-  const { bookings, courts, filters } = params;
+  const { bookings, courts, tournaments = [], filters } = params;
   const { startDate, endDate, periodLabel, fileSlug } = getPeriodBounds(filters);
 
   const periodBookings = bookings
@@ -109,9 +110,46 @@ export function exportCashboxReportPdf(params: {
   const activeBookings = periodBookings.filter((b) => b.status !== 'cancelled');
   const cancelledWithRefund = periodBookings.filter((b) => b.status === 'cancelled' && Number(b.refundAmount || 0) > 0);
 
-  const grossCollected = activeBookings.reduce((sum, b) => sum + Number(b.amountPaid || 0), 0);
-  const pendingAtCourt = activeBookings.reduce((sum, b) => sum + Number(b.balanceDue || 0), 0);
-  const totalRefunded = cancelledWithRefund.reduce((sum, b) => sum + Number(b.refundAmount || 0), 0);
+  const tournamentEntries = tournaments
+    .filter((t) => t.status !== 'cancelled')
+    .flatMap((t) =>
+      (t.teams || []).map((tm) => {
+        const opDate = (tm.registeredAt ? tm.registeredAt.slice(0, 10) : t.date) || t.date;
+        const paidAmt = Number(tm.amountPaid ?? (tm.paid ? t.entryFee : 0));
+        const refundAmt = Number(tm.refundAmount ?? (tm.refunded ? paidAmt || t.entryFee : 0));
+        return {
+          tournamentTitle: t.title,
+          teamName: tm.teamName,
+          captainName: tm.captainName,
+          bookingCode: tm.bookingCode || `TRN-${tm.id.slice(-4).toUpperCase()}`,
+          opDate,
+          startTime: t.startTime,
+          method: (tm.paymentMethod || 'efectivo_mostrador') as PaymentMethod,
+          isPaid: !tm.refunded && (Boolean(tm.paid) || tm.paymentStatus === 'paid'),
+          isAwaiting: !tm.refunded && tm.paymentStatus === 'awaiting_approval',
+          isRefunded: Boolean(tm.refunded || tm.paymentStatus === 'refunded'),
+          paidAmount: paidAmt,
+          refundAmount: refundAmt,
+          pendingAmount: !tm.refunded && !tm.paid && tm.paymentStatus !== 'paid' ? Number(t.entryFee || 0) : 0,
+        };
+      })
+    )
+    .filter((item) => item.opDate >= startDate && item.opDate <= endDate);
+
+  const activeTournamentEntries = tournamentEntries.filter((e) => e.isPaid);
+  const refundedTournamentEntries = tournamentEntries.filter((e) => e.isRefunded && e.refundAmount > 0);
+
+  const bookingsGross = activeBookings.reduce((sum, b) => sum + Number(b.amountPaid || 0), 0);
+  const tournamentsGross = activeTournamentEntries.reduce((sum, e) => sum + e.paidAmount, 0);
+  const grossCollected = bookingsGross + tournamentsGross;
+
+  const pendingBookings = activeBookings.reduce((sum, b) => sum + Number(b.balanceDue || 0), 0);
+  const pendingTournaments = tournamentEntries.filter((e) => !e.isPaid && !e.isRefunded).reduce((sum, e) => sum + e.pendingAmount, 0);
+  const pendingAtCourt = pendingBookings + pendingTournaments;
+
+  const totalRefundedBookings = cancelledWithRefund.reduce((sum, b) => sum + Number(b.refundAmount || 0), 0);
+  const totalRefundedTournaments = refundedTournamentEntries.reduce((sum, e) => sum + e.refundAmount, 0);
+  const totalRefunded = totalRefundedBookings + totalRefundedTournaments;
   const netCollected = Math.max(0, grossCollected - totalRefunded);
 
   const byMethod: Record<PaymentMethod, { count: number; amount: number }> = {
@@ -126,6 +164,12 @@ export function exportCashboxReportPdf(params: {
     byMethod[m].count += 1;
     byMethod[m].amount += Number(b.amountPaid || 0);
   });
+  activeTournamentEntries.forEach((e) => {
+    const m = e.method || 'efectivo_mostrador';
+    if (!byMethod[m]) byMethod[m] = { count: 0, amount: 0 };
+    byMethod[m].count += 1;
+    byMethod[m].amount += e.paidAmount;
+  });
 
   const courtMap = new Map<string, { name: string; count: number; collected: number; pending: number }>();
   activeBookings.forEach((b) => {
@@ -136,6 +180,15 @@ export function exportCashboxReportPdf(params: {
     prev.pending += Number(b.balanceDue || 0);
     courtMap.set(b.courtId, prev);
   });
+
+  if (activeTournamentEntries.length > 0 || pendingTournaments > 0) {
+    courtMap.set('__tournaments__', {
+      name: 'Inscripciones de Torneos',
+      count: activeTournamentEntries.length,
+      collected: tournamentsGross,
+      pending: pendingTournaments,
+    });
+  }
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -162,15 +215,16 @@ export function exportCashboxReportPdf(params: {
   doc.text(`Emitido: ${new Date().toLocaleString('es-AR')}`, pageWidth - 14, 27, { align: 'right' });
 
   // KPI Summary table
+  const activeOpsCount = activeBookings.length + activeTournamentEntries.length;
   autoTable(doc, {
     startY: 40,
-    head: [['Ingresos Brutos', 'Devoluciones', 'Balance Neto', 'Saldo Pendiente en Cancha', 'Turnos Activos']],
+    head: [['Ingresos Brutos', 'Devoluciones', 'Balance Neto', 'Saldo Pendiente', 'Operaciones Activas']],
     body: [[
       formatMoney(grossCollected),
       formatMoney(totalRefunded),
       formatMoney(netCollected),
       formatMoney(pendingAtCourt),
-      String(activeBookings.length),
+      String(activeOpsCount),
     ]],
     theme: 'grid',
     headStyles: { fillColor: [22, 27, 34], textColor: [200, 255, 50], fontSize: 8.5, halign: 'center' },
@@ -183,7 +237,7 @@ export function exportCashboxReportPdf(params: {
 
   autoTable(doc, {
     startY: afterKpiY + 6,
-    head: [['Medio de Pago', 'Turnos', 'Total Cobrado', '% del Total']],
+    head: [['Medio de Pago', 'Operaciones', 'Total Cobrado', '% del Total']],
     body: (Object.keys(byMethod) as PaymentMethod[]).map((method) => {
       const entry = byMethod[method];
       const pct = grossCollected > 0 ? `${Math.round((entry.amount / grossCollected) * 100)}%` : '0%';
@@ -201,7 +255,7 @@ export function exportCashboxReportPdf(params: {
   if (courtMap.size > 0) {
     autoTable(doc, {
       startY: afterMethodY + 6,
-      head: [['Cancha', 'Turnos', 'Cobrado', 'Saldo Pendiente']],
+      head: [['Concepto / Cancha', 'Cantidad', 'Cobrado', 'Saldo Pendiente']],
       body: Array.from(courtMap.values())
         .sort((a, b) => b.collected - a.collected)
         .map((c) => [c.name, String(c.count), formatMoney(c.collected), formatMoney(c.pending)]),
@@ -215,30 +269,53 @@ export function exportCashboxReportPdf(params: {
 
   const afterCourtY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || afterMethodY + 10;
 
-  // Itemized transactions table
+  // Itemized transactions table (bookings + tournaments)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10.5);
   doc.setTextColor(17, 24, 39);
   doc.text('Detalle de Movimientos del Período', 14, afterCourtY + 8);
 
-  const rows = periodBookings.map((b) => [
-    b.date.split('-').reverse().join('/'),
-    `${b.startTime}`,
-    b.bookingCode,
-    b.courtName,
-    b.clientName,
-    METHOD_LABELS[b.paymentMethod] || b.paymentMethod,
-    STATUS_LABELS[b.status] || b.status,
-    b.status === 'cancelled' && Number(b.refundAmount || 0) > 0
-      ? `-${formatMoney(Number(b.refundAmount || 0))}`
-      : formatMoney(Number(b.amountPaid || 0)),
-    b.status === 'cancelled' ? '$0' : formatMoney(Number(b.balanceDue || 0)),
-  ]);
+  const combinedRows = [
+    ...periodBookings.map((b) => ({
+      sortKey: `${b.date} ${b.startTime}`,
+      row: [
+        b.date.split('-').reverse().join('/'),
+        `${b.startTime}`,
+        b.bookingCode,
+        b.courtName,
+        b.clientName,
+        METHOD_LABELS[b.paymentMethod] || b.paymentMethod,
+        STATUS_LABELS[b.status] || b.status,
+        b.status === 'cancelled' && Number(b.refundAmount || 0) > 0
+          ? `-${formatMoney(Number(b.refundAmount || 0))}`
+          : formatMoney(Number(b.amountPaid || 0)),
+        b.status === 'cancelled' ? '$0' : formatMoney(Number(b.balanceDue || 0)),
+      ],
+    })),
+    ...tournamentEntries.map((e) => ({
+      sortKey: `${e.opDate} ${e.startTime}`,
+      row: [
+        e.opDate.split('-').reverse().join('/'),
+        `${e.startTime}`,
+        e.bookingCode,
+        `TORNEO · ${e.tournamentTitle}`,
+        `${e.teamName} (${e.captainName})`,
+        METHOD_LABELS[e.method] || e.method,
+        e.isRefunded ? 'Reembolsado' : e.isPaid ? 'Inscripción Paga' : e.isAwaiting ? 'En revisión' : 'Pend. pago',
+        e.isRefunded
+          ? `-${formatMoney(e.refundAmount)}`
+          : formatMoney(e.isPaid ? e.paidAmount : 0),
+        e.isPaid || e.isRefunded ? '$0' : formatMoney(e.pendingAmount),
+      ],
+    })),
+  ]
+    .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+    .map((x) => x.row);
 
   autoTable(doc, {
     startY: afterCourtY + 11,
-    head: [['Fecha', 'Hora', 'Código', 'Cancha', 'Cliente', 'Medio', 'Estado', 'Cobrado/Dev.', 'Saldo']],
-    body: rows.length > 0 ? rows : [['—', '—', '—', 'Sin movimientos en este período', '—', '—', '—', '$0', '$0']],
+    head: [['Fecha', 'Hora', 'Código', 'Cancha / Torneo', 'Cliente / Equipo', 'Medio', 'Estado', 'Cobrado/Dev.', 'Saldo']],
+    body: combinedRows.length > 0 ? combinedRows : [['—', '—', '—', 'Sin movimientos en este período', '—', '—', '—', '$0', '$0']],
     theme: 'grid',
     headStyles: { fillColor: [13, 17, 23], textColor: [255, 255, 255], fontSize: 7.5 },
     bodyStyles: { fontSize: 7.3 },
@@ -262,5 +339,6 @@ export function exportCashboxReportPdf(params: {
 
   doc.save(`balance_caja_${fileSlug}.pdf`);
 
-  return { count: activeBookings.length, netCollected };
+  return { count: activeOpsCount, netCollected };
 }
+

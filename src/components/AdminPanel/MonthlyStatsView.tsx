@@ -1,59 +1,43 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { exportMonthlyStatsPdf } from '../../utils/monthlyStatsPdfExport';
 import { 
   TrendingUp, 
   Calendar, 
-  Clock, 
   Award, 
-  Download, 
+  FileDown, 
   Printer, 
   DollarSign, 
   Users, 
-  BarChart2, 
   PieChart, 
   Flame,
-  ArrowUpRight
+  CheckCircle
 } from 'lucide-react';
 
 export const MonthlyStatsView: React.FC = () => {
-  const { getMonthlyStats } = useApp();
+  const { getMonthlyStats, tournaments, businessProfile, currentAdminUser, isSuperAdmin } = useApp();
   const currentMonthKey = new Date().toISOString().slice(0, 7);
   const [selectedMonth, setSelectedMonth] = useState<string>(currentMonthKey);
+  const [pdfNotice, setPdfNotice] = useState<string | null>(null);
 
   const stats = getMonthlyStats(selectedMonth);
   const ticketAverage = stats.totalBookings > 0 ? Math.round(stats.totalRevenue / stats.totalBookings) : 0;
 
-  // Export CSV
-  const handleExportCSV = () => {
-    const rows = [
-      ['Reporte Mensual de DeportesPMY - deportespmy.com.ar'],
-      ['Mes', stats.monthLabel],
-      ['Ingresos Totales (ARS)', stats.totalRevenue],
-      ['Total Turnos', stats.totalBookings],
-      ['Horas Jugadas', stats.totalHoursPlayed],
-      ['Ocupacion Promedio (%)', stats.averageOccupancyRate],
-      [],
-      ['Desglose por Deporte'],
-      ['Deporte', 'Turnos', 'Ingresos (ARS)', 'Porcentaje (%)'],
-      ...stats.sportBreakdown.map(s => [s.sportName, s.bookingsCount, s.revenue, s.percentage + '%']),
-      [],
-      ['Horas Pico de Demanda'],
-      ['Franja Horaria', 'Cantidad de Reservas'],
-      ...stats.peakHours.map(p => [p.hour, p.bookingsCount]),
-      [],
-      ['Top Clientes Recurrentes'],
-      ['Nombre', 'WhatsApp', 'Turnos Jugados', 'Gasto Total (ARS)'],
-      ...stats.topClients.map(c => [c.name, c.phone, c.bookingsCount, c.totalSpent])
-    ];
+  const adminIdKey = (currentAdminUser?.username || '').trim().toLowerCase();
+  const scopedTournaments = (currentAdminUser && !isSuperAdmin)
+    ? tournaments.filter((t) => !adminIdKey || !t.adminId || t.adminId.toLowerCase() === adminIdKey)
+    : tournaments;
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + rows.map(e => e.join(';')).join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `deportespmy_estadisticas_${selectedMonth}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // Export PDF
+  const handleExportPDF = () => {
+    exportMonthlyStatsPdf({
+      stats,
+      complexLabel: businessProfile.complexName || 'DeportesPMY',
+      monthKey: selectedMonth,
+      tournaments: scopedTournaments,
+    });
+    setPdfNotice(`Estadísticas mensuales exportadas en PDF (${selectedMonth}).`);
+    setTimeout(() => setPdfNotice(null), 5000);
   };
 
   const handlePrint = () => {
@@ -67,11 +51,17 @@ export const MonthlyStatsView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[var(--bg-surface)] p-5 rounded-xl border border-[var(--border-hairline)]">
         <div>
           <span className="text-xs font-semibold uppercase tracking-wider text-[var(--accent-soft-text)] block mb-0.5">
-            Analítica & Métricas de Negocio
+            Analítica &amp; Métricas de Negocio
           </span>
           <h2 className="text-xl font-bold text-[var(--text-primary)] font-heading">
             Estadísticas Mensuales de Uso
           </h2>
+          {pdfNotice && (
+            <p className="text-xs font-semibold text-emerald-500 flex items-center gap-1.5 mt-1">
+              <CheckCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>{pdfNotice}</span>
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -89,17 +79,19 @@ export const MonthlyStatsView: React.FC = () => {
             </select>
           </div>
 
-          {/* Export CSV button */}
+          {/* Export PDF button */}
           <button
-            onClick={handleExportCSV}
-            className="px-3.5 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-fg)] font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+            type="button"
+            onClick={handleExportPDF}
+            className="px-4 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-extrabold text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>Exportar CSV</span>
+            <FileDown className="w-4 h-4" />
+            <span>Exportar PDF</span>
           </button>
 
           {/* Print button */}
           <button
+            type="button"
             onClick={handlePrint}
             className="px-3.5 py-2 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-canvas)] text-[var(--text-primary)] font-semibold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-[var(--border-hairline)]"
           >
@@ -125,7 +117,9 @@ export const MonthlyStatsView: React.FC = () => {
           </div>
           <span className="text-[11px] text-[var(--accent-soft-text)] font-medium flex items-center gap-1 mt-1">
             <TrendingUp className="w-3 h-3" />
-            +18.4% vs mes anterior
+            {(stats.tournamentRevenue || 0) > 0
+              ? `Incluye $${(stats.tournamentRevenue || 0).toLocaleString('es-AR')} de torneos (${stats.tournamentTeamsPaid || 0})`
+              : 'Turnos confirmados + torneos'}
           </span>
         </div>
 

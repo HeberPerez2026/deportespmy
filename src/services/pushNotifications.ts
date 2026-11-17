@@ -417,6 +417,40 @@ export async function sendBookingPushNotification(params: {
   }
 }
 
+export async function sendGlobalBroadcastPush(params: {
+  title: string;
+  body: string;
+}): Promise<{ ok: boolean; sentCount: number; matchedCount: number; error?: string }> {
+  const cleanTitle = params.title.trim() || 'DeportesPMY';
+  const cleanBody = params.body.trim();
+  if (!cleanBody) {
+    return { ok: false, sentCount: 0, matchedCount: 0, error: 'Escribí un mensaje para enviar.' };
+  }
+  try {
+    const resp = await apiFetch('/api/push/broadcast', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ title: cleanTitle, body: cleanBody }),
+    });
+    const data = await safeParseJsonResponse(resp);
+    if (!resp.ok) {
+      return { ok: false, sentCount: 0, matchedCount: 0, error: data?.error || 'Error enviando aviso Push.' };
+    }
+    try {
+      window.dispatchEvent(new CustomEvent('deportespmy:push_banner', {
+        detail: { title: cleanTitle, body: cleanBody },
+      }));
+    } catch {}
+    return {
+      ok: Boolean(data?.ok),
+      sentCount: Number(data?.sentCount) || 0,
+      matchedCount: Number(data?.matchedCount) || 0,
+    };
+  } catch (err: any) {
+    return { ok: false, sentCount: 0, matchedCount: 0, error: err?.message || 'Error de conexión al enviar Push.' };
+  }
+}
+
 export async function sendMatchLookingForPlayersPush(params: {
   booking: Booking;
   missingPlayers: number;

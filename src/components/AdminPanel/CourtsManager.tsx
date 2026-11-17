@@ -469,8 +469,8 @@ export const CourtsManager: React.FC = () => {
 
       {/* ADD COURT MODAL */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl max-w-lg w-full p-6 sm:p-7 shadow-2xl space-y-4 text-[var(--text-primary)] my-8">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-start justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl max-w-lg w-full p-6 sm:p-7 shadow-2xl space-y-4 text-[var(--text-primary)] my-auto">
             <div className="flex justify-between items-center pb-3 border-b border-[var(--border-hairline)]">
               <div>
                 <h3 className="text-xl font-bold font-heading text-[var(--text-primary)]">
@@ -804,8 +804,8 @@ export const CourtsManager: React.FC = () => {
 
       {/* EDIT MODAL */}
       {editingCourt && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4 text-[var(--text-primary)] my-8">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-start justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4 text-[var(--text-primary)] my-auto">
             <div className="flex justify-between items-center pb-3 border-b border-[var(--border-hairline)]">
               <h3 className="text-lg font-bold font-heading">
                 Editar Cancha: {editingCourt.name}

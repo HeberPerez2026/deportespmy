@@ -67,6 +67,10 @@ export const ScheduleGrid: React.FC = () => {
   const [notifyClientOnRefund, setNotifyClientOnRefund] = useState(true);
   const [refundFeedback, setRefundFeedback] = useState<string | null>(null);
   const [isSendingPush, setIsSendingPush] = useState(false);
+  const [pendingPaymentAction, setPendingPaymentAction] = useState<{
+    type: 'approve' | 'collect_balance';
+    booking: Booking;
+  } | null>(null);
 
   useBackHandler(
     Boolean(modalSlot || activeBookingDetails),
@@ -75,6 +79,11 @@ export const ScheduleGrid: React.FC = () => {
       setActiveBookingDetails(null);
     },
     'admin-schedule-slot-modal'
+  );
+  useBackHandler(
+    Boolean(pendingPaymentAction),
+    () => setPendingPaymentAction(null),
+    'admin-schedule-payment-confirm-modal'
   );
   useBackHandler(
     Boolean(cancelConfirmBooking),
@@ -713,18 +722,7 @@ export const ScheduleGrid: React.FC = () => {
                   {(activeBookingDetails.status === 'pending_payment' || activeBookingDetails.status === 'awaiting_approval') && (
                     <button
                       type="button"
-                      onClick={() => {
-                        const approvedCode = activeBookingDetails.bookingCode;
-                        const paidAmount = activeBookingDetails.totalAmount * (activeBookingDetails.isDepositOnly ? 0.5 : 1);
-                        confirmBookingPayment(
-                          activeBookingDetails.id,
-                          `VERIFIED-ADMIN-${Date.now().toString().slice(-4)}`,
-                          paidAmount
-                        );
-                        setActiveBookingDetails(null);
-                        setRefundFeedback(`Turno #${approvedCode} aprobado y confirmado correctamente.`);
-                        setTimeout(() => setRefundFeedback(null), 6000);
-                      }}
+                      onClick={() => setPendingPaymentAction({ type: 'approve', booking: activeBookingDetails })}
                       className="w-full py-3 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md"
                     >
                       <CheckCircle className="w-4 h-4" />
@@ -735,13 +733,7 @@ export const ScheduleGrid: React.FC = () => {
                   {activeBookingDetails.balanceDue > 0 && activeBookingDetails.status === 'confirmed' && (
                     <button
                       type="button"
-                      onClick={() => {
-                        const code = activeBookingDetails.bookingCode;
-                        collectBalanceAtCourt(activeBookingDetails.id);
-                        setActiveBookingDetails(null);
-                        setRefundFeedback(`Saldo cobrado para el turno #${code}. Quedó saldado 100%.`);
-                        setTimeout(() => setRefundFeedback(null), 5000);
-                      }}
+                      onClick={() => setPendingPaymentAction({ type: 'collect_balance', booking: activeBookingDetails })}
                       className="w-full py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-[#090D12] font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-md"
                     >
                       <DollarSign className="w-4 h-4" />
@@ -926,6 +918,95 @@ export const ScheduleGrid: React.FC = () => {
                     </span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMATION MODAL FOR APPROVE PAYMENT / COLLECT BALANCE */}
+      {pendingPaymentAction && (
+        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+          <div className="bg-[var(--bg-surface)] rounded-2xl max-w-md w-full p-6 shadow-2xl border border-emerald-500/40 text-[var(--text-primary)] space-y-4 my-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 flex items-center justify-center shrink-0">
+                  <CheckCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold">
+                    {pendingPaymentAction.type === 'approve'
+                      ? '¿Confirmar Aprobación de Pago?'
+                      : '¿Confirmar Cobro de Saldo en Mostrador?'}
+                  </h3>
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    Turno #{pendingPaymentAction.booking.bookingCode} · {pendingPaymentAction.booking.clientName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPendingPaymentAction(null)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-[var(--text-muted)]">Cancha y fecha:</span>
+                <span className="font-semibold">
+                  {pendingPaymentAction.booking.courtName.split('-')[0]} ({pendingPaymentAction.booking.date} {pendingPaymentAction.booking.startTime} hs)
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-muted)]">
+                  {pendingPaymentAction.type === 'approve' ? 'Monto a acreditar:' : 'Saldo a cobrar:'}
+                </span>
+                <span className="font-extrabold text-emerald-500 tabular-nums">
+                  $
+                  {(pendingPaymentAction.type === 'approve'
+                    ? (pendingPaymentAction.booking.amountPaid ||
+                      pendingPaymentAction.booking.totalAmount * (pendingPaymentAction.booking.isDepositOnly ? 0.5 : 1))
+                    : pendingPaymentAction.booking.balanceDue
+                  ).toLocaleString('es-AR')}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-hairline)]">
+              <button
+                type="button"
+                onClick={() => setPendingPaymentAction(null)}
+                className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = pendingPaymentAction.booking;
+                  const code = target.bookingCode;
+                  if (pendingPaymentAction.type === 'approve') {
+                    const paidAmount = target.amountPaid || target.totalAmount * (target.isDepositOnly ? 0.5 : 1);
+                    confirmBookingPayment(
+                      target.id,
+                      `VERIFIED-ADMIN-${Date.now().toString().slice(-4)}`,
+                      paidAmount
+                    );
+                    setRefundFeedback(`Turno #${code} aprobado y confirmado correctamente.`);
+                  } else {
+                    collectBalanceAtCourt(target.id);
+                    setRefundFeedback(`Saldo cobrado para el turno #${code}. Quedó saldado 100%.`);
+                  }
+                  setPendingPaymentAction(null);
+                  setActiveBookingDetails(null);
+                  setTimeout(() => setRefundFeedback(null), 6000);
+                }}
+                className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-[#090D12] font-extrabold text-xs cursor-pointer shadow-sm"
+              >
+                Sí, Confirmar Operación
               </button>
             </div>
           </div>

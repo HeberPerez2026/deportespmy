@@ -27,6 +27,9 @@ import {
   Tag,
   Plus,
   Sparkles,
+  BellRing,
+  Send,
+  Loader2,
 } from 'lucide-react';
 
 interface TextFieldConfig {
@@ -169,9 +172,17 @@ export const SuperAdminPanel: React.FC = () => {
     filterTags,
     updateFilterTags,
     courts,
+    sendSuperAdminPushBroadcast,
   } = useApp();
 
-  const [subSection, setSubSection] = useState<'admins' | 'filters' | 'texts' | 'reviews' | 'footer'>('admins');
+  const [subSection, setSubSection] = useState<'admins' | 'push' | 'filters' | 'texts' | 'reviews' | 'footer'>('admins');
+
+  // Push broadcast state (SuperAdmin textbox)
+  const [pushTitle, setPushTitle] = useState('Novedad en DeportesPMY');
+  const [pushMessage, setPushMessage] = useState('');
+  const [pushSending, setPushSending] = useState(false);
+  const [pushConfirmOpen, setPushConfirmOpen] = useState(false);
+  const [pushFeedback, setPushFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null);
@@ -195,6 +206,7 @@ export const SuperAdminPanel: React.FC = () => {
   useBackHandler(Boolean(editingTag), () => setEditingTag(null), 'superadmin-edit-tag');
   useBackHandler(Boolean(deleteTagConfirmId), () => setDeleteTagConfirmId(null), 'superadmin-delete-tag');
   useBackHandler(restoreTagsConfirm, () => setRestoreTagsConfirm(false), 'superadmin-restore-tags');
+  useBackHandler(pushConfirmOpen, () => { if (!pushSending) setPushConfirmOpen(false); }, 'superadmin-push-confirm');
 
   const showTagNotification = (msg: string) => {
     setTagMessage(msg);
@@ -421,6 +433,19 @@ export const SuperAdminPanel: React.FC = () => {
         >
           <Users className="w-4 h-4" />
           <span>Administradores ({admins.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSubSection('push')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 whitespace-nowrap cursor-pointer border transition-colors ${
+            subSection === 'push'
+              ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)] shadow-sm'
+              : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          <BellRing className="w-4 h-4" />
+          <span>Notificaciones Push</span>
         </button>
 
         <button
@@ -665,6 +690,135 @@ export const SuperAdminPanel: React.FC = () => {
                     })()}
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECTION: GLOBAL PUSH BROADCAST (TEXTBOX) */}
+      {subSection === 'push' && (
+        <div className="space-y-6">
+          <div className="bg-[var(--bg-surface)] text-[var(--text-primary)] p-6 sm:p-7 rounded-xl border border-[var(--border-hairline)] space-y-5">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--accent-soft-text)] mb-1">
+                <BellRing className="w-4 h-4" />
+                <span>Difusión Masiva Web Push · SuperAdmin</span>
+              </div>
+              <h2 className="font-heading text-2xl font-bold">
+                Enviar Notificación Push a Todos los Dispositivos
+              </h2>
+              <p className="text-xs text-[var(--text-secondary)] mt-1 max-w-2xl">
+                Escribí el aviso en el cuadro de texto para notificar en tiempo real a todos los jugadores que activaron las notificaciones push en su celular o navegador.
+              </p>
+            </div>
+
+            {pushFeedback && (
+              <div
+                className={`p-3.5 rounded-xl border text-xs font-bold flex items-center justify-between gap-2 ${
+                  pushFeedback.ok
+                    ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-500'
+                    : 'bg-rose-500/15 border-rose-500/35 text-rose-500'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  {pushFeedback.ok ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertTriangle className="w-4 h-4 shrink-0" />}
+                  <span>{pushFeedback.text}</span>
+                </div>
+                <button type="button" onClick={() => setPushFeedback(null)} className="cursor-pointer opacity-80 hover:opacity-100">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+              <div className="lg:col-span-7 space-y-3 text-xs">
+                <div>
+                  <label className="font-bold text-[var(--text-secondary)] block mb-1">
+                    Título de la Notificación
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={100}
+                    value={pushTitle}
+                    onChange={(e) => setPushTitle(e.target.value)}
+                    placeholder="Ej: ¡Nuevo Torneo Relámpago este fin de semana!"
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-[var(--text-secondary)]">
+                      Mensaje Push (Textbox) *
+                    </label>
+                    <span className="text-[10px] font-mono text-[var(--text-muted)]">
+                      {pushMessage.length}/320
+                    </span>
+                  </div>
+                  <textarea
+                    rows={4}
+                    maxLength={320}
+                    value={pushMessage}
+                    onChange={(e) => setPushMessage(e.target.value)}
+                    placeholder="Escribí aquí el mensaje que recibirán los jugadores en sus dispositivos..."
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] resize-y"
+                  />
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPushTitle('¡Inscripciones Abiertas al Nuevo Torneo!');
+                      setPushMessage('Ya podés inscribir a tu equipo en el próximo Torneo Relámpago desde la pestaña Torneos. ¡Cupos limitados!');
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-[var(--bg-canvas)] hover:bg-[var(--bg-subtle)] border border-[var(--border-hairline)] text-[11px] font-semibold text-[var(--text-secondary)] cursor-pointer"
+                  >
+                    Plantilla: Torneo Nuevo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPushTitle('Turnos Libres Hoy en Puerto Madryn');
+                      setPushMessage('Quedaron horarios disponibles para jugar hoy por la noche. ¡Reservá tu cancha en 1 minuto!');
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-[var(--bg-canvas)] hover:bg-[var(--bg-subtle)] border border-[var(--border-hairline)] text-[11px] font-semibold text-[var(--text-secondary)] cursor-pointer"
+                  >
+                    Plantilla: Turnos Libres
+                  </button>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    disabled={pushSending || !pushMessage.trim()}
+                    onClick={() => setPushConfirmOpen(true)}
+                    className="px-5 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 text-[var(--accent-ink)] font-extrabold text-xs flex items-center gap-2 cursor-pointer shadow-sm"
+                  >
+                    <Send className="w-4 h-4" />
+                    <span>Enviar Notificación Push Masiva</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Preview */}
+              <div className="lg:col-span-5 space-y-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] block">
+                  Vista previa en dispositivo
+                </span>
+                <div className="p-4 rounded-2xl bg-[var(--bg-canvas)] border border-[var(--border-strong)] shadow-sm space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+                    <span className="font-bold text-[var(--accent)]">DeportesPMY · Web Push</span>
+                    <span>ahora</span>
+                  </div>
+                  <p className="font-bold text-xs text-[var(--text-primary)]">
+                    {pushTitle.trim() || 'DeportesPMY'}
+                  </p>
+                  <p className="text-xs text-[var(--text-secondary)] leading-relaxed break-words">
+                    {pushMessage.trim() || 'Tu mensaje aparecerá aquí tal como lo verán los jugadores en su pantalla.'}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1803,6 +1957,79 @@ export const SuperAdminPanel: React.FC = () => {
                 className="px-5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs cursor-pointer"
               >
                 Sí, Restablecer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM SUPERADMIN PUSH BROADCAST MODAL */}
+      {pushConfirmOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 my-auto">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-[var(--accent-soft)] text-[var(--accent-soft-text)] border border-[var(--accent)]/30 flex items-center justify-center shrink-0">
+                  <BellRing className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-[var(--text-primary)]">
+                    ¿Enviar Notificación Push a Todos?
+                  </h3>
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    Se enviará inmediatamente a todos los dispositivos suscriptos.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={pushSending}
+                onClick={() => setPushConfirmOpen(false)}
+                className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] text-xs space-y-1">
+              <p className="font-bold text-[var(--text-primary)]">{pushTitle.trim() || 'DeportesPMY'}</p>
+              <p className="text-[var(--text-secondary)]">{pushMessage.trim()}</p>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-hairline)]">
+              <button
+                type="button"
+                disabled={pushSending}
+                onClick={() => setPushConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={pushSending}
+                onClick={async () => {
+                  setPushSending(true);
+                  const res = await sendSuperAdminPushBroadcast(pushTitle, pushMessage);
+                  setPushSending(false);
+                  setPushConfirmOpen(false);
+                  if (res.ok) {
+                    setPushFeedback({
+                      ok: true,
+                      text: `Notificación enviada a ${res.sentCount} de ${res.matchedCount} dispositivos suscriptos.`,
+                    });
+                    setPushMessage('');
+                  } else {
+                    setPushFeedback({
+                      ok: false,
+                      text: res.error || 'No se pudo enviar la notificación Push.',
+                    });
+                  }
+                }}
+                className="px-5 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-extrabold text-xs cursor-pointer flex items-center gap-1.5"
+              >
+                {pushSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                <span>{pushSending ? 'Enviando...' : 'Sí, Enviar Ahora'}</span>
               </button>
             </div>
           </div>

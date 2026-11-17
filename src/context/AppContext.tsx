@@ -80,6 +80,7 @@ import {
   sendMatchLookingForPlayersPush,
   sendPlayerJoinedMatchPush,
   sendPlayerInviteMatchPush,
+  sendGlobalBroadcastPush,
   showLocalServiceWorkerNotification,
 } from '../services/pushNotifications';
 import { testFirestoreConnection } from '../firebase';
@@ -308,12 +309,39 @@ interface AppContextType {
     input: Omit<Tournament, 'id' | 'teams' | 'createdAt' | 'status'> & { status?: Tournament['status'] }
   ) => Promise<Tournament>;
   updateTournament: (tournament: Tournament) => Promise<void>;
-  deleteTournament: (tournamentId: string) => Promise<void>;
+  deleteTournament: (tournamentId: string) => Promise<{
+    ok: boolean;
+    message?: string;
+    unrefundedCount?: number;
+    unrefundedTotal?: number;
+  }>;
   registerTeamInTournament: (
     tournamentId: string,
     team: Omit<TournamentTeam, 'id' | 'registeredAt'>
-  ) => Promise<{ ok: boolean; message: string }>;
+  ) => Promise<{ ok: boolean; message: string; team?: TournamentTeam; bookingCode?: string }>;
+  confirmTournamentTeamPayment: (
+    tournamentIdOrCode: string,
+    teamId?: string,
+    paymentRef?: string,
+    amountPaid?: number
+  ) => Promise<void>;
+  refundTournamentTeam: (
+    tournamentId: string,
+    teamId: string,
+    options?: { forceManual?: boolean }
+  ) => Promise<{
+    success: boolean;
+    mpRefunded: boolean;
+    manualRefundRequired?: boolean;
+    refundAmount: number;
+    refundId?: string;
+    message?: string;
+  }>;
   toggleTournamentTeamPaid: (tournamentId: string, teamId: string) => Promise<void>;
+  sendSuperAdminPushBroadcast: (
+    title: string,
+    body: string
+  ) => Promise<{ ok: boolean; sentCount: number; matchedCount: number; error?: string }>;
   
   // DB tools
   exportDatabaseJson: () => string;
@@ -2438,39 +2466,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await saveTournamentToFirestore(tournament);
   }, [tournaments]);
 
-  const deleteTournament = useCallback(async (tournamentId: string) => {
+  const deleteTournament = useCallback(async (tournamentId: string): Promise<{
+    ok: boolean;
+    message?: string;
+    unrefundedCount?: number;
+    unrefundedTotal?: number;
+  }> => {
+    const target = tournaments.find(t => t.id === tournamentId);
+    if (target) {
+      const unrefundedTeams = (target.teams || []).filter(tm => {
+        if (tm.refunded || tm.paymentStatus === 'refunded') return false;
+        const paidAmt = Number(tm.amountPaid ?? (tm.paid ? target.entryFee : 0));
+        return Boolean(tm.paid || tm.paymentStatus === 'paid' || paidAmt > 0);
+      });
+      if (unrefundedTeams.length > 0) {
+        const unrefundedTotal = unrefundedTeams.reduce(
+          (sum, tm) => sum + Number(tm.amountPaid ?? (tm.paid ? target.entryFee : 0)),
+          0
+        );
+        return {
+          ok: false,
+          unrefundedCount: unrefundedTeams.length,
+          unrefundedTotal,
+          message: `No se puede eliminar el torneo porque hay ${unrefundedTeams.length} equipo(s) con inscripción abonada sin devolver ($${unrefundedTotal.toLocaleString('es-AR')}). Devolvé el dinero antes de eliminar.`,
+        };
+      }
+    }
+
     const next = tournaments.filter(t => t.id !== tournamentId);
     setTournaments(next);
     try {
       localStorage.setItem(STORAGE_KEYS.TOURNAMENTS, JSON.stringify(next));
     } catch {}
     await deleteTournamentFromFirestore(tournamentId);
+    return { ok: true };
   }, [tournaments]);
 
   const registerTeamInTournament = useCallback(async (
     tournamentId: string,
     team: Omit<TournamentTeam, 'id' | 'registeredAt'>
-  ): Promise<{ ok: boolean; message: string }> => {
+  ): Promise<{ ok: boolean; message: string; team?: TournamentTeam; bookingCode?: string }> => {
     const t = tournaments.find(item => item.id === tournamentId);
     if (!t) return { ok: false, message: 'Torneo no encontrado.' };
     if (t.status !== 'open') return { ok: false, message: 'Las inscripciones para este torneo ya cerraron.' };
-    if (t.teams.length >= t.maxTeams) return { ok: false, message: 'Cupos completos.' };
+    const activeTeams = t.teams.filter(tm => !tm.refunded && tm.paymentStatus !== 'refunded');
+    if (activeTeams.length >= t.maxTeams) return { ok: false, message: 'Cupos completos.' };
 
-    const duplicatePhone = t.teams.some(
+    const duplicatePhone = activeTeams.some(
       existing => existing.captainPhone.replace(/\D/g, '') === team.captainPhone.replace(/\D/g, '')
     );
     if (duplicatePhone) {
-      return { ok: false, message: 'Este teléfono ya inscribió un equipo en este torneo.' };
+      return { ok: false, message: 'Este teléfono ya inscribió un equipo activo en este torneo.' };
     }
 
+    const generatedCode = team.bookingCode || `TRN-${Date.now().toString(36).toUpperCase().slice(-5)}${Math.floor(Math.random() * 90 + 10)}`;
+    const isFree = Number(t.entryFee || 0) <= 0;
+    const isAlreadyPaid = isFree || Boolean(team.paid) || team.paymentStatus === 'paid';
     const newTeam: TournamentTeam = {
       ...team,
       id: `tm-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      bookingCode: generatedCode,
       registeredAt: new Date().toISOString(),
-      paid: false,
+      paid: isAlreadyPaid,
+      paymentStatus: isAlreadyPaid ? 'paid' : (team.paymentStatus || 'pending'),
+      amountPaid: isAlreadyPaid ? Number(team.amountPaid ?? t.entryFee ?? 0) : Number(team.amountPaid ?? 0),
+      adminId: team.adminId || t.adminId,
+      refunded: false,
     };
+
     const nextTeams = [...t.teams, newTeam];
-    const nextStatus: Tournament['status'] = nextTeams.length >= t.maxTeams ? 'full' : t.status;
+    const nextActiveCount = nextTeams.filter(tm => !tm.refunded && tm.paymentStatus !== 'refunded').length;
+    const nextStatus: Tournament['status'] = nextActiveCount >= t.maxTeams ? 'full' : t.status;
     const updated: Tournament = { ...t, teams: nextTeams, status: nextStatus };
 
     const nextList = tournaments.map(item => (item.id === tournamentId ? updated : item));
@@ -2482,16 +2548,160 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return {
       ok: true,
+      team: newTeam,
+      bookingCode: generatedCode,
       message: `¡Equipo "${team.teamName}" inscripto en ${t.title}!`,
     };
   }, [tournaments]);
+
+  const confirmTournamentTeamPayment = useCallback(async (
+    tournamentIdOrCode: string,
+    teamId?: string,
+    paymentRef?: string,
+    amountPaid?: number
+  ) => {
+    const normCode = tournamentIdOrCode.trim().toUpperCase();
+    const targetTournament = tournaments.find(t =>
+      t.id === tournamentIdOrCode ||
+      t.teams.some(tm => (tm.bookingCode || '').toUpperCase() === normCode)
+    );
+    if (!targetTournament) return;
+
+    const updated: Tournament = {
+      ...targetTournament,
+      teams: targetTournament.teams.map(tm => {
+        const match = teamId
+          ? tm.id === teamId
+          : (tm.bookingCode || '').toUpperCase() === normCode;
+        if (!match) return tm;
+        const resolvedAmt = Number(amountPaid ?? tm.amountPaid ?? targetTournament.entryFee ?? 0);
+        return {
+          ...tm,
+          paid: true,
+          paymentStatus: 'paid',
+          paymentReference: paymentRef || tm.paymentReference || `TRN-OK-${Date.now().toString().slice(-5)}`,
+          amountPaid: resolvedAmt,
+          refunded: false,
+        };
+      }),
+    };
+
+    const nextList = tournaments.map(item => (item.id === updated.id ? updated : item));
+    setTournaments(nextList);
+    try {
+      localStorage.setItem(STORAGE_KEYS.TOURNAMENTS, JSON.stringify(nextList));
+    } catch {}
+    await saveTournamentToFirestore(updated);
+  }, [tournaments]);
+
+  const refundTournamentTeam = useCallback(async (
+    tournamentId: string,
+    teamId: string,
+    options?: { forceManual?: boolean }
+  ): Promise<{
+    success: boolean;
+    mpRefunded: boolean;
+    manualRefundRequired?: boolean;
+    refundAmount: number;
+    refundId?: string;
+    message?: string;
+  }> => {
+    const t = tournaments.find(item => item.id === tournamentId);
+    if (!t) return { success: false, mpRefunded: false, refundAmount: 0, message: 'Torneo no encontrado.' };
+    const tm = t.teams.find(x => x.id === teamId);
+    if (!tm) return { success: false, mpRefunded: false, refundAmount: 0, message: 'Equipo no encontrado.' };
+
+    const refundAmount = Number(tm.amountPaid ?? (tm.paid ? t.entryFee : 0));
+    let mpRefunded = false;
+    let refundId: string | undefined;
+
+    if (refundAmount > 0 && tm.paymentMethod === 'mercadopago' && !options?.forceManual) {
+      try {
+        const resp = await apiFetch('/api/mercadopago/refund', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            bookingCode: tm.bookingCode || `TRN-${tm.id.slice(-5).toUpperCase()}`,
+            paymentReference: tm.paymentReference,
+            amountPaid: refundAmount,
+            adminId: t.adminId || tm.adminId || currentAdminUser?.username || 'default',
+          }),
+        });
+        const data = await safeParseJsonResponse(resp);
+        if (!resp.ok || !data?.refunded) {
+          return {
+            success: false,
+            mpRefunded: false,
+            manualRefundRequired: true,
+            refundAmount,
+            message: data?.error || 'No se pudo procesar el reembolso automático en Mercado Pago. Podés registrar devolución manual.',
+          };
+        }
+        mpRefunded = true;
+        refundId = data.refundId ? String(data.refundId) : undefined;
+      } catch (err: any) {
+        return {
+          success: false,
+          mpRefunded: false,
+          manualRefundRequired: true,
+          refundAmount,
+          message: err?.message || 'Error de conexión con Mercado Pago. Podés registrar devolución manual.',
+        };
+      }
+    }
+
+    const updatedTeams: TournamentTeam[] = t.teams.map(item =>
+      item.id === teamId
+        ? {
+            ...item,
+            paid: false,
+            paymentStatus: 'refunded',
+            refunded: true,
+            refundAmount,
+            refundedAt: new Date().toISOString(),
+            refundId,
+          }
+        : item
+    );
+    const activeCount = updatedTeams.filter(x => !x.refunded && x.paymentStatus !== 'refunded').length;
+    const nextStatus: Tournament['status'] =
+      t.status === 'full' && activeCount < t.maxTeams ? 'open' : t.status;
+    const updated: Tournament = { ...t, teams: updatedTeams, status: nextStatus };
+
+    const nextList = tournaments.map(item => (item.id === tournamentId ? updated : item));
+    setTournaments(nextList);
+    try {
+      localStorage.setItem(STORAGE_KEYS.TOURNAMENTS, JSON.stringify(nextList));
+    } catch {}
+    await saveTournamentToFirestore(updated);
+
+    return {
+      success: true,
+      mpRefunded,
+      refundAmount,
+      refundId,
+      message: mpRefunded
+        ? `Reembolso automático de $${refundAmount.toLocaleString('es-AR')} acreditado en Mercado Pago (${tm.teamName}).`
+        : `Devolución registrada por $${refundAmount.toLocaleString('es-AR')} para ${tm.teamName}.`,
+    };
+  }, [tournaments, currentAdminUser]);
 
   const toggleTournamentTeamPaid = useCallback(async (tournamentId: string, teamId: string) => {
     const t = tournaments.find(item => item.id === tournamentId);
     if (!t) return;
     const updated: Tournament = {
       ...t,
-      teams: t.teams.map(tm => (tm.id === teamId ? { ...tm, paid: !tm.paid } : tm)),
+      teams: t.teams.map(tm => {
+        if (tm.id !== teamId) return tm;
+        const nextPaid = !tm.paid;
+        return {
+          ...tm,
+          paid: nextPaid,
+          paymentStatus: nextPaid ? 'paid' : 'pending',
+          amountPaid: nextPaid ? Number(tm.amountPaid || t.entryFee || 0) : 0,
+          refunded: false,
+        };
+      }),
     };
     const nextList = tournaments.map(item => (item.id === tournamentId ? updated : item));
     setTournaments(nextList);
@@ -2500,6 +2710,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
     await saveTournamentToFirestore(updated);
   }, [tournaments]);
+
+  const sendSuperAdminPushBroadcast = useCallback(async (title: string, body: string) => {
+    return sendGlobalBroadcastPush({ title, body });
+  }, []);
 
   // Generate Slots for a Court on a specific Date using court's custom open/close hours
   const getSlotsForCourtAndDate = useCallback((courtId: string, date: string): TimeSlot[] => {
@@ -2588,16 +2802,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, [courts, bookings, tournaments]);
 
-  // Compute Dynamic Monthly Stats (strictly scoped by adminId for complex admins)
+  // Compute Dynamic Monthly Stats (strictly scoped by adminId for complex admins, including paid tournament registrations)
   const getMonthlyStats = useCallback((monthKey: string): MonthlyStats => {
-    const sourceBookings = (currentAdminUser && !isSuperAdmin) ? adminBookings : bookings;
-    const sourceCourts = (currentAdminUser && !isSuperAdmin) ? adminCourts : courts;
+    const isScoped = Boolean(currentAdminUser && !isSuperAdmin);
+    const adminIdKey = (currentAdminUser?.username || '').trim().toLowerCase();
+    const sourceBookings = isScoped ? adminBookings : bookings;
+    const sourceCourts = isScoped ? adminCourts : courts;
+    const sourceTournaments = isScoped
+      ? tournaments.filter(t => !adminIdKey || !t.adminId || t.adminId.toLowerCase() === adminIdKey)
+      : tournaments;
 
     const monthBookings = sourceBookings.filter(
       b => b.date.startsWith(monthKey) && b.status === 'confirmed' && !b.clientName.startsWith('[BLOQUEADO')
     );
 
-    const totalRevenue = monthBookings.reduce((sum, b) => sum + b.amountPaid, 0);
+    const paidTournamentEntries = sourceTournaments
+      .filter(t => t.status !== 'cancelled')
+      .flatMap(t =>
+        (t.teams || [])
+          .filter(tm => {
+            if (tm.refunded || tm.paymentStatus === 'refunded') return false;
+            const isPaid = Boolean(tm.paid) || tm.paymentStatus === 'paid';
+            const opDate = (tm.registeredAt ? tm.registeredAt.slice(0, 10) : t.date) || t.date;
+            return isPaid && (opDate.startsWith(monthKey) || t.date.startsWith(monthKey));
+          })
+          .map(tm => ({
+            sport: t.sport,
+            amount: Number(tm.amountPaid ?? t.entryFee ?? 0),
+            teamName: tm.teamName,
+            captainName: tm.captainName,
+            captainPhone: tm.captainPhone,
+          }))
+      );
+
+    const bookingsRevenue = monthBookings.reduce((sum, b) => sum + b.amountPaid, 0);
+    const tournamentRevenue = paidTournamentEntries.reduce((sum, e) => sum + e.amount, 0);
+    const totalRevenue = bookingsRevenue + tournamentRevenue;
     const totalBookings = monthBookings.length;
     const totalHoursPlayed = Math.round(monthBookings.reduce((sum, b) => sum + (b.durationMinutes || 60) / 60, 0) * 10) / 10;
 
@@ -2608,25 +2848,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ? Math.min(100, Math.round((totalBookings / maxSlotsPerMonth) * 100))
       : 0;
 
-    const sportNames: Record<SportType, string> = {
-      futbol5: 'Fútbol 5',
-      padel: 'Pádel',
-      futbol7: 'Fútbol 7',
-      tenis: 'Tenis',
-      basquet: 'Básquetbol',
-    };
+    const sportIdsSet = new Set<string>(filterTags.map(f => f.id));
+    monthBookings.forEach(b => sportIdsSet.add(b.sport));
+    paidTournamentEntries.forEach(e => sportIdsSet.add(e.sport));
+    if (sportIdsSet.size === 0) {
+      ['futbol5', 'padel', 'futbol7', 'tenis', 'basquet'].forEach(id => sportIdsSet.add(id));
+    }
 
-    const sportBreakdown = (['futbol5', 'padel', 'futbol7', 'tenis', 'basquet'] as SportType[]).map(sp => {
+    const sportBreakdown = Array.from(sportIdsSet).map(sp => {
       const list = monthBookings.filter(b => b.sport === sp);
-      const rev = list.reduce((s, b) => s + b.amountPaid, 0);
+      const tList = paidTournamentEntries.filter(e => e.sport === sp);
+      const rev = list.reduce((s, b) => s + b.amountPaid, 0) + tList.reduce((s, e) => s + e.amount, 0);
       return {
         sport: sp,
-        sportName: sportNames[sp],
-        bookingsCount: list.length,
+        sportName: getSportLabel(sp),
+        bookingsCount: list.length + tList.length,
         revenue: rev,
         percentage: totalRevenue > 0 ? Math.round((rev / totalRevenue) * 100) : 0,
       };
-    });
+    }).filter(s => s.bookingsCount > 0 || s.revenue > 0 || ['futbol5', 'padel', 'futbol7', 'tenis'].includes(s.sport));
 
     const hourMap = new Map<string, number>();
     monthBookings.forEach(b => {
@@ -2646,6 +2886,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.totalSpent += b.amountPaid;
       clientMap.set(key, prev);
     });
+    paidTournamentEntries.forEach(e => {
+      const key = (e.captainPhone || e.teamName).trim().toLowerCase();
+      const prev = clientMap.get(key) || { name: `${e.captainName} (${e.teamName})`, phone: e.captainPhone, bookingsCount: 0, totalSpent: 0 };
+      prev.bookingsCount += 1;
+      prev.totalSpent += e.amount;
+      clientMap.set(key, prev);
+    });
     const topClients = Array.from(clientMap.values())
       .sort((a, b) => b.totalSpent - a.totalSpent)
       .slice(0, 8);
@@ -2661,8 +2908,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       peakHours,
       dailyRevenue: [],
       topClients,
+      tournamentRevenue,
+      tournamentTeamsPaid: paidTournamentEntries.length,
     };
-  }, [currentAdminUser, isSuperAdmin, adminBookings, adminCourts, bookings, courts]);
+  }, [currentAdminUser, isSuperAdmin, adminBookings, adminCourts, bookings, courts, tournaments, filterTags, getSportLabel]);
 
   // Export / Import / Reset Database
   const exportDatabaseJson = useCallback((): string => {
@@ -2819,7 +3068,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateTournament,
     deleteTournament,
     registerTeamInTournament,
+    confirmTournamentTeamPayment,
+    refundTournamentTeam,
     toggleTournamentTeamPaid,
+    sendSuperAdminPushBroadcast,
     exportDatabaseJson,
     importDatabaseJson,
     resetDatabase,
@@ -2913,7 +3165,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateTournament,
     deleteTournament,
     registerTeamInTournament,
+    confirmTournamentTeamPayment,
+    refundTournamentTeam,
     toggleTournamentTeamPaid,
+    sendSuperAdminPushBroadcast,
     exportDatabaseJson,
     importDatabaseJson,
     resetDatabase,

@@ -673,6 +673,11 @@ function buildBookingPushContent(input: {
         body = body || `Turno #${code} (${schedule}). ${balance > 0 ? `Saldo pendiente en cancha: $${balance.toLocaleString('es-AR')}.` : 'Todo listo para salir a jugar.'}`;
         break;
       }
+      case 'admin_broadcast': {
+        title = title || 'Comunicado · DeportesPMY';
+        body = body || 'Hay novedades disponibles en la plataforma.';
+        break;
+      }
       default:
         title = title || `Actualización de turno #${code}`;
         body = body || `${court}${schedule ? ` · ${schedule}` : ''}. Tocá para ver el estado actualizado.`;
@@ -684,9 +689,11 @@ function buildBookingPushContent(input: {
     joinCode ||
     (input.eventType === 'looking_for_players' || input.eventType === 'player_invite_match' ? code : '');
 
-  const url = effectiveJoinCode
-    ? `/?join_booking=${encodeURIComponent(effectiveJoinCode)}`
-    : `/?booking_code=${encodeURIComponent(code)}`;
+  const url = input.eventType === 'admin_broadcast'
+    ? '/'
+    : effectiveJoinCode
+      ? `/?join_booking=${encodeURIComponent(effectiveJoinCode)}`
+      : `/?booking_code=${encodeURIComponent(code)}`;
 
   return {
     title,
@@ -1835,6 +1842,27 @@ export function createApiApp() {
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message || 'Error enviando notificación Push.' });
+    }
+  });
+
+  app.post('/api/push/broadcast', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const title = String(body.title || '').trim() || 'DeportesPMY';
+      const message = String(body.body || body.message || '').trim();
+      if (!message) {
+        return res.status(400).json({ ok: false, error: 'El texto de la notificación no puede estar vacío.' });
+      }
+      const result = await dispatchBookingPushNotification({
+        eventType: 'admin_broadcast',
+        bookingCode: `BROADCAST-${Date.now().toString(36).toUpperCase()}`,
+        broadcast: true,
+        customTitle: title.slice(0, 100),
+        customBody: message.slice(0, 320),
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err?.message || 'Error enviando notificación masiva Push.' });
     }
   });
 
