@@ -219,6 +219,7 @@ export interface SiteContent {
   navComplejosLabel: string;
   navOpinionesLabel: string;
   navTorneosLabel?: string;
+  arcaQrCodeUrl?: string;
 
   // Portada / Hero
   heroLocationEyebrow: string;

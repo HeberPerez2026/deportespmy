@@ -347,6 +347,21 @@ interface AppContextType {
   exportDatabaseJson: () => string;
   importDatabaseJson: (json: string) => boolean;
   resetDatabase: () => void;
+  deleteAvailablePlayer: (playerId: string) => Promise<void>;
+  clearAllAvailablePlayers: () => Promise<void>;
+  exportGeneralDatabaseJson: () => string;
+  importGeneralDatabaseJson: (json: string) => Promise<{ success: boolean; message: string }>;
+  exportEstablishmentDatabaseJson: (establishmentName: string) => string;
+  importEstablishmentDatabaseJson: (json: string) => Promise<{ success: boolean; message: string }>;
+  resetGeneralDatabase: () => Promise<void>;
+  resetEstablishmentDatabase: (establishmentName: string) => Promise<void>;
+  updateSuperAdminCredentials: (
+    newUsername: string,
+    newFullName: string,
+    newEmail: string,
+    newPhone: string,
+    newPassword?: string
+  ) => Promise<{ success: boolean; message: string }>;
 }
 
 const STORAGE_KEYS = {
@@ -2968,6 +2983,233 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem(STORAGE_KEYS.REVIEWS);
   }, []);
 
+  const deleteAvailablePlayer = useCallback(async (playerId: string) => {
+    const next = availablePlayers.filter(p => p.id !== playerId);
+    setRawAvailablePlayers(next);
+    try {
+      localStorage.setItem('deportespmy_available_players', JSON.stringify(next));
+    } catch {}
+    await deleteAvailablePlayerFromFirestore(playerId);
+  }, [availablePlayers]);
+
+  const clearAllAvailablePlayers = useCallback(async () => {
+    for (const p of availablePlayers) {
+      try {
+        await deleteAvailablePlayerFromFirestore(p.id);
+      } catch {}
+    }
+    setRawAvailablePlayers([]);
+    try {
+      localStorage.removeItem('deportespmy_available_players');
+    } catch {}
+  }, [availablePlayers]);
+
+  const exportGeneralDatabaseJson = useCallback(() => {
+    const data = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      courts,
+      bookings,
+      reviews,
+      whatsappLogs,
+      businessProfile,
+      profilesByAdmin,
+      developerContact,
+      siteContent,
+      filterTags,
+      admins,
+      availablePlayers,
+    };
+    return JSON.stringify(data, null, 2);
+  }, [courts, bookings, reviews, whatsappLogs, businessProfile, profilesByAdmin, developerContact, siteContent, filterTags, admins, availablePlayers]);
+
+  const importGeneralDatabaseJson = useCallback(async (jsonString: string) => {
+    try {
+      const data = JSON.parse(jsonString);
+      if (!data || typeof data !== 'object') {
+        return { success: false, message: 'Archivo JSON inválido' };
+      }
+      if (data.courts && Array.isArray(data.courts)) {
+        setCourts(data.courts);
+        localStorage.setItem('deportespmy_courts', JSON.stringify(data.courts));
+        for (const c of data.courts) {
+          await saveCourtToFirestore(c);
+        }
+      }
+      if (data.bookings && Array.isArray(data.bookings)) {
+        setBookings(data.bookings);
+        localStorage.setItem('deportespmy_bookings', JSON.stringify(data.bookings));
+        for (const b of data.bookings) {
+          await saveBookingToFirestore(b);
+        }
+      }
+      if (data.reviews && Array.isArray(data.reviews)) {
+        setReviews(data.reviews);
+        localStorage.setItem('deportespmy_reviews', JSON.stringify(data.reviews));
+      }
+      if (data.admins && Array.isArray(data.admins)) {
+        setAdmins(data.admins);
+        localStorage.setItem(STORAGE_KEYS.ADMINS, JSON.stringify(data.admins));
+        for (const a of data.admins) {
+          await saveAdminUserToFirestore(a);
+        }
+      }
+      if (data.businessProfile && typeof data.businessProfile === 'object') {
+        setBusinessProfile(data.businessProfile);
+        localStorage.setItem('deportespmy_business_profile', JSON.stringify(data.businessProfile));
+        await saveBusinessProfileToFirestore(data.businessProfile);
+      }
+      if (data.developerContact && typeof data.developerContact === 'object') {
+        setDeveloperContact(data.developerContact);
+        localStorage.setItem('deportespmy_developer_contact', JSON.stringify(data.developerContact));
+        await saveDeveloperContactToFirestore(data.developerContact);
+      }
+      if (data.siteContent && typeof data.siteContent === 'object') {
+        setSiteContent(data.siteContent);
+        localStorage.setItem('deportespmy_site_content', JSON.stringify(data.siteContent));
+        await saveSiteContentToFirestore(data.siteContent);
+      }
+      if (data.filterTags && Array.isArray(data.filterTags)) {
+        await updateFilterTags(data.filterTags);
+        localStorage.setItem('deportespmy_filter_tags', JSON.stringify(data.filterTags));
+      }
+      return { success: true, message: 'Copia de seguridad general restaurada con éxito' };
+    } catch (err: any) {
+      return { success: false, message: 'Error al parsear o restaurar el archivo JSON: ' + (err?.message || '') };
+    }
+  }, [updateFilterTags]);
+
+  const exportEstablishmentDatabaseJson = useCallback((establishmentName: string) => {
+    const cleanEst = establishmentName.trim().toLowerCase();
+    const filteredCourts = courts.filter(c => (c.establishment || '').trim().toLowerCase() === cleanEst);
+    const courtIds = new Set(filteredCourts.map(c => c.id));
+    const filteredBookings = bookings.filter(b => courtIds.has(b.courtId) || (b.establishment || '').trim().toLowerCase() === cleanEst);
+    const filteredReviews = reviews.filter(r => courtIds.has(r.courtId));
+    const adminKey = Object.keys(profilesByAdmin).find(k => {
+      const p = profilesByAdmin[k];
+      return (p.complexName || '').trim().toLowerCase() === cleanEst;
+    });
+    const profile = adminKey ? profilesByAdmin[adminKey] : businessProfile;
+
+    const data = {
+      version: '1.0',
+      scope: 'establishment',
+      establishmentName,
+      exportedAt: new Date().toISOString(),
+      courts: filteredCourts,
+      bookings: filteredBookings,
+      reviews: filteredReviews,
+      businessProfile: profile,
+    };
+    return JSON.stringify(data, null, 2);
+  }, [courts, bookings, reviews, profilesByAdmin, businessProfile]);
+
+  const importEstablishmentDatabaseJson = useCallback(async (jsonString: string) => {
+    try {
+      const data = JSON.parse(jsonString);
+      if (!data || typeof data !== 'object' || data.scope !== 'establishment') {
+        return { success: false, message: 'Archivo de establecimiento inválido' };
+      }
+      if (data.courts && Array.isArray(data.courts)) {
+        const otherCourts = courts.filter(c => !data.courts.some((dc: Court) => dc.id === c.id));
+        const nextCourts = [...otherCourts, ...data.courts];
+        setCourts(nextCourts);
+        localStorage.setItem('deportespmy_courts', JSON.stringify(nextCourts));
+        for (const c of data.courts) {
+          await saveCourtToFirestore(c);
+        }
+      }
+      if (data.bookings && Array.isArray(data.bookings)) {
+        const otherBookings = bookings.filter(b => !data.bookings.some((db: Booking) => db.id === b.id));
+        const nextBookings = [...otherBookings, ...data.bookings];
+        setBookings(nextBookings);
+        localStorage.setItem('deportespmy_bookings', JSON.stringify(nextBookings));
+        for (const b of data.bookings) {
+          await saveBookingToFirestore(b);
+        }
+      }
+      return { success: true, message: 'Copia de establecimiento restaurada con éxito' };
+    } catch (err: any) {
+      return { success: false, message: 'Error al restaurar establecimiento: ' + (err?.message || '') };
+    }
+  }, [courts, bookings]);
+
+  const resetGeneralDatabase = useCallback(async () => {
+    for (const c of courts) {
+      await deleteCourtFromFirestore(c.id);
+    }
+    for (const b of bookings) {
+      await deleteBookingFromFirestore(b.id);
+    }
+    setCourts([]);
+    setBookings([]);
+    setReviews([]);
+    setWhatsappLogs([]);
+    localStorage.removeItem('deportespmy_courts');
+    localStorage.removeItem('deportespmy_bookings');
+    localStorage.removeItem('deportespmy_reviews');
+    localStorage.removeItem('deportespmy_whatsapp_logs');
+  }, [courts, bookings]);
+
+  const resetEstablishmentDatabase = useCallback(async (establishmentName: string) => {
+    const cleanEst = establishmentName.trim().toLowerCase();
+    const targetCourts = courts.filter(c => (c.establishment || '').trim().toLowerCase() === cleanEst);
+    const courtIds = new Set(targetCourts.map(c => c.id));
+    const targetBookings = bookings.filter(b => courtIds.has(b.courtId) || (b.establishment || '').trim().toLowerCase() === cleanEst);
+
+    for (const c of targetCourts) {
+      await deleteCourtFromFirestore(c.id);
+    }
+    for (const b of targetBookings) {
+      await deleteBookingFromFirestore(b.id);
+    }
+
+    const nextCourts = courts.filter(c => !courtIds.has(c.id));
+    const nextBookings = bookings.filter(b => !courtIds.has(b.courtId) && (b.establishment || '').trim().toLowerCase() !== cleanEst);
+    setCourts(nextCourts);
+    setBookings(nextBookings);
+    localStorage.setItem('deportespmy_courts', JSON.stringify(nextCourts));
+    localStorage.setItem('deportespmy_bookings', JSON.stringify(nextBookings));
+  }, [courts, bookings]);
+
+  const updateSuperAdminCredentials = useCallback(async (
+    newUsername: string,
+    newFullName: string,
+    newEmail: string,
+    newPhone: string,
+    newPassword?: string
+  ) => {
+    if (!currentAdminUser || currentAdminUser.role !== 'superadmin') {
+      return { success: false, message: 'No autorizado' };
+    }
+    const cleanNewUser = newUsername.trim().toLowerCase();
+    if (!cleanNewUser) {
+      return { success: false, message: 'El nombre de usuario no puede estar vacío' };
+    }
+    const existing = admins.find(a => a.username === cleanNewUser && a.id !== currentAdminUser.id);
+    if (existing) {
+      return { success: false, message: 'El nombre de usuario ya está en uso' };
+    }
+
+    const updatedUser: AdminUser = {
+      ...currentAdminUser,
+      username: cleanNewUser,
+      fullName: newFullName.trim() || currentAdminUser.fullName,
+      email: newEmail.trim() || currentAdminUser.email,
+      phone: newPhone.trim() || currentAdminUser.phone,
+      password: newPassword && newPassword.trim() ? newPassword.trim() : currentAdminUser.password,
+    };
+
+    const nextAdmins = admins.map(a => a.id === updatedUser.id ? updatedUser : a);
+    setAdmins(nextAdmins);
+    localStorage.setItem(STORAGE_KEYS.ADMINS, JSON.stringify(nextAdmins));
+    await saveAdminUserToFirestore(updatedUser);
+    setCurrentAdminUser(updatedUser);
+    localStorage.setItem(STORAGE_KEYS.CURRENT_ADMIN, JSON.stringify(updatedUser));
+
+    return { success: true, message: 'Credenciales de SuperAdmin actualizadas con éxito' };
+  }, [currentAdminUser, admins]);
+
   const value = useMemo(() => ({
     courts,
     bookings,
@@ -3075,6 +3317,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     exportDatabaseJson,
     importDatabaseJson,
     resetDatabase,
+    deleteAvailablePlayer,
+    clearAllAvailablePlayers,
+    exportGeneralDatabaseJson,
+    importGeneralDatabaseJson,
+    exportEstablishmentDatabaseJson,
+    importEstablishmentDatabaseJson,
+    resetGeneralDatabase,
+    resetEstablishmentDatabase,
+    updateSuperAdminCredentials,
   }), [
     courts,
     bookings,
@@ -3113,8 +3364,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     toggleAdminPaymentPause,
     updateDeveloperContact,
     updateSiteContent,
-    updateFilterTags,
-    getSportLabel,
     resetSiteContent,
     addAdminUser,
     updateAdminUser,
@@ -3172,6 +3421,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     exportDatabaseJson,
     importDatabaseJson,
     resetDatabase,
+    deleteAvailablePlayer,
+    clearAllAvailablePlayers,
+    exportGeneralDatabaseJson,
+    importGeneralDatabaseJson,
+    exportEstablishmentDatabaseJson,
+    importEstablishmentDatabaseJson,
+    resetGeneralDatabase,
+    resetEstablishmentDatabase,
+    updateSuperAdminCredentials,
   ]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

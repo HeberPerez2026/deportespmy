@@ -173,9 +173,41 @@ export const SuperAdminPanel: React.FC = () => {
     updateFilterTags,
     courts,
     sendSuperAdminPushBroadcast,
+    availablePlayers,
+    deleteAvailablePlayer,
+    clearAllAvailablePlayers,
+    exportGeneralDatabaseJson,
+    importGeneralDatabaseJson,
+    exportEstablishmentDatabaseJson,
+    importEstablishmentDatabaseJson,
+    resetGeneralDatabase,
+    resetEstablishmentDatabase,
+    updateSuperAdminCredentials,
+    currentAdminUser,
   } = useApp();
 
-  const [subSection, setSubSection] = useState<'admins' | 'push' | 'filters' | 'texts' | 'reviews' | 'footer'>('admins');
+  const [subSection, setSubSection] = useState<'admins' | 'push' | 'filters' | 'texts' | 'reviews' | 'footer' | 'players' | 'backups' | 'credentials'>('admins');
+
+  // Additional SuperAdmin state
+  const [arcaUrl, setArcaUrl] = useState(siteContent.arcaQrCodeUrl || '');
+  const [clearPlayersConfirmOpen, setClearPlayersConfirmOpen] = useState(false);
+  const [deletePlayerIdTarget, setDeletePlayerIdTarget] = useState<string | null>(null);
+
+  const [selectedEstBackup, setSelectedEstBackup] = useState('');
+  const [generalResetConfirmOpen, setGeneralResetConfirmOpen] = useState(false);
+  const [estResetConfirmOpen, setEstResetConfirmOpen] = useState(false);
+  const [exportGeneralConfirmOpen, setExportGeneralConfirmOpen] = useState(false);
+  const [exportEstConfirmOpen, setExportEstConfirmOpen] = useState(false);
+  const [pendingGeneralImport, setPendingGeneralImport] = useState<string | null>(null);
+  const [pendingEstImport, setPendingEstImport] = useState<string | null>(null);
+  const [backupMessage, setBackupMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const [credUser, setCredUser] = useState(currentAdminUser?.username || '');
+  const [credName, setCredName] = useState(currentAdminUser?.fullName || '');
+  const [credEmail, setCredEmail] = useState(currentAdminUser?.email || '');
+  const [credPhone, setCredPhone] = useState(currentAdminUser?.phone || '');
+  const [credPass, setCredPass] = useState('');
+  const [credFeedback, setCredFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Push broadcast state (SuperAdmin textbox)
   const [pushTitle, setPushTitle] = useState('Novedad en DeportesPMY');
@@ -207,6 +239,14 @@ export const SuperAdminPanel: React.FC = () => {
   useBackHandler(Boolean(deleteTagConfirmId), () => setDeleteTagConfirmId(null), 'superadmin-delete-tag');
   useBackHandler(restoreTagsConfirm, () => setRestoreTagsConfirm(false), 'superadmin-restore-tags');
   useBackHandler(pushConfirmOpen, () => { if (!pushSending) setPushConfirmOpen(false); }, 'superadmin-push-confirm');
+  useBackHandler(clearPlayersConfirmOpen, () => setClearPlayersConfirmOpen(false), 'superadmin-clear-players');
+  useBackHandler(Boolean(deletePlayerIdTarget), () => setDeletePlayerIdTarget(null), 'superadmin-delete-player');
+  useBackHandler(exportGeneralConfirmOpen, () => setExportGeneralConfirmOpen(false), 'superadmin-export-general');
+  useBackHandler(exportEstConfirmOpen, () => setExportEstConfirmOpen(false), 'superadmin-export-est');
+  useBackHandler(Boolean(pendingGeneralImport), () => setPendingGeneralImport(null), 'superadmin-import-general');
+  useBackHandler(Boolean(pendingEstImport), () => setPendingEstImport(null), 'superadmin-import-est');
+  useBackHandler(generalResetConfirmOpen, () => setGeneralResetConfirmOpen(false), 'superadmin-reset-general');
+  useBackHandler(estResetConfirmOpen, () => setEstResetConfirmOpen(false), 'superadmin-reset-est');
 
   const showTagNotification = (msg: string) => {
     setTagMessage(msg);
@@ -375,6 +415,7 @@ export const SuperAdminPanel: React.FC = () => {
       email: devEmail.trim(),
       websiteUrl: devWeb.trim(),
     });
+    await updateSiteContent({ arcaQrCodeUrl: arcaUrl.trim() });
     setDevSavedSuccess(true);
     setTimeout(() => setDevSavedSuccess(false), 3000);
   };
@@ -498,6 +539,45 @@ export const SuperAdminPanel: React.FC = () => {
         >
           <Globe className="w-4 h-4" />
           <span>Contacto Pie de Página</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSubSection('players')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 whitespace-nowrap cursor-pointer border transition-colors ${
+            subSection === 'players'
+              ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)]'
+              : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Jugadores Disponibles ({availablePlayers.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSubSection('backups')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 whitespace-nowrap cursor-pointer border transition-colors ${
+            subSection === 'backups'
+              ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)]'
+              : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          <RotateCcw className="w-4 h-4" />
+          <span>Copias de Seguridad</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSubSection('credentials')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 whitespace-nowrap cursor-pointer border transition-colors ${
+            subSection === 'credentials'
+              ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)]'
+              : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          <Crown className="w-4 h-4" />
+          <span>Cuenta SuperAdmin</span>
         </button>
       </div>
 
@@ -1363,6 +1443,22 @@ export const SuperAdminPanel: React.FC = () => {
               />
             </div>
 
+            <div className="md:col-span-2 pt-3 border-t border-[var(--border-hairline)]">
+              <label className="font-bold text-[var(--text-secondary)] block mb-1">
+                Código QR Formulario 960 - ARCA (URL de imagen o DataURL)
+              </label>
+              <input
+                type="text"
+                value={arcaUrl}
+                onChange={(e) => setArcaUrl(e.target.value)}
+                className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] font-mono focus:outline-none focus:border-[var(--accent)]"
+                placeholder="https://... o pega aquí la URL de la imagen del QR de ARCA"
+              />
+              <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                Aparecerá en el pie de página de la aplicación cumpliendo con la normativa de AFIP / ARCA.
+              </p>
+            </div>
+
             <div className="md:col-span-2 flex justify-end pt-2">
               <button
                 type="submit"
@@ -2030,6 +2126,618 @@ export const SuperAdminPanel: React.FC = () => {
               >
                 {pushSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                 <span>{pushSending ? 'Enviando...' : 'Sí, Enviar Ahora'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECTION: AVAILABLE PLAYERS MANAGEMENT */}
+      {subSection === 'players' && (
+        <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] p-6 sm:p-7 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border-hairline)]">
+            <div>
+              <p className="text-xs font-semibold text-[var(--accent-soft-text)] mb-0.5">
+                Matchmaking & Suplentes
+              </p>
+              <h3 className="text-lg font-bold text-[var(--text-primary)] font-heading">
+                Gestión de Jugadores Disponibles en la Bolsa del Día
+              </h3>
+              <p className="text-xs text-[var(--text-secondary)]">
+                Los jugadores que se anotan para completar turnos figuran aquí. Podés eliminar individualmente o vaciar la lista.
+              </p>
+            </div>
+
+            {availablePlayers.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setClearPlayersConfirmOpen(true)}
+                className="px-4 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 font-bold text-xs flex items-center gap-2 cursor-pointer border border-rose-500/30 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Vaciar Todos los Jugadores ({availablePlayers.length})</span>
+              </button>
+            )}
+          </div>
+
+          {availablePlayers.length === 0 ? (
+            <div className="text-center py-12 text-[var(--text-muted)] space-y-2">
+              <Users className="w-10 h-10 mx-auto opacity-40" />
+              <p className="text-sm font-medium">No hay jugadores anotados en la bolsa disponible actual.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="border-b border-[var(--border-hairline)] text-[var(--text-muted)] uppercase tracking-wider text-[10px]">
+                    <th className="py-3 px-4">Jugador</th>
+                    <th className="py-3 px-4">Teléfono (WhatsApp)</th>
+                    <th className="py-3 px-4">Deportes</th>
+                    <th className="py-3 px-4">Fecha Registrada</th>
+                    <th className="py-3 px-4 text-right">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-hairline)]">
+                  {availablePlayers.map((p) => (
+                    <tr key={p.id} className="hover:bg-[var(--bg-subtle)] transition-colors">
+                      <td className="py-3 px-4 font-bold text-[var(--text-primary)]">{p.name}</td>
+                      <td className="py-3 px-4 font-mono text-[var(--text-secondary)]">{p.phone}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-wrap gap-1">
+                          {(p.preferredSports || []).map((s) => (
+                            <span key={s} className="px-2 py-0.5 rounded-full bg-[var(--accent-soft)] text-[var(--accent-soft-text)] font-semibold text-[10px]">
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 font-mono text-[var(--text-muted)]">{p.date}</td>
+                      <td className="py-3 px-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => setDeletePlayerIdTarget(p.id)}
+                          title="Eliminar jugador disponible"
+                          className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 dark:text-rose-400 hover:bg-rose-500/20 cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SECTION: BACKUPS & RESTORE / RESET */}
+      {subSection === 'backups' && (
+        <div className="space-y-6">
+          <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] p-6 sm:p-7 space-y-6">
+            <div>
+              <p className="text-xs font-semibold text-[var(--accent-soft-text)] mb-0.5">
+                Seguridad y Mantenimiento de Datos
+              </p>
+              <h3 className="text-lg font-bold text-[var(--text-primary)] font-heading">
+                Copias de Seguridad (Backups) y Restablecimiento
+              </h3>
+              <p className="text-xs text-[var(--text-secondary)] mt-1">
+                Generá copias de seguridad generales de toda la plataforma o específicas por establecimiento, restaurá respaldos o reiniciá los datos con confirmación estricta.
+              </p>
+            </div>
+
+            {backupMessage && (
+              <div className={`p-4 rounded-xl text-xs font-bold flex items-center gap-2 ${backupMessage.ok ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30'}`}>
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{backupMessage.text}</span>
+              </div>
+            )}
+
+            {/* General Backup Card */}
+            <div className="p-5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-4">
+              <h4 className="font-bold text-sm text-[var(--text-primary)] flex items-center gap-2">
+                <Globe className="w-4 h-4 text-[var(--accent)]" />
+                <span>Copia de Seguridad General Completa (Toda la Plataforma)</span>
+              </h4>
+              <p className="text-xs text-[var(--text-secondary)]">
+                Incluye canchas, reservas, reseñas, configuraciones de complejos, administradores, etiquetas y bolsa de jugadores.
+              </p>
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setExportGeneralConfirmOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs flex items-center gap-2 cursor-pointer shadow-sm"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Descargar Copia General (JSON)</span>
+                </button>
+
+                <label className="px-4 py-2.5 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)] font-bold text-xs flex items-center gap-2 cursor-pointer">
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Restaurar Copia General</span>
+                  <input
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const content = ev.target?.result as string;
+                        if (content) {
+                          setPendingGeneralImport(content);
+                        }
+                      };
+                      reader.readAsText(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => setGeneralResetConfirmOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold text-xs flex items-center gap-2 cursor-pointer ml-auto"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Restablecer Todo a Cero</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Establishment Backup Card */}
+            <div className="p-5 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-4">
+              <h4 className="font-bold text-sm text-[var(--text-primary)] flex items-center gap-2">
+                <Users className="w-4 h-4 text-sky-500" />
+                <span>Copia de Seguridad por Establecimiento Específico</span>
+              </h4>
+              <p className="text-xs text-[var(--text-secondary)]">
+                Seleccioná un complejo para respaldar o restaurar exclusivamente sus canchas, reservas y opiniones asociadas.
+              </p>
+
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <select
+                  value={selectedEstBackup}
+                  onChange={(e) => setSelectedEstBackup(e.target.value)}
+                  className="w-full sm:w-72 bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                >
+                  <option value="">-- Seleccionar Establecimiento --</option>
+                  {Array.from(new Set(courts.map(c => (c.establishment || '').trim()).filter(Boolean))).map(est => (
+                    <option key={est} value={est}>{est}</option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  disabled={!selectedEstBackup}
+                  onClick={() => setExportEstConfirmOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs flex items-center gap-2 cursor-pointer shadow-sm disabled:opacity-50"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Exportar Establecimiento</span>
+                </button>
+
+                <label className={`px-4 py-2.5 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-[var(--text-primary)] font-bold text-xs flex items-center gap-2 cursor-pointer ${!selectedEstBackup ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <RotateCcw className="w-4 h-4" />
+                  <span>Restaurar Establecimiento</span>
+                  <input
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onload = (ev) => {
+                        const content = ev.target?.result as string;
+                        if (content) {
+                          setPendingEstImport(content);
+                        }
+                      };
+                      reader.readAsText(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  disabled={!selectedEstBackup}
+                  onClick={() => setEstResetConfirmOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-600 dark:text-rose-400 font-bold text-xs flex items-center gap-2 cursor-pointer ml-auto disabled:opacity-50"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Borrar Datos del Establecimiento</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECTION: SUPERADMIN CREDENTIALS UPDATE */}
+      {subSection === 'credentials' && (
+        <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] p-6 sm:p-7 space-y-6 max-w-2xl mx-auto">
+          <div>
+            <p className="text-xs font-semibold text-[var(--accent-soft-text)] mb-0.5">
+              Seguridad del Sistema
+            </p>
+            <h3 className="text-lg font-bold text-[var(--text-primary)] font-heading">
+              Cambiar Nombre y Contraseña de SuperAdmin
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Actualizá tus credenciales de acceso maestro para la cuenta SuperAdmin.
+            </p>
+          </div>
+
+          {credFeedback && (
+            <div className={`p-4 rounded-xl text-xs font-bold flex items-center gap-2 ${credFeedback.ok ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30' : 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30'}`}>
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{credFeedback.text}</span>
+            </div>
+          )}
+
+          <form
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const res = await updateSuperAdminCredentials(credUser, credName, credEmail, credPhone, credPass);
+              setCredFeedback({ ok: res.success, text: res.message });
+              if (res.success) setCredPass('');
+            }}
+            className="space-y-4 text-xs"
+          >
+            <div>
+              <label className="font-bold text-[var(--text-secondary)] block mb-1">Nombre de Usuario (Login)</label>
+              <input
+                type="text"
+                required
+                value={credUser}
+                onChange={(e) => setCredUser(e.target.value)}
+                className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="font-bold text-[var(--text-secondary)] block mb-1">Nombre Completo</label>
+              <input
+                type="text"
+                required
+                value={credName}
+                onChange={(e) => setCredName(e.target.value)}
+                className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">Correo Electrónico</label>
+                <input
+                  type="email"
+                  required
+                  value={credEmail}
+                  onChange={(e) => setCredEmail(e.target.value)}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                />
+              </div>
+              <div>
+                <label className="font-bold text-[var(--text-secondary)] block mb-1">Teléfono</label>
+                <input
+                  type="text"
+                  required
+                  value={credPhone}
+                  onChange={(e) => setCredPhone(e.target.value)}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] font-mono"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="font-bold text-[var(--text-secondary)] block mb-1">Nueva Contraseña (Dejar en blanco para mantener la actual)</label>
+              <input
+                type="password"
+                value={credPass}
+                onChange={(e) => setCredPass(e.target.value)}
+                className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                placeholder="••••••••••••"
+              />
+            </div>
+
+            <div className="flex justify-end pt-3">
+              <button
+                type="submit"
+                className="px-6 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs flex items-center gap-2 cursor-pointer shadow-md transition-colors"
+              >
+                <Save className="w-4 h-4" />
+                <span>Actualizar Credenciales de SuperAdmin</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* CONFIRMATION MODALS FOR PLAYERS & BACKUPS */}
+      {deletePlayerIdTarget && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-extrabold text-[var(--text-primary)]">¿Eliminar jugador de la bolsa?</h3>
+            <p className="text-xs text-[var(--text-secondary)]">Esta acción eliminará al jugador de la lista disponible para turnos.</p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletePlayerIdTarget(null)}
+                className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await deleteAvailablePlayer(deletePlayerIdTarget);
+                  setDeletePlayerIdTarget(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs cursor-pointer hover:bg-rose-700"
+              >
+                Sí, Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {clearPlayersConfirmOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-extrabold text-[var(--text-primary)]">¿Vaciar toda la bolsa de jugadores?</h3>
+            <p className="text-xs text-[var(--text-secondary)]">Se eliminarán todos los jugadores disponibles registrados para el día actual.</p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setClearPlayersConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await clearAllAvailablePlayers();
+                  setClearPlayersConfirmOpen(false);
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs cursor-pointer hover:bg-rose-700"
+              >
+                Sí, Vaciar Todo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {generalResetConfirmOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-extrabold text-rose-600 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              <span>¡ADVERTENCIA CRÍTICA! Restablecer Todo a Cero</span>
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Esto eliminará permanentemente todas las canchas, reservas y registros de la base de datos general. Esta acción no se puede deshacer.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setGeneralResetConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await resetGeneralDatabase();
+                  setGeneralResetConfirmOpen(false);
+                  setBackupMessage({ ok: true, text: 'Base de datos general restablecida a cero con éxito.' });
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs cursor-pointer hover:bg-rose-700"
+              >
+                Sí, Borrar Todo Definitivamente
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {estResetConfirmOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-extrabold text-rose-600 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              <span>Restablecer Establecimiento: {selectedEstBackup}</span>
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Se eliminarán todas las canchas y turnos pertenecientes al complejo "{selectedEstBackup}".
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setEstResetConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (selectedEstBackup) {
+                    await resetEstablishmentDatabase(selectedEstBackup);
+                    setEstResetConfirmOpen(false);
+                    setBackupMessage({ ok: true, text: `Establecimiento "${selectedEstBackup}" restablecido con éxito.` });
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs cursor-pointer hover:bg-rose-700"
+              >
+                Sí, Borrar Establecimiento
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM EXPORT GENERAL MODAL */}
+      {exportGeneralConfirmOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-extrabold text-[var(--text-primary)] flex items-center gap-2">
+              <Save className="w-5 h-5 text-[var(--accent)]" />
+              <span>¿Descargar Copia de Seguridad General?</span>
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Se generará y descargará un archivo JSON con todos los datos del sistema (canchas, reservas, administradores, reseñas y perfiles).
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setExportGeneralConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const jsonStr = exportGeneralDatabaseJson();
+                  const blob = new Blob([jsonStr], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `deportespmy_general_backup_${new Date().toISOString().split('T')[0]}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  setExportGeneralConfirmOpen(false);
+                  setBackupMessage({ ok: true, text: 'Copia general descargada con éxito.' });
+                }}
+                className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-ink)] font-bold text-xs cursor-pointer hover:bg-[var(--accent-hover)]"
+              >
+                Sí, Descargar Backup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM EXPORT ESTABLISHMENT MODAL */}
+      {exportEstConfirmOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-extrabold text-[var(--text-primary)] flex items-center gap-2">
+              <Save className="w-5 h-5 text-sky-500" />
+              <span>¿Descargar Copia de: {selectedEstBackup}?</span>
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Se descargará un archivo JSON con las canchas, reservas y perfil correspondientes a "{selectedEstBackup}".
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setExportEstConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedEstBackup) {
+                    const jsonStr = exportEstablishmentDatabaseJson(selectedEstBackup);
+                    const blob = new Blob([jsonStr], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `deportespmy_establecimiento_${selectedEstBackup.toLowerCase().replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    setExportEstConfirmOpen(false);
+                    setBackupMessage({ ok: true, text: `Copia del establecimiento "${selectedEstBackup}" descargada.` });
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-ink)] font-bold text-xs cursor-pointer hover:bg-[var(--accent-hover)]"
+              >
+                Sí, Descargar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM RESTORE GENERAL MODAL */}
+      {pendingGeneralImport && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-extrabold text-amber-500 flex items-center gap-2">
+              <RotateCcw className="w-5 h-5" />
+              <span>¿Restaurar Copia General Completa?</span>
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Esta acción sobrescribirá las canchas, reservas, configuraciones y usuarios con los datos del archivo seleccionado.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPendingGeneralImport(null)}
+                className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (pendingGeneralImport) {
+                    const res = await importGeneralDatabaseJson(pendingGeneralImport);
+                    setPendingGeneralImport(null);
+                    setBackupMessage({ ok: res.success, text: res.message });
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-amber-600 text-white font-bold text-xs cursor-pointer hover:bg-amber-700"
+              >
+                Sí, Restaurar Datos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRM RESTORE ESTABLISHMENT MODAL */}
+      {pendingEstImport && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-strong)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <h3 className="text-base font-extrabold text-amber-500 flex items-center gap-2">
+              <RotateCcw className="w-5 h-5" />
+              <span>¿Restaurar Copia de Establecimiento?</span>
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)]">
+              Se incorporarán y actualizarán las canchas y turnos pertenecientes a este establecimiento.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setPendingEstImport(null)}
+                className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (pendingEstImport) {
+                    const res = await importEstablishmentDatabaseJson(pendingEstImport);
+                    setPendingEstImport(null);
+                    setBackupMessage({ ok: res.success, text: res.message });
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-amber-600 text-white font-bold text-xs cursor-pointer hover:bg-amber-700"
+              >
+                Sí, Restaurar Establecimiento
               </button>
             </div>
           </div>

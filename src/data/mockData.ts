@@ -171,6 +171,7 @@ export const DEFAULT_SITE_CONTENT: SiteContent = {
   reviewsEmptyTitle: 'Aún no hay opiniones registradas',
   reviewsEmptySubtitle: 'Las valoraciones aparecerán aquí a medida que los jugadores compartan su experiencia.',
   reviewsModalTitle: 'Dejar opinión sobre la cancha',
+  arcaQrCodeUrl: '',
   filterTags: DEFAULT_FILTER_TAGS,
 };
 

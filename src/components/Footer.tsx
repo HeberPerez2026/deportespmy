@@ -5,7 +5,7 @@ import { Phone, Mail, Globe, Palette, Sun, Moon } from 'lucide-react';
 import { PWAInstallButton } from './PWAInstallButton';
 
 export const Footer: React.FC = () => {
-  const { developerContact } = useApp();
+  const { developerContact, siteContent } = useApp();
   const { palette, setPalette, mode, toggleMode } = useTheme();
 
   const cleanWhatsapp = (developerContact.whatsappNumber || '').replace(/\D/g, '');
@@ -73,8 +73,28 @@ export const Footer: React.FC = () => {
             )}
           </div>
 
-          {/* Install App + Theme Mode Toggle (Claro / Oscuro) & Color Palette Selector */}
+          {/* Install App + Theme Mode Toggle & ARCA QR */}
           <div className="flex flex-wrap items-center gap-3 pt-3 lg:pt-0 border-t lg:border-t-0 border-[var(--border-hairline)]">
+            {siteContent.arcaQrCodeUrl && (
+              <a
+                href={siteContent.arcaQrCodeUrl}
+                target="_blank"
+                rel="noreferrer"
+                title="Formulario 960 - ARCA (AFIP)"
+                className="inline-flex items-center gap-2 hover:opacity-85 transition-opacity bg-[var(--bg-subtle)] px-2.5 py-1 rounded-lg border border-[var(--border-hairline)]"
+              >
+                <img
+                  src={siteContent.arcaQrCodeUrl}
+                  alt="QR ARCA Formulario 960"
+                  className="w-10 h-10 object-contain rounded bg-white p-0.5"
+                />
+                <div className="text-[10px] text-[var(--text-muted)] leading-tight">
+                  <span className="font-semibold text-[var(--text-primary)] block">Data Fiscal</span>
+                  <span>ARCA F. 960</span>
+                </div>
+              </a>
+            )}
+
             <PWAInstallButton variant="footer" />
 
             <button
