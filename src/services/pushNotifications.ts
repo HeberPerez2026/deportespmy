@@ -92,7 +92,11 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 export async function registerPushServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!isPushSupported()) return null;
   try {
-    const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    const reg = await navigator.serviceWorker.register('/sw.js', {
+      scope: '/',
+      updateViaCache: 'none',
+    });
+    reg.update().catch(() => {});
     await navigator.serviceWorker.ready;
     return reg;
   } catch (err) {

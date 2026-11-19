@@ -44,8 +44,20 @@ async function startServer() {
   const useProdStatic = !isApiOnly && process.env.NODE_ENV === 'production' && fs.existsSync(path.join(distDir, 'index.html'));
 
   if (useProdStatic) {
+    app.use((req, res, next) => {
+      if (
+        req.path === '/' ||
+        req.path === '/index.html' ||
+        req.path === '/sw.js' ||
+        req.path === '/sw-push.js'
+      ) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      }
+      next();
+    });
     app.use(express.static(distDir));
     app.get('*', (_req, res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       res.sendFile(path.join(distDir, 'index.html'));
     });
   } else if (isApiOnly || process.env.NODE_ENV === 'production') {
@@ -68,6 +80,14 @@ async function startServer() {
       console.error('Error al inicializar Vite middleware:', err);
     });
     app.use((req, res, next) => {
+      if (
+        req.path === '/' ||
+        req.path === '/index.html' ||
+        req.path === '/sw.js' ||
+        req.path === '/sw-push.js'
+      ) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      }
       viteReadyPromise
         .then((vite) => vite.middlewares(req, res, next))
         .catch(next);

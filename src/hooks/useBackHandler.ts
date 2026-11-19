@@ -45,8 +45,18 @@ function scheduleReconcile() {
   });
 }
 
+function isInsideIframe(): boolean {
+  try {
+    return typeof window !== 'undefined' && window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+
 function reconcileHistory() {
-  if (typeof window === 'undefined' || pendingGo) return;
+  // If we are running inside an iframe (like AI Studio preview), history.go(-delta)
+  // or pushState will navigate the iframe or close the preview. We must not mutate history.
+  if (typeof window === 'undefined' || pendingGo || isInsideIframe()) return;
 
   const targetDepth = backStack.length;
 
@@ -74,7 +84,11 @@ function reconcileHistory() {
         clearPendingGo();
         scheduleReconcile();
       }, 350);
-      window.history.go(-delta);
+      try {
+        window.history.go(-delta);
+      } catch {
+        clearPendingGo();
+      }
     }
   }
 }
@@ -110,6 +124,18 @@ function ensurePopStateListener() {
       scheduleReconcile();
     } else {
       currentHistoryDepth = actualDepth;
+      scheduleReconcile();
+    }
+  });
+
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && backStack.length > 0) {
+      const top = backStack.pop();
+      if (top) {
+        try {
+          top.onBack();
+        } catch {}
+      }
       scheduleReconcile();
     }
   });

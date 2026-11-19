@@ -21,6 +21,7 @@ import {
   Loader2,
   ZoomIn,
   ZoomOut,
+  Download,
 } from 'lucide-react';
 
 type TeamPaymentAction =
@@ -109,7 +110,6 @@ export const TournamentsManager: React.FC = () => {
     },
     'admin-tournament-payment-confirm-modal'
   );
-  useBackHandler(Boolean(receiptPreviewUrl), () => setReceiptPreviewUrl(null), 'admin-tournament-receipt-modal');
 
   const adminIdKey = (currentAdminUser?.username || '').trim().toLowerCase();
   const scopedTournaments = tournaments
@@ -933,22 +933,44 @@ export const TournamentsManager: React.FC = () => {
             if (e.target === e.currentTarget) setReceiptPreviewUrl(null);
           }}
         >
-          <div className="bg-[var(--bg-surface)] rounded-2xl max-w-lg w-full p-4 shadow-2xl border border-[var(--border-strong)] space-y-3 relative my-auto">
+          <div 
+            className="bg-[var(--bg-surface)] rounded-2xl max-w-lg w-full p-4 shadow-2xl border border-[var(--border-strong)] space-y-3 relative my-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
                 <ImageIcon className="w-4 h-4 text-sky-400 shrink-0" />
                 <h4 className="font-bold text-sm text-[var(--text-primary)] truncate">Comprobante de Inscripción</h4>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex items-center gap-1.5 shrink-0">
                 {!receiptLoadError && (
-                  <button
-                    type="button"
-                    onClick={() => setReceiptZoomed((z) => !z)}
-                    className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
-                    title={receiptZoomed ? 'Reducir zoom' : 'Ampliar zoom'}
-                  >
-                    {receiptZoomed ? <ZoomOut className="w-4 h-4" /> : <ZoomIn className="w-4 h-4" />}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setReceiptZoomed((z) => !z)}
+                      className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+                      title={receiptZoomed ? 'Reducir zoom' : 'Ampliar zoom'}
+                    >
+                      {receiptZoomed ? <ZoomOut className="w-4 h-4" /> : <ZoomIn className="w-4 h-4" />}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          const link = document.createElement('a');
+                          link.href = receiptPreviewUrl;
+                          link.download = `comprobante-torneo-${Date.now()}.png`;
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        } catch {}
+                      }}
+                      className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+                      title="Descargar imagen"
+                    >
+                      <Download className="w-4 h-4 text-emerald-400" />
+                    </button>
+                  </>
                 )}
                 <button 
                   type="button" 
