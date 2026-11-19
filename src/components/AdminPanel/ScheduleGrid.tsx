@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useApp } from '../../context/AppContext';
 import { Court, TimeSlot, Booking } from '../../types';
 import { getUnionHoursRange, getNormalizedCourtSchedule } from '../../utils/scheduleHours';
@@ -23,7 +24,9 @@ import {
   Bell,
   Repeat,
   Image as ImageIcon,
-  Maximize2
+  Maximize2,
+  ZoomIn,
+  ZoomOut
 } from 'lucide-react';
 
 export const ScheduleGrid: React.FC = () => {
@@ -70,10 +73,24 @@ export const ScheduleGrid: React.FC = () => {
   const [refundFeedback, setRefundFeedback] = useState<string | null>(null);
   const [isSendingPush, setIsSendingPush] = useState(false);
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
+  const [receiptZoomed, setReceiptZoomed] = useState(false);
+  const [receiptLoadError, setReceiptLoadError] = useState(false);
   const [pendingPaymentAction, setPendingPaymentAction] = useState<{
     type: 'approve' | 'collect_balance';
     booking: Booking;
   } | null>(null);
+
+  const openReceiptPreview = (rawUrl?: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const safe = getSafeReceiptUrl(rawUrl);
+    if (!safe) return;
+    setReceiptLoadError(false);
+    setReceiptZoomed(false);
+    setReceiptPreviewUrl(safe);
+  };
 
   useBackHandler(
     Boolean(modalSlot || activeBookingDetails),
@@ -595,8 +612,8 @@ export const ScheduleGrid: React.FC = () => {
 
       {/* VIEW / MANAGE EXISTING BOOKING MODAL */}
       {activeBookingDetails && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-surface)] rounded-2xl max-w-md w-full p-6 shadow-2xl text-[var(--text-primary)] space-y-4 border border-[var(--border-strong)]">
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-start sm:items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-[var(--bg-surface)] rounded-2xl max-w-md w-full p-6 shadow-2xl text-[var(--text-primary)] space-y-4 border border-[var(--border-strong)] my-auto">
             
             <div className="flex justify-between items-center pb-3 border-b border-[var(--border-hairline)]">
               <div>
@@ -667,25 +684,25 @@ export const ScheduleGrid: React.FC = () => {
                         <p className="text-[10px] text-[var(--text-muted)] font-bold uppercase">Comprobante Adjunto (CBU/Transf.):</p>
                         <button
                           type="button"
-                          onClick={() => setReceiptPreviewUrl(getSafeReceiptUrl(activeBookingDetails.receiptUrl))}
+                          onClick={(e) => openReceiptPreview(activeBookingDetails.receiptUrl, e)}
                           className="text-[10px] text-sky-400 hover:text-sky-300 font-bold inline-flex items-center gap-1 cursor-pointer transition-colors"
                         >
                           <Maximize2 className="w-3 h-3" />
-                          <span>Pantalla completa</span>
+                          <span>Ver en pantalla</span>
                         </button>
                       </div>
                       <button 
                         type="button"
-                        onClick={() => setReceiptPreviewUrl(getSafeReceiptUrl(activeBookingDetails.receiptUrl))}
+                        onClick={(e) => openReceiptPreview(activeBookingDetails.receiptUrl, e)}
                         className="w-full block relative group overflow-hidden rounded-xl border border-[var(--border-strong)] cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-                        title="Hacer clic para ampliar comprobante sin salir de la página"
+                        title="Hacer clic para ampliar comprobante"
                       >
                         <img 
                           src={getSafeReceiptUrl(activeBookingDetails.receiptUrl)} 
                           alt="Comprobante de reserva" 
-                          className="w-full h-28 object-cover group-hover:scale-105 transition-transform"
+                          className="w-full h-28 object-cover group-hover:scale-105 transition-transform pointer-events-none"
                         />
-                        <div className="absolute inset-0 bg-black/55 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="absolute inset-0 bg-black/55 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                           <span className="inline-flex items-center gap-1.5 text-xs text-white font-bold bg-[#090D12]/90 px-3 py-1.5 rounded-lg shadow-md border border-white/10">
                             <Maximize2 className="w-3.5 h-3.5 text-sky-400" />
                             Ampliar Comprobante
@@ -999,7 +1016,7 @@ export const ScheduleGrid: React.FC = () => {
                   <span className="text-[var(--text-muted)] font-semibold">Comprobante adjunto:</span>
                   <button
                     type="button"
-                    onClick={() => setReceiptPreviewUrl(getSafeReceiptUrl(pendingPaymentAction.booking.receiptUrl))}
+                    onClick={(e) => openReceiptPreview(pendingPaymentAction.booking.receiptUrl, e)}
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 text-[11px] font-bold cursor-pointer transition-colors"
                   >
                     <ImageIcon className="w-3.5 h-3.5" />
@@ -1047,39 +1064,63 @@ export const ScheduleGrid: React.FC = () => {
         </div>
       )}
 
-      {/* RECEIPT IMAGE PREVIEW LIGHTBOX */}
-      {receiptPreviewUrl && (
+      {/* RECEIPT IMAGE PREVIEW LIGHTBOX (PORTAL) */}
+      {receiptPreviewUrl && typeof document !== 'undefined' && createPortal(
         <div 
-          className="fixed inset-0 z-[80] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+          className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
           onClick={(e) => {
             if (e.target === e.currentTarget) setReceiptPreviewUrl(null);
           }}
         >
           <div className="bg-[var(--bg-surface)] rounded-2xl max-w-lg w-full p-4 shadow-2xl border border-[var(--border-strong)] space-y-3 relative my-auto">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ImageIcon className="w-4 h-4 text-sky-400" />
-                <h4 className="font-bold text-sm text-[var(--text-primary)]">Comprobante de Pago CBU / Transferencia</h4>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <ImageIcon className="w-4 h-4 text-sky-400 shrink-0" />
+                <h4 className="font-bold text-sm text-[var(--text-primary)] truncate">Comprobante de Pago CBU / Transferencia</h4>
               </div>
-              <button 
-                type="button" 
-                onClick={() => setReceiptPreviewUrl(null)} 
-                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
-                title="Cerrar comprobante (o presionar Volver)"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                {!receiptLoadError && (
+                  <button
+                    type="button"
+                    onClick={() => setReceiptZoomed((z) => !z)}
+                    className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+                    title={receiptZoomed ? 'Reducir zoom' : 'Ampliar zoom'}
+                  >
+                    {receiptZoomed ? <ZoomOut className="w-4 h-4" /> : <ZoomIn className="w-4 h-4" />}
+                  </button>
+                )}
+                <button 
+                  type="button" 
+                  onClick={() => setReceiptPreviewUrl(null)} 
+                  className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+                  title="Cerrar comprobante"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
-            <div className="overflow-hidden rounded-xl bg-black/60 border border-[var(--border-hairline)] max-h-[75vh] flex items-center justify-center p-2">
-              <img
-                src={receiptPreviewUrl}
-                alt="Comprobante de pago"
-                className="max-w-full max-h-[70vh] object-contain rounded-lg select-none"
-              />
+            <div className="overflow-auto rounded-xl bg-black/70 border border-[var(--border-hairline)] max-h-[75vh] flex items-center justify-center p-2">
+              {receiptLoadError ? (
+                <div className="p-6 text-center space-y-2 text-xs text-[var(--text-secondary)]">
+                  <AlertTriangle className="w-6 h-6 text-amber-400 mx-auto" />
+                  <p className="font-bold text-[var(--text-primary)]">No se pudo decodificar la imagen del comprobante.</p>
+                  <p>Pedile al jugador que envíe una captura más liviana por WhatsApp si es necesario.</p>
+                </div>
+              ) : (
+                <img
+                  src={receiptPreviewUrl}
+                  alt="Comprobante de pago"
+                  onError={() => setReceiptLoadError(true)}
+                  onClick={() => setReceiptZoomed((z) => !z)}
+                  className={`rounded-lg select-none cursor-zoom-in transition-transform duration-200 ${
+                    receiptZoomed ? 'w-full max-w-none scale-125 origin-center cursor-zoom-out' : 'max-w-full max-h-[70vh] object-contain'
+                  }`}
+                />
+              )}
             </div>
             <div className="flex items-center justify-between pt-1">
               <span className="text-[11px] text-[var(--text-muted)]">
-                Presione Volver o Cerrar para regresar
+                Tocá la imagen para hacer zoom · Cerrar para volver al turno
               </span>
               <button
                 type="button"
@@ -1090,7 +1131,8 @@ export const ScheduleGrid: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>

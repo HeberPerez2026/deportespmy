@@ -38,6 +38,7 @@ import { downloadBookingReceiptPng } from '../utils/receiptDownload';
 import { buildGoogleMapsDirectionsUrl } from '../utils/maps';
 import { JoinMatchModal } from './JoinMatchModal';
 import { useBackHandler } from '../hooks/useBackHandler';
+import { processImageUpload } from '../utils/imageUpload';
 
 interface BookingModalProps {
   court: Court;
@@ -1517,21 +1518,21 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                         type="file"
                         className="hidden"
                         accept="image/jpeg,image/png,image/webp"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
                           setReceiptError(null);
                           if (!file) return;
-                          if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-                            setReceiptError('Formato inválido. Subí una imagen JPG, PNG o WEBP del comprobante.');
-                            return;
+                          try {
+                            const compressed = await processImageUpload(file, {
+                              maxDimension: 1200,
+                              quality: 0.78,
+                              maxDataUrlLength: 260000,
+                              maxInputSizeMB: 8,
+                            });
+                            setReceiptImage(compressed);
+                          } catch (err: any) {
+                            setReceiptError(err?.message || 'No se pudo procesar la captura del comprobante.');
                           }
-                          if (file.size > 2 * 1024 * 1024) {
-                            setReceiptError('El archivo supera los 2MB permitidos. Comprimilo o elegí otra captura.');
-                            return;
-                          }
-                          const reader = new FileReader();
-                          reader.onloadend = () => setReceiptImage(reader.result as string);
-                          reader.readAsDataURL(file);
                         }}
                       />
                     </label>

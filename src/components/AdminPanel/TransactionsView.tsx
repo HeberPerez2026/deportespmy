@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useApp } from '../../context/AppContext';
 import { Booking, Tournament, TournamentTeam } from '../../types';
 import { useBackHandler } from '../../hooks/useBackHandler';
@@ -14,6 +15,8 @@ import {
   Calendar,
   Trophy,
   Image as ImageIcon,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 
 interface TournamentPaymentRow {
@@ -68,6 +71,20 @@ export const TransactionsView: React.FC = () => {
   const [notifyWhatsApp, setNotifyWhatsApp] = useState(true);
   const [refundNotice, setRefundNotice] = useState<string | null>(null);
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
+  const [receiptZoomed, setReceiptZoomed] = useState(false);
+  const [receiptLoadError, setReceiptLoadError] = useState(false);
+
+  const openReceiptPreview = (rawUrl?: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const safe = getSafeReceiptUrl(rawUrl);
+    if (!safe) return;
+    setReceiptLoadError(false);
+    setReceiptZoomed(false);
+    setReceiptPreviewUrl(safe);
+  };
 
   const todayIso = new Date().toISOString().split('T')[0];
   const [pdfPeriodType, setPdfPeriodType] = useState<CashboxPeriodType>('mensual');
@@ -469,7 +486,7 @@ export const TransactionsView: React.FC = () => {
                           {tr.receiptUrl && (
                             <button
                               type="button"
-                              onClick={() => setReceiptPreviewUrl(getSafeReceiptUrl(tr.receiptUrl))}
+                              onClick={(e) => openReceiptPreview(tr.receiptUrl, e)}
                               className="p-1 rounded bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 cursor-pointer"
                               title="Ver comprobante adjunto"
                             >
@@ -558,7 +575,7 @@ export const TransactionsView: React.FC = () => {
                           {b.receiptUrl && (
                             <button
                               type="button"
-                              onClick={() => setReceiptPreviewUrl(getSafeReceiptUrl(b.receiptUrl))}
+                              onClick={(e) => openReceiptPreview(b.receiptUrl, e)}
                               className="p-1 rounded bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 cursor-pointer transition-colors"
                               title="Ver comprobante adjunto"
                             >
@@ -686,7 +703,7 @@ export const TransactionsView: React.FC = () => {
                   <span className="text-[var(--text-muted)] font-semibold">Comprobante adjunto:</span>
                   <button
                     type="button"
-                    onClick={() => setReceiptPreviewUrl(getSafeReceiptUrl(collectConfirmBooking.booking.receiptUrl))}
+                    onClick={(e) => openReceiptPreview(collectConfirmBooking.booking.receiptUrl, e)}
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-500/15 text-sky-400 hover:bg-sky-500/25 text-[11px] font-bold cursor-pointer transition-colors"
                   >
                     <ImageIcon className="w-3.5 h-3.5" />
@@ -916,39 +933,63 @@ export const TransactionsView: React.FC = () => {
         </div>
       )}
 
-      {/* RECEIPT IMAGE PREVIEW */}
-      {receiptPreviewUrl && (
+      {/* RECEIPT IMAGE PREVIEW (PORTAL) */}
+      {receiptPreviewUrl && typeof document !== 'undefined' && createPortal(
         <div 
-          className="fixed inset-0 z-[70] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+          className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
           onClick={(e) => {
             if (e.target === e.currentTarget) setReceiptPreviewUrl(null);
           }}
         >
           <div className="bg-[var(--bg-surface)] rounded-2xl max-w-lg w-full p-4 shadow-2xl border border-[var(--border-strong)] space-y-3 relative my-auto">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <ImageIcon className="w-4 h-4 text-sky-400" />
-                <h4 className="font-bold text-sm text-[var(--text-primary)]">Comprobante de Pago</h4>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <ImageIcon className="w-4 h-4 text-sky-400 shrink-0" />
+                <h4 className="font-bold text-sm text-[var(--text-primary)] truncate">Comprobante de Pago</h4>
               </div>
-              <button 
-                type="button" 
-                onClick={() => setReceiptPreviewUrl(null)} 
-                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
-                title="Cerrar comprobante (o presionar Volver)"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                {!receiptLoadError && (
+                  <button
+                    type="button"
+                    onClick={() => setReceiptZoomed((z) => !z)}
+                    className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+                    title={receiptZoomed ? 'Reducir zoom' : 'Ampliar zoom'}
+                  >
+                    {receiptZoomed ? <ZoomOut className="w-4 h-4" /> : <ZoomIn className="w-4 h-4" />}
+                  </button>
+                )}
+                <button 
+                  type="button" 
+                  onClick={() => setReceiptPreviewUrl(null)} 
+                  className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+                  title="Cerrar comprobante"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
-            <div className="overflow-hidden rounded-xl bg-black/60 border border-[var(--border-hairline)] max-h-[75vh] flex items-center justify-center p-2">
-              <img
-                src={receiptPreviewUrl}
-                alt="Comprobante de pago"
-                className="max-w-full max-h-[70vh] object-contain rounded-lg select-none"
-              />
+            <div className="overflow-auto rounded-xl bg-black/70 border border-[var(--border-hairline)] max-h-[75vh] flex items-center justify-center p-2">
+              {receiptLoadError ? (
+                <div className="p-6 text-center space-y-2 text-xs text-[var(--text-secondary)]">
+                  <AlertTriangle className="w-6 h-6 text-amber-400 mx-auto" />
+                  <p className="font-bold text-[var(--text-primary)]">No se pudo decodificar la imagen del comprobante.</p>
+                  <p>Pedile al jugador que envíe una captura más liviana por WhatsApp si es necesario.</p>
+                </div>
+              ) : (
+                <img
+                  src={receiptPreviewUrl}
+                  alt="Comprobante de pago"
+                  onError={() => setReceiptLoadError(true)}
+                  onClick={() => setReceiptZoomed((z) => !z)}
+                  className={`rounded-lg select-none cursor-zoom-in transition-transform duration-200 ${
+                    receiptZoomed ? 'w-full max-w-none scale-125 origin-center cursor-zoom-out' : 'max-w-full max-h-[70vh] object-contain'
+                  }`}
+                />
+              )}
             </div>
             <div className="flex items-center justify-between pt-1">
               <span className="text-[11px] text-[var(--text-muted)]">
-                Presione Volver o Cerrar para regresar
+                Tocá la imagen para hacer zoom · Cerrar para regresar
               </span>
               <button
                 type="button"
@@ -959,7 +1000,8 @@ export const TransactionsView: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

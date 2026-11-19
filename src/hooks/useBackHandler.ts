@@ -5,19 +5,35 @@ interface BackLayer {
   onBack: () => void;
 }
 
+const SESSION_ID = `dpmy_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 const backStack: BackLayer[] = [];
 let idSeq = 0;
 let currentHistoryDepth = 0;
 let pendingGo = false;
+let pendingGoTimer: number | null = null;
 let reconcileScheduled = false;
 let listenerAttached = false;
 
 function getDepthFromState(state: unknown): number {
-  if (state && typeof state === 'object' && '__dpmyDepth' in state) {
+  if (
+    state &&
+    typeof state === 'object' &&
+    '__dpmySession' in state &&
+    (state as { __dpmySession?: unknown }).__dpmySession === SESSION_ID &&
+    '__dpmyDepth' in state
+  ) {
     const val = Number((state as { __dpmyDepth?: unknown }).__dpmyDepth);
     return Number.isFinite(val) && val >= 0 ? val : 0;
   }
   return 0;
+}
+
+function clearPendingGo() {
+  pendingGo = false;
+  if (pendingGoTimer !== null && typeof window !== 'undefined') {
+    window.clearTimeout(pendingGoTimer);
+    pendingGoTimer = null;
+  }
 }
 
 function scheduleReconcile() {
@@ -42,15 +58,24 @@ function reconcileHistory() {
           ? window.history.state
           : {};
       window.history.pushState(
-        { ...baseState, __dpmyDepth: currentHistoryDepth },
+        { ...baseState, __dpmySession: SESSION_ID, __dpmyDepth: currentHistoryDepth },
         ''
       );
     }
-  } else if (targetDepth < currentHistoryDepth) {
-    const delta = currentHistoryDepth - targetDepth;
-    pendingGo = true;
-    currentHistoryDepth = targetDepth;
-    window.history.go(-delta);
+  } else if (targetDepth < currentHistoryDepth && currentHistoryDepth > 0) {
+    const delta = Math.min(currentHistoryDepth, currentHistoryDepth - targetDepth);
+    if (delta > 0) {
+      pendingGo = true;
+      currentHistoryDepth = Math.max(0, currentHistoryDepth - delta);
+      if (pendingGoTimer !== null) {
+        window.clearTimeout(pendingGoTimer);
+      }
+      pendingGoTimer = window.setTimeout(() => {
+        clearPendingGo();
+        scheduleReconcile();
+      }, 350);
+      window.history.go(-delta);
+    }
   }
 }
 
@@ -64,7 +89,7 @@ function ensurePopStateListener() {
     const actualDepth = getDepthFromState(event.state);
 
     if (pendingGo) {
-      pendingGo = false;
+      clearPendingGo();
       currentHistoryDepth = actualDepth;
       scheduleReconcile();
       return;
