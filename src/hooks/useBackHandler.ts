@@ -88,6 +88,32 @@ function ensurePopStateListener() {
       scheduleReconcile();
     }
   });
+
+  // Native Android (Capacitor) hardware back button support
+  const cap = (window as unknown as {
+    Capacitor?: { isNativePlatform?: () => boolean };
+  }).Capacitor;
+  if (cap?.isNativePlatform?.()) {
+    import('@capacitor/app')
+      .then(({ App }) => {
+        App.addListener('backButton', ({ canGoBack }) => {
+          if (backStack.length > 0) {
+            const top = backStack.pop();
+            if (top) {
+              try {
+                top.onBack();
+              } catch {}
+            }
+            scheduleReconcile();
+          } else if (canGoBack) {
+            window.history.back();
+          } else {
+            App.minimizeApp().catch(() => App.exitApp());
+          }
+        });
+      })
+      .catch(() => {});
+  }
 }
 
 /**

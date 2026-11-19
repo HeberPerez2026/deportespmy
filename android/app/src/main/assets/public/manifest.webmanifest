@@ -1,0 +1,66 @@
+{
+  "id": "/",
+  "name": "DeportesPMY | Reserva de Canchas",
+  "short_name": "DeportesPMY",
+  "description": "Reserva de canchas y gestión de turnos en Puerto Madryn con avisos en tiempo real.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#0D1117",
+  "theme_color": "#0D1117",
+  "lang": "es-AR",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "categories": ["sports", "lifestyle", "utilities"],
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Reservar Turno",
+      "short_name": "Turnos",
+      "description": "Consultá horarios disponibles y reservá tu cancha",
+      "url": "/?tab=turnos",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Complejos Deportivos",
+      "short_name": "Complejos",
+      "description": "Explorá los clubes y complejos en Puerto Madryn",
+      "url": "/?tab=complejos",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Torneos",
+      "short_name": "Torneos",
+      "description": "Inscribite o seguí los torneos activos",
+      "url": "/?tab=torneos",
+      "icons": [{ "src": "/pwa-192x192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

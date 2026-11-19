@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { ThemeProvider } from './context/ThemeContext';
-import { apiFetch, safeParseJsonResponse } from './utils/api';
+import { apiFetch, isNativeAndroidApp, safeParseJsonResponse } from './utils/api';
 import { Header } from './components/Header';
 import { HeroBanner } from './components/HeroBanner';
 import { CourtCatalog } from './components/CourtCatalog';
@@ -160,6 +160,50 @@ const MainContent: React.FC = () => {
   );
   useBackHandler(Boolean(paymentFailureModal), () => setPaymentFailureModal(null), 'payment-failure');
 
+  // Native Android (Capacitor) StatusBar & Deep Link integration
+  useEffect(() => {
+    if (!isNativeAndroidApp()) return;
+    import('@capacitor/status-bar')
+      .then(({ StatusBar, Style }) => {
+        StatusBar.setBackgroundColor({ color: '#0D1117' }).catch(() => {});
+        StatusBar.setStyle({ style: Style.Dark }).catch(() => {});
+      })
+      .catch(() => {});
+
+    let removeListener: (() => void) | undefined;
+    import('@capacitor/app')
+      .then(({ App: CapApp }) => {
+        CapApp.addListener('appUrlOpen', ({ url }) => {
+          try {
+            const parsed = new URL(url);
+            const tab = parsed.searchParams.get('tab');
+            const joinCode = parsed.searchParams.get('join_booking');
+            const bCode = parsed.searchParams.get('booking_code');
+            if (tab && ['turnos', 'complejos', 'torneos', 'opiniones'].includes(tab)) {
+              setSelectedEstablishmentKey(null);
+              setActiveTab(tab);
+            }
+            if (joinCode) {
+              setPendingJoinBookingCode(joinCode.toUpperCase());
+            } else if (bCode) {
+              setFocusedBookingCode(bCode.toUpperCase());
+              setLookupCodeInput(bCode.toUpperCase());
+              setIsMyBookingsOpen(true);
+            }
+          } catch {}
+        }).then((handle) => {
+          removeListener = () => {
+            handle.remove().catch(() => {});
+          };
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      if (removeListener) removeListener();
+    };
+  }, [setActiveTab, setSelectedEstablishmentKey]);
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payment = params.get('payment');
@@ -173,6 +217,13 @@ const MainContent: React.FC = () => {
     const bookingDate = params.get('booking_date') || '';
     const bookingTime = params.get('booking_time') || '';
     const joinBooking = params.get('join_booking') || '';
+    const shortcutTab = params.get('tab') || '';
+
+    if (shortcutTab && ['turnos', 'complejos', 'torneos', 'opiniones'].includes(shortcutTab)) {
+      setSelectedEstablishmentKey(null);
+      setActiveTab(shortcutTab);
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
 
     if (joinBooking) {
       setPendingJoinBookingCode(joinBooking.toUpperCase());

@@ -11,10 +11,22 @@ export const PUBLISHED_BACKEND_URL =
  * - On static custom domains without same-origin API (e.g. GitHub Pages without
  *   VITE_API_BASE_URL), requests fall back to PUBLISHED_BACKEND_URL.
  */
+export function isNativeAndroidApp(): boolean {
+  if (typeof window === 'undefined') return false;
+  const cap = (window as unknown as { Capacitor?: { isNativePlatform?: () => boolean; getPlatform?: () => string } }).Capacitor;
+  if (cap?.isNativePlatform?.()) return true;
+  if (window.location.protocol === 'capacitor:' || window.location.protocol === 'file:') return true;
+  return false;
+}
+
 export function getApiBaseUrl(): string {
   const envBase = import.meta.env.VITE_API_BASE_URL;
   if (typeof envBase === 'string' && envBase.trim().startsWith('http')) {
     return envBase.trim().replace(/\/$/, '');
+  }
+
+  if (isNativeAndroidApp()) {
+    return PUBLISHED_BACKEND_URL;
   }
 
   if (typeof __IS_VERCEL_BUILD__ !== 'undefined' && __IS_VERCEL_BUILD__) {

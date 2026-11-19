@@ -910,19 +910,43 @@ export const TournamentsManager: React.FC = () => {
 
       {/* RECEIPT IMAGE PREVIEW MODAL */}
       {receiptPreviewUrl && (
-        <div className="fixed inset-0 z-[75] bg-black/85 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
-          <div className="bg-[var(--bg-surface)] rounded-2xl max-w-md w-full p-4 shadow-2xl border border-[var(--border-strong)] space-y-3 my-auto">
+        <div 
+          className="fixed inset-0 z-[75] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setReceiptPreviewUrl(null);
+          }}
+        >
+          <div className="bg-[var(--bg-surface)] rounded-2xl max-w-lg w-full p-4 shadow-2xl border border-[var(--border-strong)] space-y-3 relative my-auto">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-sm text-[var(--text-primary)]">Comprobante de Inscripción</h4>
-              <button type="button" onClick={() => setReceiptPreviewUrl(null)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer">
+              <button 
+                type="button" 
+                onClick={() => setReceiptPreviewUrl(null)} 
+                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-subtle)] cursor-pointer"
+                title="Cerrar comprobante (o presionar Volver)"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <img
-              src={receiptPreviewUrl}
-              alt="Comprobante del equipo"
-              className="w-full max-h-[70vh] object-contain rounded-xl bg-black/40"
-            />
+            <div className="overflow-hidden rounded-xl bg-black/60 border border-[var(--border-hairline)] max-h-[75vh] flex items-center justify-center p-2">
+              <img
+                src={receiptPreviewUrl}
+                alt="Comprobante del equipo"
+                className="max-w-full max-h-[70vh] object-contain rounded-lg select-none"
+              />
+            </div>
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[11px] text-[var(--text-muted)]">
+                Presione Volver o Cerrar para regresar
+              </span>
+              <button
+                type="button"
+                onClick={() => setReceiptPreviewUrl(null)}
+                className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-bold text-xs cursor-pointer transition-colors"
+              >
+                Cerrar Comprobante
+              </button>
+            </div>
           </div>
         </div>
       )}
