@@ -74,6 +74,7 @@ export const ScheduleGrid: React.FC = () => {
   const [notifyClientOnRefund, setNotifyClientOnRefund] = useState(true);
   const [refundFeedback, setRefundFeedback] = useState<string | null>(null);
   const [isSendingPush, setIsSendingPush] = useState(false);
+  const [isSendingWa, setIsSendingWa] = useState(false);
   const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(null);
   const [receiptZoomed, setReceiptZoomed] = useState(false);
   const [receiptLoadError, setReceiptLoadError] = useState(false);
@@ -814,11 +815,25 @@ export const ScheduleGrid: React.FC = () => {
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => triggerWhatsAppSend(activeBookingDetails)}
-                      className="flex-1 py-2.5 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/35 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                      disabled={isSendingWa}
+                      onClick={async () => {
+                        setIsSendingWa(true);
+                        try {
+                          const res = await triggerWhatsAppSend(activeBookingDetails);
+                          setRefundFeedback(
+                            res.ok
+                              ? `Confirmación enviada por WhatsApp Cloud a ${activeBookingDetails.clientName} (${activeBookingDetails.clientPhone}).`
+                              : res.error || 'No se pudo enviar la confirmación por WhatsApp Cloud API.'
+                          );
+                          setTimeout(() => setRefundFeedback(null), 6000);
+                        } finally {
+                          setIsSendingWa(false);
+                        }
+                      }}
+                      className="flex-1 py-2.5 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/35 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                     >
                       <MessageCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                      <span>Reenviar WhatsApp</span>
+                      <span>{isSendingWa ? 'Enviando...' : 'Reenviar WhatsApp Cloud'}</span>
                     </button>
 
                     <button

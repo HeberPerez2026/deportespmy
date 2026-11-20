@@ -83,7 +83,11 @@ function normalizeAdminId(raw?: unknown): string {
 
 function cleanEnvValue(val?: string): string {
   if (!val) return '';
-  return val.trim().replace(/^["']+|["']+$/g, '').trim();
+  return val
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, '')
+    .trim()
+    .replace(/^["']+|["']+$/g, '')
+    .trim();
 }
 
 function resolveMpOAuthCredentials(): { clientId: string; clientSecret: string } {
@@ -798,6 +802,253 @@ async function dispatchBookingPushNotification(input: {
   );
 
   return { ok: true, sentCount, matchedCount: matched.length };
+}
+
+interface WhatsAppCloudConfig {
+  accessToken: string;
+  phoneNumberId: string;
+  apiVersion: string;
+  bookingConfirmedTemplate: string;
+  bookingApprovedTemplate: string;
+  bookingCancelledTemplate: string;
+  missingPlayersTemplate: string;
+  tournamentCreatedTemplate: string;
+  templateLang: string;
+}
+
+function resolveWhatsAppCloudConfig(): WhatsAppCloudConfig {
+  return {
+    accessToken:
+      cleanEnvValue(process.env.WHATSAPP_CLOUD_ACCESS_TOKEN) ||
+      cleanEnvValue(process.env.WHATSAPP_ACCESS_TOKEN) ||
+      '',
+    phoneNumberId:
+      cleanEnvValue(process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID) ||
+      cleanEnvValue(process.env.WHATSAPP_PHONE_NUMBER_ID) ||
+      '',
+    apiVersion: cleanEnvValue(process.env.WHATSAPP_CLOUD_API_VERSION) || 'v21.0',
+    bookingConfirmedTemplate: cleanEnvValue(process.env.WHATSAPP_TEMPLATE_BOOKING_CONFIRMED) || '',
+    bookingApprovedTemplate: cleanEnvValue(process.env.WHATSAPP_TEMPLATE_BOOKING_APPROVED) || '',
+    bookingCancelledTemplate: cleanEnvValue(process.env.WHATSAPP_TEMPLATE_BOOKING_CANCELLED) || '',
+    missingPlayersTemplate: cleanEnvValue(process.env.WHATSAPP_TEMPLATE_MISSING_PLAYERS) || '',
+    tournamentCreatedTemplate: cleanEnvValue(process.env.WHATSAPP_TEMPLATE_TOURNAMENT_CREATED) || '',
+    templateLang: cleanEnvValue(process.env.WHATSAPP_TEMPLATE_LANG) || 'es_AR',
+  };
+}
+
+function formatPhoneForWhatsAppCloud(rawPhone?: string): string {
+  let digits = String(rawPhone || '').replace(/\D/g, '').replace(/^00+/, '');
+  if (!digits || digits.length < 8) return '';
+
+  if (digits.startsWith('54')) {
+    let rest = digits.slice(2).replace(/^0+/, '');
+    if (rest.startsWith('9')) {
+      return `54${rest}`;
+    }
+    if (rest.length === 12) {
+      if (rest.startsWith('11') && rest.slice(2, 4) === '15') {
+        rest = `11${rest.slice(4)}`;
+      } else if (rest.slice(3, 5) === '15') {
+        rest = `${rest.slice(0, 3)}${rest.slice(5)}`;
+      } else if (rest.slice(4, 6) === '15') {
+        rest = `${rest.slice(0, 4)}${rest.slice(6)}`;
+      }
+    }
+    if (rest.length === 10) {
+      return `549${rest}`;
+    }
+    return `54${rest}`;
+  }
+
+  digits = digits.replace(/^0+/, '');
+  if (digits.length === 12) {
+    if (digits.startsWith('11') && digits.slice(2, 4) === '15') {
+      digits = `11${digits.slice(4)}`;
+    } else if (digits.slice(3, 5) === '15') {
+      digits = `${digits.slice(0, 3)}${digits.slice(5)}`;
+    } else if (digits.slice(4, 6) === '15') {
+      digits = `${digits.slice(0, 4)}${digits.slice(6)}`;
+    }
+  }
+
+  if (digits.length === 10) {
+    return `549${digits}`;
+  }
+
+  return digits;
+}
+
+function sanitizeTemplateParam(val: unknown): string {
+  const cleaned = String(val ?? '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return (cleaned || '-').slice(0, 1000);
+}
+
+async function sendWhatsAppCloudMessage(params: {
+  to: string;
+  textBody: string;
+  templateName?: string;
+  templateParams?: string[];
+  previewUrl?: boolean;
+}): Promise<{
+  ok: boolean;
+  configured: boolean;
+  status: 'sent' | 'failed';
+  messageId?: string;
+  to?: string;
+  error?: string;
+}> {
+  const cfg = resolveWhatsAppCloudConfig();
+  if (!cfg.accessToken || !cfg.phoneNumberId) {
+    return {
+      ok: false,
+      configured: false,
+      status: 'failed',
+      error:
+        'WhatsApp Cloud API no configurada en el servidor (faltan WHATSAPP_CLOUD_ACCESS_TOKEN y WHATSAPP_CLOUD_PHONE_NUMBER_ID).',
+    };
+  }
+
+  const formattedTo = formatPhoneForWhatsAppCloud(params.to);
+  if (!formattedTo) {
+    return {
+      ok: false,
+      configured: true,
+      status: 'failed',
+      error: 'El destinatario no tiene un número de WhatsApp válido.',
+    };
+  }
+
+  const endpoint = `https://graph.facebook.com/${encodeURIComponent(cfg.apiVersion)}/${encodeURIComponent(cfg.phoneNumberId)}/messages`;
+
+  const payload: Record<string, any> =
+    params.templateName && params.templateName.trim().length > 0
+      ? {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: formattedTo,
+          type: 'template',
+          template: {
+            name: params.templateName.trim(),
+            language: { code: cfg.templateLang },
+            ...(Array.isArray(params.templateParams) && params.templateParams.length > 0
+              ? {
+                  components: [
+                    {
+                      type: 'body',
+                      parameters: params.templateParams.map((p) => ({
+                        type: 'text',
+                        text: sanitizeTemplateParam(p),
+                      })),
+                    },
+                  ],
+                }
+              : {}),
+          },
+        }
+      : {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: formattedTo,
+          type: 'text',
+          text: {
+            preview_url: Boolean(params.previewUrl),
+            body: String(params.textBody || '').slice(0, 4096),
+          },
+        };
+
+  try {
+    const resp = await resilientFetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${cfg.accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(payload),
+      timeoutMs: 12000,
+    });
+
+    const data: any = await resp.json().catch(() => ({}));
+    if (!resp.ok || data?.error) {
+      const apiErr =
+        data?.error?.error_user_msg ||
+        data?.error?.message ||
+        `Meta WhatsApp Cloud API HTTP ${resp.status}`;
+      return {
+        ok: false,
+        configured: true,
+        status: 'failed',
+        to: formattedTo,
+        error: String(apiErr),
+      };
+    }
+
+    const messageId = data?.messages?.[0]?.id ? String(data.messages[0].id) : undefined;
+    return {
+      ok: true,
+      configured: true,
+      status: 'sent',
+      messageId,
+      to: formattedTo,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      configured: true,
+      status: 'failed',
+      to: formattedTo,
+      error: err?.message || 'Error de red comunicando con WhatsApp Cloud API.',
+    };
+  }
+}
+
+interface ServerAvailablePlayerRecord {
+  id: string;
+  name: string;
+  phone: string;
+  preferredSports: string[];
+  expiresAt?: string;
+}
+
+async function loadTodayAvailablePlayersFromFirestore(): Promise<ServerAvailablePlayerRecord[]> {
+  if (!firebaseCfg?.projectId || !firebaseCfg?.firestoreDatabaseId || !firebaseCfg?.apiKey) {
+    return [];
+  }
+  const url = `https://firestore.googleapis.com/v1/projects/${firebaseCfg.projectId}/databases/${firebaseCfg.firestoreDatabaseId}/documents/availablePlayers?pageSize=200&key=${encodeURIComponent(firebaseCfg.apiKey)}`;
+  try {
+    const resp = await resilientFetch(url);
+    if (!resp.ok) return [];
+    const json: any = await resp.json();
+    const docs = Array.isArray(json?.documents) ? json.documents : [];
+    const nowMs = Date.now();
+    const result: ServerAvailablePlayerRecord[] = [];
+
+    for (const d of docs) {
+      const f = d?.fields || {};
+      const nameParts = String(d?.name || '').split('/');
+      const id = nameParts[nameParts.length - 1] || f.id?.stringValue || '';
+      const name = f.name?.stringValue || '';
+      const phone = f.phone?.stringValue || '';
+      const expiresAt = f.expiresAt?.stringValue || '';
+      if (!phone || !name) continue;
+      if (expiresAt) {
+        const expMs = Date.parse(expiresAt);
+        if (!Number.isNaN(expMs) && expMs < nowMs) continue;
+      }
+      const rawSports = f.preferredSports?.arrayValue?.values;
+      const preferredSports: string[] = Array.isArray(rawSports)
+        ? rawSports.map((v: any) => String(v?.stringValue || '').trim()).filter(Boolean)
+        : [];
+      result.push({ id, name, phone, preferredSports, expiresAt });
+    }
+    return result;
+  } catch (err) {
+    console.warn('[WhatsApp] No se pudo consultar availablePlayers en Firestore REST:', err);
+    return [];
+  }
 }
 
 async function refreshAdminOAuthTokenIfNeeded(record: AdminTokenRecord): Promise<AdminTokenRecord> {
@@ -1872,6 +2123,488 @@ export function createApiApp() {
       res.json({ ok: true, ...summary });
     } catch (err: any) {
       res.status(500).json({ ok: false, error: err?.message || 'Error ejecutando recordatorios previos.' });
+    }
+  });
+
+  // =========================================================================
+  // WHATSAPP CLOUD API (Meta Graph API) ROUTES
+  // Credentials remain strictly server-side in environment variables.
+  // =========================================================================
+  app.get('/api/whatsapp/status', (_req, res) => {
+    const cfg = resolveWhatsAppCloudConfig();
+    res.json({
+      configured: Boolean(cfg.accessToken && cfg.phoneNumberId),
+      hasBookingTemplate: Boolean(cfg.bookingConfirmedTemplate),
+      hasBookingApprovedTemplate: Boolean(cfg.bookingApprovedTemplate),
+      hasBookingCancelledTemplate: Boolean(cfg.bookingCancelledTemplate),
+      hasMissingPlayersTemplate: Boolean(cfg.missingPlayersTemplate),
+      hasTournamentCreatedTemplate: Boolean(cfg.tournamentCreatedTemplate),
+      apiVersion: cfg.apiVersion,
+    });
+  });
+
+  app.post('/api/whatsapp/send-booking-confirmation', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const booking = body.booking || {};
+      const eventType = String(body.eventType || 'confirmed');
+      const customMessage = typeof body.customMessage === 'string' ? body.customMessage.trim() : '';
+
+      const bookingCode = String(booking.bookingCode || '').trim();
+      const clientPhone = String(booking.clientPhone || '').trim();
+      const clientName = String(booking.clientName || 'Jugador').trim();
+      const courtName = String(booking.courtName || 'Cancha').trim();
+      const establishment = String(booking.establishment || 'DeportesPMY').trim();
+      const dateStr = String(booking.date || '').trim();
+      const startTime = String(booking.startTime || '').trim();
+      const endTime = String(booking.endTime || '').trim();
+      const totalAmount = Number(booking.totalAmount) || 0;
+      const amountPaid = Number(booking.amountPaid) || 0;
+      const balanceDue = Number(booking.balanceDue) || 0;
+      const paymentMethod = String(booking.paymentMethod || '').toUpperCase();
+      const address = String(booking.address || '').trim();
+      const welcomeNotes = String(booking.welcomeNotes || '').trim();
+      const refundAmount = Number(booking.refundAmount) || 0;
+      const mpRefunded = Boolean(booking.mpRefunded);
+      const refundReference = String(booking.refundReference || '').trim();
+
+      if (!bookingCode) {
+        return res.status(400).json({ ok: false, configured: false, status: 'failed', error: 'Falta bookingCode.' });
+      }
+      if (!clientPhone) {
+        return res.status(400).json({
+          ok: false,
+          configured: false,
+          status: 'failed',
+          error: 'El cliente no tiene teléfono cargado para recibir confirmación por WhatsApp.',
+        });
+      }
+
+      const cfg = resolveWhatsAppCloudConfig();
+      const paymentSummary =
+        balanceDue > 0
+          ? `Abonado $${amountPaid.toLocaleString('es-AR')} · Saldo en cancha $${balanceDue.toLocaleString('es-AR')}`
+          : `Abonado $${amountPaid.toLocaleString('es-AR')} (100% cancelado)`;
+
+      const refundSummary =
+        refundAmount > 0
+          ? (mpRefunded
+              ? `Devolución automática de $${refundAmount.toLocaleString('es-AR')} por Mercado Pago`
+              : `Corresponde devolución de $${refundAmount.toLocaleString('es-AR')}`) +
+            (refundReference ? ` (Ref: ${refundReference})` : '')
+          : 'Sin importe pendiente';
+
+      const defaultConfirmedBody =
+        `¡Hola ${clientName}! Tu turno en *${establishment}* está *CONFIRMADO*.\n\n` +
+        `Cancha: *${courtName}*\n` +
+        `Fecha: ${dateStr}\n` +
+        `Horario: ${startTime}${endTime ? ` a ${endTime}` : ''} hs\n` +
+        `Código: #${bookingCode}\n` +
+        `Total: $${totalAmount.toLocaleString('es-AR')} · Abonado: $${amountPaid.toLocaleString('es-AR')}` +
+        (paymentMethod ? ` (${paymentMethod})` : '') +
+        (balanceDue > 0 ? `\nSaldo en cancha: $${balanceDue.toLocaleString('es-AR')}` : `\nPago 100% cancelado`) +
+        (address ? `\nDirección: ${address}` : '') +
+        (welcomeNotes ? `\n\n${welcomeNotes}` : '');
+
+      const defaultApprovedBody =
+        `¡Hola ${clientName}! Validamos tu comprobante y tu turno en *${establishment}* quedó *APROBADO*.\n\n` +
+        `Cancha: *${courtName}*\n` +
+        `Fecha: ${dateStr} · ${startTime} hs\n` +
+        `Código: #${bookingCode}\n` +
+        `${paymentSummary}`;
+
+      const defaultCancelledBody =
+        `Hola ${clientName}, tu reserva #${bookingCode} en *${establishment}* (${courtName}, ${dateStr} ${startTime} hs) fue *CANCELADA*. ${refundSummary}.`;
+
+      const textBody =
+        customMessage ||
+        (eventType === 'cancelled'
+          ? defaultCancelledBody
+          : eventType === 'approved'
+          ? defaultApprovedBody
+          : defaultConfirmedBody);
+
+      let selectedTemplateName = '';
+      let templateParams: string[] = [];
+
+      if (eventType === 'approved' && cfg.bookingApprovedTemplate) {
+        selectedTemplateName = cfg.bookingApprovedTemplate;
+        templateParams = [
+          clientName,
+          establishment,
+          courtName,
+          `${dateStr} ${startTime} hs`,
+          `#${bookingCode}`,
+          paymentSummary,
+        ];
+      } else if ((eventType === 'confirmed' || eventType === 'approved') && cfg.bookingConfirmedTemplate) {
+        selectedTemplateName = cfg.bookingConfirmedTemplate;
+        templateParams = [
+          clientName,
+          establishment,
+          courtName,
+          `${dateStr} ${startTime} hs`,
+          `#${bookingCode}`,
+          paymentSummary,
+        ];
+      } else if (eventType === 'cancelled' && cfg.bookingCancelledTemplate) {
+        selectedTemplateName = cfg.bookingCancelledTemplate;
+        templateParams = [
+          clientName,
+          `#${bookingCode}`,
+          establishment,
+          `${courtName} · ${dateStr} ${startTime} hs`,
+          refundSummary,
+        ];
+      }
+
+      const result = await sendWhatsAppCloudMessage({
+        to: clientPhone,
+        textBody,
+        ...(selectedTemplateName
+          ? {
+              templateName: selectedTemplateName,
+              templateParams,
+            }
+          : {}),
+      });
+
+      return res.json({
+        ...result,
+        preview: textBody,
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        ok: false,
+        configured: false,
+        status: 'failed',
+        error: err?.message || 'Error enviando confirmación por WhatsApp Cloud API.',
+      });
+    }
+  });
+
+  app.post('/api/whatsapp/notify-missing-players', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const booking = body.booking || {};
+      const eventType = String(body.eventType || 'missing_players');
+      const missingPlayers = Math.max(1, Number(body.missingPlayers) || 1);
+      const customNote = String(body.message || '').trim();
+      const notifyAvailableToday = Boolean(body.notifyAvailableToday);
+      const explicitRecipients: Array<{ id?: string; name: string; phone: string }> = Array.isArray(body.recipients)
+        ? body.recipients
+        : [];
+
+      const bookingCode = String(booking.bookingCode || '').trim();
+      const courtName = String(booking.courtName || 'Cancha').trim();
+      const establishment = String(booking.establishment || 'DeportesPMY').trim();
+      const sport = String(booking.sport || '').trim();
+      const dateStr = String(booking.date || '').trim();
+      const startTime = String(booking.startTime || '').trim();
+      const organizerName = String(booking.clientName || 'Organizador').trim();
+      const organizerPhoneNorm = formatPhoneForWhatsAppCloud(booking.clientPhone);
+
+      if (!bookingCode) {
+        return res.status(400).json({ ok: false, configured: false, sentCount: 0, failedCount: 0, totalRecipients: 0, results: [], error: 'Falta bookingCode.' });
+      }
+
+      const appBase = getAppUrl(getRequestOrigin(req) || undefined);
+      const joinUrl = `${appBase}/?join_booking=${encodeURIComponent(bookingCode)}`;
+
+      // Gather target recipients
+      const recipientsMap = new Map<string, { name: string; phone: string }>();
+
+      for (const r of explicitRecipients) {
+        const formatted = formatPhoneForWhatsAppCloud(r?.phone);
+        if (!formatted) continue;
+        if (eventType !== 'player_joined' && organizerPhoneNorm && formatted === organizerPhoneNorm) continue;
+        recipientsMap.set(formatted, { name: String(r?.name || 'Jugador').trim(), phone: r.phone });
+      }
+
+      if (notifyAvailableToday) {
+        const availableToday = await loadTodayAvailablePlayersFromFirestore();
+        for (const p of availableToday) {
+          if (sport && p.preferredSports.length > 0 && !p.preferredSports.includes(sport)) {
+            continue;
+          }
+          const formatted = formatPhoneForWhatsAppCloud(p.phone);
+          if (!formatted) continue;
+          if (organizerPhoneNorm && formatted === organizerPhoneNorm) continue;
+          if (!recipientsMap.has(formatted)) {
+            recipientsMap.set(formatted, { name: p.name, phone: p.phone });
+          }
+        }
+      }
+
+      const recipients = Array.from(recipientsMap.values());
+      const cfg = resolveWhatsAppCloudConfig();
+      const configured = Boolean(cfg.accessToken && cfg.phoneNumberId);
+
+      if (recipients.length === 0) {
+        return res.json({
+          ok: true,
+          configured,
+          sentCount: 0,
+          failedCount: 0,
+          totalRecipients: 0,
+          results: [],
+        });
+      }
+
+      if (!configured) {
+        return res.json({
+          ok: false,
+          configured: false,
+          sentCount: 0,
+          failedCount: recipients.length,
+          totalRecipients: recipients.length,
+          results: recipients.map((r) => ({
+            name: r.name,
+            phone: r.phone,
+            ok: false,
+            error: 'WhatsApp Cloud API no configurada en el servidor.',
+          })),
+          error:
+            'WhatsApp Cloud API no configurada en el servidor (faltan WHATSAPP_CLOUD_ACCESS_TOKEN y WHATSAPP_CLOUD_PHONE_NUMBER_ID).',
+        });
+      }
+
+      const perPlayerAmount =
+        Number(body.perPlayerAmount) || Number(booking.perPlayerAmount) || 0;
+      const joinedPlayerName = String(body.playerName || '').trim();
+      const joinedPlayerPhone = String(body.playerPhone || '').trim();
+      const remainingPlayers = Math.max(0, Number(body.remainingPlayers) || 0);
+
+      const results = await Promise.all(
+        recipients.map(async (recipient) => {
+          let textBody = '';
+          let useMissingTemplate = false;
+
+          if (eventType === 'player_joined') {
+            textBody =
+              `¡Hola ${recipient.name}! *${joinedPlayerName || 'Un jugador'}*` +
+              (joinedPlayerPhone ? ` (${joinedPlayerPhone})` : '') +
+              ` se acaba de sumar a tu partido #${bookingCode} en *${courtName}* (${dateStr} ${startTime} hs). ` +
+              (remainingPlayers > 0
+                ? `Ahora ${remainingPlayers === 1 ? 'falta 1 jugador' : `faltan ${remainingPlayers} jugadores`}.`
+                : `¡Equipo completo!`);
+          } else if (eventType === 'player_payment_share') {
+            textBody =
+              `¡Hola ${recipient.name}! Gracias por sumarte al partido #${bookingCode} en *${establishment}* (${courtName}, ${dateStr} a las ${startTime} hs).` +
+              (perPlayerAmount > 0
+                ? ` La parte estimada por jugador es $${perPlayerAmount.toLocaleString('es-AR')}.`
+                : '');
+          } else {
+            textBody =
+              `¡Hola ${recipient.name}! Faltan *${missingPlayers}* ${missingPlayers === 1 ? 'jugador' : 'jugadores'} para completar un partido en *${establishment}* (${courtName}).\n` +
+              `Fecha: ${dateStr} · ${startTime} hs\n` +
+              `Organiza: ${organizerName}\n` +
+              (customNote ? `Nota: "${customNote}"\n` : '') +
+              `Sumate directo desde acá: ${joinUrl}`;
+            useMissingTemplate = Boolean(cfg.missingPlayersTemplate);
+          }
+
+          const sendRes = await sendWhatsAppCloudMessage({
+            to: recipient.phone,
+            textBody,
+            previewUrl: eventType === 'missing_players' || eventType === 'player_invite',
+            ...(useMissingTemplate
+              ? {
+                  templateName: cfg.missingPlayersTemplate,
+                  templateParams: [
+                    recipient.name,
+                    String(missingPlayers),
+                    `${establishment} · ${courtName}`,
+                    `${dateStr} ${startTime} hs`,
+                    joinUrl,
+                  ],
+                }
+              : {}),
+          });
+
+          return {
+            name: recipient.name,
+            phone: recipient.phone,
+            ok: sendRes.ok,
+            messageId: sendRes.messageId,
+            error: sendRes.error,
+          };
+        })
+      );
+
+      const sentCount = results.filter((r) => r.ok).length;
+      const failedCount = results.length - sentCount;
+
+      return res.json({
+        ok: sentCount > 0,
+        configured: true,
+        sentCount,
+        failedCount,
+        totalRecipients: results.length,
+        results,
+        ...(sentCount === 0 && results[0]?.error ? { error: results[0].error } : {}),
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        ok: false,
+        configured: false,
+        sentCount: 0,
+        failedCount: 0,
+        totalRecipients: 0,
+        results: [],
+        error: err?.message || 'Error enviando avisos de jugadores faltantes por WhatsApp Cloud.',
+      });
+    }
+  });
+
+  app.post('/api/whatsapp/notify-tournament-created', async (req, res) => {
+    try {
+      const body = req.body || {};
+      const tournament = body.tournament || {};
+      const title = String(tournament.title || '').trim();
+      const establishment = String(tournament.establishment || 'DeportesPMY').trim();
+      const sport = String(tournament.sport || '').trim();
+      const sportLabel = String(tournament.sportLabel || sport || 'Deporte').trim();
+      const dateStr = String(tournament.date || '').trim();
+      const endDateStr = String(tournament.endDate || '').trim();
+      const startTime = String(tournament.startTime || '').trim();
+      const entryFee = Number(tournament.entryFee) || 0;
+      const notifyAvailableToday = body.notifyAvailableToday !== false;
+      const explicitRecipients: Array<{ name: string; phone: string }> = Array.isArray(body.recipients)
+        ? body.recipients
+        : [];
+
+      if (!title) {
+        return res.status(400).json({
+          ok: false,
+          configured: false,
+          sentCount: 0,
+          failedCount: 0,
+          totalRecipients: 0,
+          results: [],
+          error: 'Falta el título del torneo.',
+        });
+      }
+
+      const appBase = getAppUrl(getRequestOrigin(req) || undefined);
+      const tournamentsUrl = `${appBase}/?tab=torneos`;
+      const scheduleStr = `${dateStr}${endDateStr ? ` al ${endDateStr}` : ''} · ${startTime} hs`;
+      const feeStr = entryFee > 0 ? `$${entryFee.toLocaleString('es-AR')} por equipo` : 'Gratuita';
+
+      const recipientsMap = new Map<string, { name: string; phone: string }>();
+      for (const r of explicitRecipients) {
+        const formatted = formatPhoneForWhatsAppCloud(r?.phone);
+        if (!formatted) continue;
+        recipientsMap.set(formatted, { name: String(r?.name || 'Jugador').trim(), phone: r.phone });
+      }
+
+      if (notifyAvailableToday) {
+        const availableToday = await loadTodayAvailablePlayersFromFirestore();
+        for (const p of availableToday) {
+          if (sport && p.preferredSports.length > 0 && !p.preferredSports.includes(sport)) {
+            continue;
+          }
+          const formatted = formatPhoneForWhatsAppCloud(p.phone);
+          if (!formatted) continue;
+          if (!recipientsMap.has(formatted)) {
+            recipientsMap.set(formatted, { name: p.name, phone: p.phone });
+          }
+        }
+      }
+
+      const recipients = Array.from(recipientsMap.values()).slice(0, 50);
+      const cfg = resolveWhatsAppCloudConfig();
+      const configured = Boolean(cfg.accessToken && cfg.phoneNumberId);
+
+      if (recipients.length === 0) {
+        return res.json({
+          ok: true,
+          configured,
+          sentCount: 0,
+          failedCount: 0,
+          totalRecipients: 0,
+          results: [],
+        });
+      }
+
+      if (!configured) {
+        return res.json({
+          ok: false,
+          configured: false,
+          sentCount: 0,
+          failedCount: recipients.length,
+          totalRecipients: recipients.length,
+          results: recipients.map((r) => ({
+            name: r.name,
+            phone: r.phone,
+            ok: false,
+            error: 'WhatsApp Cloud API no configurada en el servidor.',
+          })),
+          error:
+            'WhatsApp Cloud API no configurada en el servidor (faltan WHATSAPP_CLOUD_ACCESS_TOKEN y WHATSAPP_CLOUD_PHONE_NUMBER_ID).',
+        });
+      }
+
+      const results = await Promise.all(
+        recipients.map(async (recipient) => {
+          const textBody =
+            `¡Hola ${recipient.name}! Se abrió un nuevo torneo en *${establishment}*: *${title}*.\n\n` +
+            `Deporte: ${sportLabel}\n` +
+            `Fecha y horario: ${scheduleStr}\n` +
+            `Inscripción: ${feeStr}\n` +
+            `Inscribí a tu equipo acá: ${tournamentsUrl}`;
+
+          const useTournamentTemplate = Boolean(cfg.tournamentCreatedTemplate);
+          const sendRes = await sendWhatsAppCloudMessage({
+            to: recipient.phone,
+            textBody,
+            previewUrl: true,
+            ...(useTournamentTemplate
+              ? {
+                  templateName: cfg.tournamentCreatedTemplate,
+                  templateParams: [
+                    recipient.name,
+                    establishment,
+                    title,
+                    sportLabel,
+                    scheduleStr,
+                    feeStr,
+                    tournamentsUrl,
+                  ],
+                }
+              : {}),
+          });
+
+          return {
+            name: recipient.name,
+            phone: recipient.phone,
+            ok: sendRes.ok,
+            messageId: sendRes.messageId,
+            error: sendRes.error,
+          };
+        })
+      );
+
+      const sentCount = results.filter((r) => r.ok).length;
+      return res.json({
+        ok: sentCount > 0,
+        configured: true,
+        sentCount,
+        failedCount: results.length - sentCount,
+        totalRecipients: results.length,
+        results,
+        ...(sentCount === 0 && results[0]?.error ? { error: results[0].error } : {}),
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        ok: false,
+        configured: false,
+        sentCount: 0,
+        failedCount: 0,
+        totalRecipients: 0,
+        results: [],
+        error: err?.message || 'Error enviando difusión de torneo por WhatsApp Cloud.',
+      });
     }
   });
 

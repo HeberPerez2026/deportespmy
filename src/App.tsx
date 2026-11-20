@@ -80,7 +80,9 @@ const MainContent: React.FC = () => {
     availablePlayers,
     requestPlayersForBooking,
     stopLookingForPlayers,
-    removeJoinedPlayerFromBooking
+    removeJoinedPlayerFromBooking,
+    triggerWhatsAppSend,
+    notifyJoinedPlayerViaWhatsApp
   } = useApp();
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
 
@@ -129,6 +131,10 @@ const MainContent: React.FC = () => {
   const [reschedulingBusy, setReschedulingBusy] = useState(false);
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const [splitPlayersDraft, setSplitPlayersDraft] = useState<Record<string, number>>({});
+  const [sendingSuccessWa, setSendingSuccessWa] = useState(false);
+  const [successWaFeedback, setSuccessWaFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [sendingJoinedWaId, setSendingJoinedWaId] = useState<string | null>(null);
+  const [joinedWaFeedback, setJoinedWaFeedback] = useState<Record<string, string>>({});
 
   // Intercept browser/mobile Back button: redirect to main page / close modals instead of leaving the app
   useBackHandler(
@@ -766,11 +772,6 @@ const MainContent: React.FC = () => {
             c.name.toLowerCase() === paymentSuccessModal.courtName.toLowerCase()
         );
         const modalProfile = getBusinessProfileForCourt(matchedCourt);
-        const targetPhone = (modalProfile.whatsappNumber || businessProfile.whatsappNumber || '').replace(/\D/g, '');
-        const shareText = `¡Hola! Acabo de abonar mi turno #${paymentSuccessModal.bookingCode} en ${paymentSuccessModal.courtName} para el ${paymentSuccessModal.date || matchedBooking?.date || 'día programado'} por Mercado Pago. Ref: ${paymentSuccessModal.paymentId}`;
-        const waUrl = targetPhone
-          ? `https://wa.me/${targetPhone}?text=${encodeURIComponent(shareText)}`
-          : `https://wa.me/?text=${encodeURIComponent(shareText)}`;
 
         const printableBooking: Booking = matchedBooking || {
           id: paymentSuccessModal.bookingCode,
@@ -899,20 +900,47 @@ const MainContent: React.FC = () => {
                   <p className="text-[11px] text-[var(--accent-soft-text)]">{successPushFeedback}</p>
                 )}
 
-                <a
-                  href={waUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-2.5 px-4 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                <button
+                  type="button"
+                  disabled={sendingSuccessWa}
+                  onClick={async () => {
+                    setSendingSuccessWa(true);
+                    setSuccessWaFeedback(null);
+                    try {
+                      const res = await triggerWhatsAppSend(printableBooking);
+                      setSuccessWaFeedback({
+                        ok: res.ok,
+                        text: res.ok
+                          ? `Confirmación enviada por WhatsApp Cloud al ${printableBooking.clientPhone}.`
+                          : res.error || 'No se pudo enviar la confirmación por WhatsApp Cloud.',
+                      });
+                    } finally {
+                      setSendingSuccessWa(false);
+                    }
+                  }}
+                  className="w-full py-2.5 px-4 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 text-[var(--accent-ink)] font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
                   <MessageCircle className="w-4 h-4" />
-                  <span>{targetPhone ? 'Avisar al club por WhatsApp' : 'Compartir comprobante por WhatsApp'}</span>
-                </a>
+                  <span>{sendingSuccessWa ? 'Enviando confirmación...' : 'Reenviar confirmación por WhatsApp Cloud'}</span>
+                </button>
+
+                {successWaFeedback && (
+                  <p
+                    className={`text-[11px] font-medium ${
+                      successWaFeedback.ok
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : 'text-amber-600 dark:text-amber-400'
+                    }`}
+                  >
+                    {successWaFeedback.text}
+                  </p>
+                )}
 
                 <button
                   type="button"
                   onClick={() => {
                     setSuccessPushFeedback(null);
+                    setSuccessWaFeedback(null);
                     setPaymentSuccessModal(null);
                   }}
                   className="w-full py-2.5 px-4 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs transition-colors cursor-pointer"
@@ -1344,12 +1372,18 @@ const MainContent: React.FC = () => {
                                         }).catch(() => {});
                                       }
                                       const res = await requestPlayersForBooking(b.id, lfpCountInput, lfpNoteInput);
+                                      const fbParts: string[] = ['Publicado en la grilla.'];
+                                      if (res.waResult.sentCount > 0) {
+                                        fbParts.push(`WhatsApp Cloud enviado a ${res.waResult.sentCount} jugador(es).`);
+                                      } else if (res.waResult.totalRecipients > 0 && !res.waResult.configured) {
+                                        fbParts.push('WhatsApp Cloud API pendiente de configuración en el servidor.');
+                                      }
+                                      if (res.pushResult.sentCount > 0) {
+                                        fbParts.push(`Push enviado a ${res.pushResult.sentCount} dispositivo(s).`);
+                                      }
                                       setLfpFeedbackByBooking((prev) => ({
                                         ...prev,
-                                        [b.id]:
-                                          res.pushResult.sentCount > 0
-                                            ? `Publicado en grilla y Push enviado a ${res.pushResult.sentCount} dispositivo(s).`
-                                            : 'Publicado en la grilla. Recibirás un Push cuando alguien se sume.',
+                                        [b.id]: fbParts.join(' '),
                                       }));
                                       setEditingLfpBookingId(null);
                                     } finally {
@@ -1361,8 +1395,8 @@ const MainContent: React.FC = () => {
                                   <Send className="w-3.5 h-3.5" />
                                   <span>
                                     {lfpSendingId === b.id
-                                      ? 'Publicando...'
-                                      : 'Publicar en grilla y enviar Push'}
+                                      ? 'Publicando y avisando...'
+                                      : 'Publicar en grilla y avisar (WhatsApp + Push)'}
                                   </span>
                                 </button>
                               </div>
@@ -1380,13 +1414,9 @@ const MainContent: React.FC = () => {
                                   Control de jugadores sumados y su parte (${perPlayerCost.toLocaleString('es-AR')} c/u):
                                 </span>
                                 {b.joinedPlayers!.map((jp) => {
-                                  const jpPhone = (jp.phone || '').replace(/\D/g, '');
-                                  const waUrl = jpPhone
-                                    ? `https://wa.me/${jpPhone}?text=${encodeURIComponent(`¡Hola ${jp.name}! Gracias por sumarte al partido #${b.bookingCode} (${b.courtName}, ${b.date} ${b.startTime} hs). La parte por jugador es $${perPlayerCost.toLocaleString('es-AR')}.`)}`
-                                    : '';
                                   return (
+                                    <div key={jp.id} className="space-y-1">
                                     <div
-                                      key={jp.id}
                                       className="flex items-center justify-between gap-2 p-2 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)]"
                                     >
                                       <div className="min-w-0">
@@ -1413,16 +1443,33 @@ const MainContent: React.FC = () => {
                                         >
                                           {jp.paid ? `Pagó $${(jp.paidAmount || perPlayerCost).toLocaleString('es-AR')} ✓` : 'Pendiente'}
                                         </button>
-                                        {waUrl && (
-                                          <a
-                                            href={waUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="p-1.5 rounded bg-[var(--accent-soft)] text-[var(--accent-soft-text)] hover:opacity-80"
-                                            title="Escribir por WhatsApp"
+                                        {jp.phone && (
+                                          <button
+                                            type="button"
+                                            disabled={sendingJoinedWaId === jp.id}
+                                            onClick={async () => {
+                                              setSendingJoinedWaId(jp.id);
+                                              try {
+                                                const res = await notifyJoinedPlayerViaWhatsApp(b, jp, perPlayerCost);
+                                                setJoinedWaFeedback((prev) => ({
+                                                  ...prev,
+                                                  [jp.id]: res.ok
+                                                    ? `Aviso enviado por WhatsApp Cloud a ${jp.name}.`
+                                                    : res.error || 'No se pudo enviar por WhatsApp Cloud.',
+                                                }));
+                                              } finally {
+                                                setSendingJoinedWaId(null);
+                                              }
+                                            }}
+                                            className="p-1.5 rounded bg-[var(--accent-soft)] text-[var(--accent-soft-text)] hover:opacity-80 cursor-pointer disabled:opacity-50"
+                                            title="Enviar aviso de parte por WhatsApp Cloud"
                                           >
-                                            <MessageCircle className="w-3.5 h-3.5" />
-                                          </a>
+                                            {sendingJoinedWaId === jp.id ? (
+                                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            ) : (
+                                              <MessageCircle className="w-3.5 h-3.5" />
+                                            )}
+                                          </button>
                                         )}
                                         <button
                                           type="button"
@@ -1433,6 +1480,12 @@ const MainContent: React.FC = () => {
                                           <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                       </div>
+                                    </div>
+                                    {joinedWaFeedback[jp.id] && (
+                                      <p className="text-[11px] text-[var(--accent-soft-text)] px-1">
+                                        {joinedWaFeedback[jp.id]}
+                                      </p>
+                                    )}
                                     </div>
                                   );
                                 })}

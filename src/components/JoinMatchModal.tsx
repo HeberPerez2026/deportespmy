@@ -85,6 +85,7 @@ export const JoinMatchModal: React.FC<JoinMatchModalProps> = ({ booking, onClose
   const [joinedSuccess, setJoinedSuccess] = useState<{
     remainingPlayers: number;
     pushSent: boolean;
+    waSent: boolean;
   } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -123,6 +124,7 @@ export const JoinMatchModal: React.FC<JoinMatchModalProps> = ({ booking, onClose
       setJoinedSuccess({
         remainingPlayers: res.remainingPlayers,
         pushSent: res.pushSent,
+        waSent: res.waSent,
       });
     } finally {
       setIsSubmitting(false);
@@ -272,7 +274,11 @@ export const JoinMatchModal: React.FC<JoinMatchModalProps> = ({ booking, onClose
                   ¡Te sumaste al partido!
                 </h4>
                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                  {joinedSuccess.pushSent
+                  {joinedSuccess.waSent && joinedSuccess.pushSent
+                    ? `Avisamos automáticamente por WhatsApp Cloud y Push a ${liveBooking.clientName} que te sumaste.`
+                    : joinedSuccess.waSent
+                    ? `Enviamos un aviso automático por WhatsApp Cloud a ${liveBooking.clientName} informando que te sumaste.`
+                    : joinedSuccess.pushSent
                     ? `Enviamos una notificación Push directa a ${liveBooking.clientName} avisando que te sumaste.`
                     : `Registramos tus datos en el partido de ${liveBooking.clientName} (recibirá el aviso en vivo en su dispositivo).`}
                 </p>
@@ -426,7 +432,7 @@ export const JoinMatchModal: React.FC<JoinMatchModalProps> = ({ booking, onClose
                   className="px-5 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 text-[var(--accent-ink)] font-semibold text-xs sm:text-sm inline-flex items-center gap-2 cursor-pointer"
                 >
                   <Send className="w-4 h-4" />
-                  <span>{isSubmitting ? 'Enviando aviso...' : 'Sumarme y avisar por Push'}</span>
+                  <span>{isSubmitting ? 'Enviando aviso...' : 'Sumarme y avisar'}</span>
                 </button>
               </div>
             </form>

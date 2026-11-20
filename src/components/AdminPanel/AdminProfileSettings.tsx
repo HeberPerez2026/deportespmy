@@ -654,7 +654,7 @@ export const AdminProfileSettings: React.FC = () => {
                 placeholder="Ej: +5492804567890"
                 className="w-full bg-[var(--bg-subtle)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-xs text-[var(--text-primary)] font-mono"
               />
-              <span className="text-[10px] text-[var(--text-muted)] mt-0.5 block">Desde este número se abrirán las notificaciones a los jugadores</span>
+              <span className="text-[10px] text-[var(--text-muted)] mt-0.5 block">Número de contacto público del complejo (las confirmaciones y avisos a jugadores se envían por WhatsApp Cloud API)</span>
             </div>
 
             <div>

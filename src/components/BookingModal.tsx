@@ -116,6 +116,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
   const [lfpNote, setLfpNote] = useState<string>('');
   const [isSendingLfp, setIsSendingLfp] = useState(false);
   const [lfpFeedback, setLfpFeedback] = useState<string | null>(null);
+  const [isSendingWa, setIsSendingWa] = useState(false);
+  const [waFeedback, setWaFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   const [splitPlayersCount, setSplitPlayersCount] = useState<number>(
     court.sport === 'padel' || court.sport === 'tenis' ? 4 : court.sport === 'futbol5' ? 10 : 12
   );
@@ -1579,8 +1581,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
 
                       setTimeout(() => {
                         setIsSubmittingReceipt(false);
-                        triggerWhatsAppSend(updated || confirmedBooking);
-                      }, 800);
+                      }, 500);
                     }}
                     className="w-full py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:cursor-not-allowed text-[var(--accent-ink)] font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                   >
@@ -1606,54 +1607,81 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                 </div>
               )}
 
-              {/* Automatic WhatsApp Action Box */}
+              {/* Automatic WhatsApp Cloud API Box */}
               <div className="p-4 rounded-lg max-w-md mx-auto bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-3">
                 <div className="flex items-center justify-center gap-2 font-semibold text-sm text-[var(--text-primary)]">
                   <MessageCircle className="w-4 h-4 text-[var(--accent-soft-text)]" />
                   <span>
                     {confirmedBooking.status === 'confirmed'
-                      ? 'Notificación por WhatsApp lista'
+                      ? 'Confirmación vía WhatsApp Cloud API'
                       : confirmedBooking.status === 'awaiting_approval'
-                      ? 'Avisar al club por WhatsApp'
-                      : 'Comprobante requerido para WhatsApp'}
+                      ? 'Confirmación automática pendiente'
+                      : 'Comprobante requerido para confirmar'}
                   </span>
                 </div>
                 <p className="text-xs text-[var(--text-secondary)] leading-relaxed text-center">
                   {confirmedBooking.status === 'confirmed'
-                    ? 'Turno confirmado. Podés enviar el comprobante a tu WhatsApp o compartirlo con tu equipo:'
+                    ? `Enviamos la confirmación automática al ${confirmedBooking.clientPhone} mediante WhatsApp Cloud API. Si necesitás reenviarla, tocá el botón:`
                     : confirmedBooking.status === 'awaiting_approval'
-                    ? 'El club recibió tu comprobante. Podés avisar también por WhatsApp:'
-                    : 'Adjuntá la captura de tu transferencia arriba antes de enviar el aviso por WhatsApp.'}
+                    ? `El club recibió tu comprobante. Apenas apruebe el pago, te enviaremos la confirmación automáticamente al ${confirmedBooking.clientPhone} por WhatsApp Cloud API.`
+                    : 'Adjuntá la captura de tu transferencia arriba para pasar a verificación y recibir la confirmación por WhatsApp Cloud API.'}
                 </p>
 
                 {(confirmedBooking.status === 'confirmed' || confirmedBooking.status === 'awaiting_approval') && (
-                  <div className="flex flex-col sm:flex-row gap-2 justify-center">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (confirmedBooking.status === 'confirmed') {
-                          triggerWhatsAppSend(confirmedBooking);
-                        } else {
-                          const cleanPhone = (effectiveProfile.whatsappNumber || '').replace(/\D/g, '');
-                          const shareText = `¡Hola! Acabo de reservar el turno #${confirmedBooking.bookingCode} en ${confirmedBooking.courtName} para el ${confirmedBooking.date} a las ${confirmedBooking.startTime} hs y ya adjunté mi comprobante de pago por ${confirmedBooking.paymentMethod.toUpperCase()}.`;
-                          const url = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(shareText)}` : `https://wa.me/?text=${encodeURIComponent(shareText)}`;
-                          window.open(url, '_blank');
-                        }
-                      }}
-                      className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-semibold text-xs inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                    >
-                      <MessageCircle className="w-4 h-4" />
-                      <span>{confirmedBooking.status === 'confirmed' ? 'Abrir en WhatsApp' : 'Avisar por WhatsApp'}</span>
-                    </button>
+                  <div className="space-y-2">
+                    <div className="flex flex-col sm:flex-row gap-2 justify-center">
+                      {confirmedBooking.status === 'confirmed' && (
+                        <button
+                          type="button"
+                          disabled={isSendingWa}
+                          onClick={async () => {
+                            setIsSendingWa(true);
+                            setWaFeedback(null);
+                            try {
+                              const res = await triggerWhatsAppSend(confirmedBooking);
+                              if (res.ok) {
+                                setWaFeedback({
+                                  ok: true,
+                                  text: `Confirmación enviada por WhatsApp Cloud al ${confirmedBooking.clientPhone}.`,
+                                });
+                              } else {
+                                setWaFeedback({
+                                  ok: false,
+                                  text: res.error || 'No se pudo enviar la confirmación por WhatsApp Cloud.',
+                                });
+                              }
+                            } finally {
+                              setIsSendingWa(false);
+                            }
+                          }}
+                          className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 text-[var(--accent-ink)] font-semibold text-xs inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          <span>{isSendingWa ? 'Enviando...' : 'Reenviar por WhatsApp Cloud'}</span>
+                        </button>
+                      )}
 
-                    <button
-                      type="button"
-                      onClick={copyWhatsAppText}
-                      className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                    >
-                      {copiedMessage ? <Check className="w-4 h-4 text-[var(--accent-soft-text)]" /> : <Copy className="w-4 h-4" />}
-                      <span>{copiedMessage ? 'Copiado' : 'Copiar texto'}</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={copyWhatsAppText}
+                        className="w-full sm:w-auto px-4 py-2.5 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-primary)] font-semibold text-xs inline-flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        {copiedMessage ? <Check className="w-4 h-4 text-[var(--accent-soft-text)]" /> : <Copy className="w-4 h-4" />}
+                        <span>{copiedMessage ? 'Copiado' : 'Copiar texto'}</span>
+                      </button>
+                    </div>
+
+                    {waFeedback && (
+                      <p
+                        className={`text-[11px] font-medium text-center ${
+                          waFeedback.ok
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-amber-600 dark:text-amber-400'
+                        }`}
+                      >
+                        {waFeedback.text}
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -1671,7 +1699,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                           ¿Te faltan jugadores para este turno?
                         </h4>
                         <p className="text-[11px] text-[var(--text-secondary)]">
-                          Publicalo en la grilla y enviá un Push para que otros jugadores se sumen.
+                          Publicalo en la grilla y enviá avisos por WhatsApp Cloud y Push a los jugadores disponibles hoy.
                         </p>
                       </div>
                     </div>
@@ -1750,11 +1778,16 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                           lfpNote
                         );
                         if (res.booking) setConfirmedBooking(res.booking);
-                        setLfpFeedback(
-                          res.pushResult.sentCount > 0
-                            ? `¡Publicado en la grilla y notificación Push enviada a ${res.pushResult.sentCount} dispositivo(s)!`
-                            : '¡Publicado en la grilla de horarios! Cuando alguien se sume recibirás el aviso de retorno.'
-                        );
+                        const parts: string[] = ['¡Publicado en la grilla de horarios!'];
+                        if (res.waResult.sentCount > 0) {
+                          parts.push(`WhatsApp Cloud enviado a ${res.waResult.sentCount} jugador(es).`);
+                        } else if (res.waResult.totalRecipients > 0 && !res.waResult.configured) {
+                          parts.push('WhatsApp Cloud API pendiente de configuración en el servidor.');
+                        }
+                        if (res.pushResult.sentCount > 0) {
+                          parts.push(`Push enviado a ${res.pushResult.sentCount} dispositivo(s).`);
+                        }
+                        setLfpFeedback(parts.join(' '));
                       } finally {
                         setIsSendingLfp(false);
                       }
@@ -1764,8 +1797,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({ court, initialSlotTi
                     <Send className="w-3.5 h-3.5" />
                     <span>
                       {isSendingLfp
-                        ? 'Publicando y enviando Push...'
-                        : `Publicar "${lfpCount === 1 ? 'Falta 1' : `Faltan ${lfpCount}`}" en grilla y enviar Push`}
+                        ? 'Publicando y enviando avisos...'
+                        : `Publicar "${lfpCount === 1 ? 'Falta 1' : `Faltan ${lfpCount}`}" y avisar (WhatsApp + Push)`}
                     </span>
                   </button>
 

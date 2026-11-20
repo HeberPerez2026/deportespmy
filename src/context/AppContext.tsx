@@ -91,6 +91,13 @@ import {
   normalizeCourtSchedule,
   parseSlotHourOrder,
 } from '../utils/scheduleHours';
+import {
+  sendBookingConfirmationViaCloud,
+  sendMissingPlayersWhatsAppViaCloud,
+  sendTournamentCreatedWhatsAppViaCloud,
+  WhatsAppCloudSendResult,
+  WhatsAppCloudBatchResult,
+} from '../services/whatsappCloud';
 import { getSafeReceiptUrl } from '../utils/imageUpload';
 
 interface BookingInput {
@@ -216,7 +223,7 @@ interface AppContextType {
   // WhatsApp notification tools
   generateWhatsAppMessage: (booking: Booking) => string;
   getWhatsAppShareUrl: (booking: Booking) => string;
-  triggerWhatsAppSend: (booking: Booking) => void;
+  triggerWhatsAppSend: (booking: Booking) => Promise<WhatsAppCloudSendResult>;
 
   // Web Push (Service Worker) notifications
   pushSupported: boolean;
@@ -253,6 +260,7 @@ interface AppContextType {
     ok: boolean;
     booking?: Booking;
     pushResult: { ok: boolean; sentCount: number; matchedCount: number };
+    waResult: WhatsAppCloudBatchResult;
   }>;
   stopLookingForPlayers: (bookingId: string) => Promise<void>;
   joinMatchBooking: (
@@ -263,6 +271,7 @@ interface AppContextType {
     booking?: Booking;
     remainingPlayers: number;
     pushSent: boolean;
+    waSent: boolean;
     error?: string;
   }>;
   removeJoinedPlayerFromBooking: (bookingId: string, joinedPlayerId: string) => Promise<void>;
@@ -276,8 +285,14 @@ interface AppContextType {
   unregisterAvailablePlayer: (playerId: string) => Promise<void>;
   inviteAvailablePlayerToBooking: (
     player: AvailablePlayer,
-    booking: Booking
-  ) => Promise<{ ok: boolean; sentCount: number }>;
+    booking: Booking,
+    options?: { channel?: 'both' | 'push' | 'whatsapp' }
+  ) => Promise<{ ok: boolean; sentCount: number; waSent: boolean; waError?: string }>;
+  notifyJoinedPlayerViaWhatsApp: (
+    booking: Booking,
+    joinedPlayer: JoinedPlayer,
+    perPlayerCost: number
+  ) => Promise<WhatsAppCloudBatchResult>;
 
   // Recurring weekly bookings (Turnos fijos / abonos)
   createRecurringAdminBookings: (
@@ -1359,40 +1374,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
   }, [courts, getBusinessProfileForCourt, businessProfile.whatsappNumber, generateWhatsAppMessage]);
 
-  const triggerWhatsAppSend = useCallback((booking: Booking) => {
+  const triggerWhatsAppSend = useCallback(async (booking: Booking): Promise<WhatsAppCloudSendResult> => {
     const court = courts.find(c => c.id === booking.courtId);
     const courtProfile = getBusinessProfileForCourt(court);
-    const cleanPhone = (booking.clientPhone || courtProfile.whatsappNumber || businessProfile.whatsappNumber).replace(/\D/g, '');
     const preview = generateWhatsAppMessage(booking);
     const ownerAdminId = normalizeAdminKey(booking.adminId) || getAdminIdForCourt(court);
-    
-    // Add to WhatsApp notifications log
+
+    const res = await sendBookingConfirmationViaCloud({
+      booking,
+      customMessage: preview,
+      profile: courtProfile,
+      eventType: booking.status === 'cancelled' ? 'cancelled' : 'confirmed',
+    });
+
     const newLog: WhatsAppNotificationLog = {
-      id: `wa-${Date.now()}`,
+      id: `wa-${Date.now()}-${Math.floor(Math.random() * 100)}`,
       bookingCode: booking.bookingCode,
       recipientName: booking.clientName,
       recipientPhone: booking.clientPhone,
-      messagePreview: preview.slice(0, 160) + '...',
+      messagePreview: preview.slice(0, 160) + (preview.length > 160 ? '...' : ''),
       sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
-      status: 'delivered',
+      status: res.ok ? 'sent' : 'failed',
       adminId: ownerAdminId,
-      courtId: booking.courtId
+      courtId: booking.courtId,
+      channel: 'cloud_api',
+      eventType: 'manual_resend',
+      messageId: res.messageId,
+      errorMessage: res.error,
     };
+
     setWhatsappLogs(prev => {
       const next = [newLog, ...prev];
       try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
       return next;
     });
 
-    // Update booking whatsappSent
-    const updated = bookings.map(b => b.id === booking.id ? { ...b, whatsappSent: true, whatsappSentAt: new Date().toISOString() } : b);
-    setBookings(updated);
-    saveBookingToFirestore({ ...booking, whatsappSent: true, whatsappSentAt: new Date().toISOString() });
+    if (res.ok) {
+      const sentAtIso = new Date().toISOString();
+      setBookings(prev => {
+        const next = prev.map(b => b.id === booking.id ? { ...b, whatsappSent: true, whatsappSentAt: sentAtIso } : b);
+        try { localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(next)); } catch {}
+        return next;
+      });
+      saveBookingToFirestore({ ...booking, whatsappSent: true, whatsappSentAt: sentAtIso });
+    }
 
-    // Open WhatsApp
-    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(preview)}`;
-    window.open(url, '_blank');
-  }, [courts, getBusinessProfileForCourt, getAdminIdForCourt, bookings, businessProfile.whatsappNumber, generateWhatsAppMessage]);
+    return res;
+  }, [courts, getBusinessProfileForCourt, getAdminIdForCourt, generateWhatsAppMessage]);
 
   // Create booking
   const createBooking = useCallback((input: BookingInput): Booking => {
@@ -1499,8 +1527,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       paymentReference: input.paymentReference || (bookingStatus === 'pending_payment' ? undefined : `TR-${Math.floor(1000000000 + Math.random() * 9000000000)}`),
       status: bookingStatus,
       createdAt: new Date().toISOString(),
-      whatsappSent: bookingStatus === 'confirmed',
-      whatsappSentAt: bookingStatus === 'confirmed' ? new Date().toISOString() : undefined,
+      whatsappSent: false,
       adminId: ownerAdminId,
       ...(deviceId ? { pushDeviceId: deviceId } : {}),
       ...(totalPlayers ? { totalPlayers, perPlayerAmount } : {}),
@@ -1533,32 +1560,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    if (bookingStatus === 'confirmed') {
-      // Auto record WhatsApp log
-      const log: WhatsAppNotificationLog = {
-        id: `wa-${Date.now()}`,
-        bookingCode,
-        recipientName: input.clientName,
-        recipientPhone: input.clientPhone,
-        messagePreview: `¡Hola ${input.clientName}! Tu turno en ${court.name} está CONFIRMADO para el ${input.date} a las ${input.startTime} hs. Total: $${input.totalAmount.toLocaleString('es-AR')}.`,
-        sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
-        status: 'delivered',
-        adminId: ownerAdminId,
-        courtId: court.id
-      };
-      setWhatsappLogs(prev => {
-        const next = [log, ...prev];
-        try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
-        return next;
-      });
-
+    if (bookingStatus === 'confirmed' && !newBooking.clientName.startsWith('[BLOQUEADO')) {
       sendBookingPushNotification({ booking: newBooking, eventType: 'payment_confirmed' });
+
+      const preview = generateWhatsAppMessage(newBooking);
+      sendBookingConfirmationViaCloud({
+        booking: newBooking,
+        customMessage: preview,
+        profile: courtProfile,
+        eventType: 'confirmed',
+      }).then((waRes) => {
+        const log: WhatsAppNotificationLog = {
+          id: `wa-${Date.now()}-${Math.floor(Math.random() * 100)}`,
+          bookingCode,
+          recipientName: input.clientName,
+          recipientPhone: input.clientPhone,
+          messagePreview: preview.slice(0, 160) + (preview.length > 160 ? '...' : ''),
+          sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
+          status: waRes.ok ? 'sent' : 'failed',
+          adminId: ownerAdminId,
+          courtId: court.id,
+          channel: 'cloud_api',
+          eventType: 'booking_confirmed',
+          messageId: waRes.messageId,
+          errorMessage: waRes.error,
+        };
+        setWhatsappLogs(prev => {
+          const next = [log, ...prev];
+          try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
+          return next;
+        });
+
+        if (waRes.ok) {
+          const sentAtIso = new Date().toISOString();
+          const confirmedWa = { ...newBooking, whatsappSent: true, whatsappSentAt: sentAtIso };
+          setBookings(prev => {
+            const next = prev.map(b => b.id === newBooking.id ? confirmedWa : b);
+            try { localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(next)); } catch {}
+            return next;
+          });
+          saveBookingToFirestore(confirmedWa);
+        }
+      }).catch(() => {});
     } else if (!newBooking.clientName.startsWith('[BLOQUEADO')) {
       sendBookingPushNotification({ booking: newBooking, eventType: 'booking_created' });
     }
 
     return newBooking;
-  }, [courts, getBusinessProfileForCourt, getAdminIdForCourt, bookings, tournaments, currentAdminUser, isAdminAuthenticated]);
+  }, [courts, getBusinessProfileForCourt, getAdminIdForCourt, bookings, tournaments, currentAdminUser, isAdminAuthenticated, generateWhatsAppMessage]);
 
   // Submit payment receipt (for manual Mercado Pago Alias/Link or CBU)
   const submitPaymentReceipt = useCallback((bookingCodeOrId: string, receiptUrl: string, paymentReference?: string): Booking | undefined => {
@@ -1618,8 +1667,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       balanceDue,
       paymentReference,
       adminId: ownerAdminId || targetBooking.adminId,
-      whatsappSent: true,
-      whatsappSentAt: new Date().toISOString()
     };
 
     const nextBookings = bookings.map(b => (b.id === targetBooking!.id || b.bookingCode === targetBooking!.bookingCode) ? confirmed : b);
@@ -1634,35 +1681,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     sendBookingPushNotification({ booking: confirmed, eventType: 'payment_confirmed' });
 
-    // Auto record WhatsApp log and open message
+    // Send automatic booking confirmation/approval via WhatsApp Cloud API
+    const wasPendingApproval =
+      targetBooking.status === 'awaiting_approval' || targetBooking.status === 'pending_payment';
+    const courtProfile = getBusinessProfileForCourt(court);
     const preview = generateWhatsAppMessage(confirmed);
-    const log: WhatsAppNotificationLog = {
-      id: `wa-${Date.now()}`,
-      bookingCode: confirmed.bookingCode,
-      recipientName: confirmed.clientName,
-      recipientPhone: confirmed.clientPhone,
-      messagePreview: preview.slice(0, 160) + '...',
-      sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
-      status: 'delivered',
-      adminId: ownerAdminId,
-      courtId: confirmed.courtId
-    };
-    setWhatsappLogs(prev => {
-      if (prev.some(l => l.bookingCode === confirmed.bookingCode)) return prev;
-      const next = [log, ...prev];
-      try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
-      return next;
-    });
+    sendBookingConfirmationViaCloud({
+      booking: confirmed,
+      customMessage: preview,
+      profile: courtProfile,
+      eventType: wasPendingApproval ? 'approved' : 'confirmed',
+    }).then((waRes) => {
+      const log: WhatsAppNotificationLog = {
+        id: `wa-${Date.now()}-${Math.floor(Math.random() * 100)}`,
+        bookingCode: confirmed.bookingCode,
+        recipientName: confirmed.clientName,
+        recipientPhone: confirmed.clientPhone,
+        messagePreview: preview.slice(0, 160) + (preview.length > 160 ? '...' : ''),
+        sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
+        status: waRes.ok ? 'sent' : 'failed',
+        adminId: ownerAdminId,
+        courtId: confirmed.courtId,
+        channel: 'cloud_api',
+        eventType: wasPendingApproval ? 'booking_approved' : 'booking_confirmed',
+        messageId: waRes.messageId,
+        errorMessage: waRes.error,
+      };
+      setWhatsappLogs(prev => {
+        const next = [log, ...prev];
+        try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
+        return next;
+      });
 
-    // If it's the admin confirming a pending payment, trigger the WhatsApp send
-    if (isAdminAuthenticated) {
-      const cleanPhone = confirmed.clientPhone.replace(/\D/g, '');
-      const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(preview)}`;
-      window.open(url, '_blank');
-    }
+      if (waRes.ok) {
+        const sentAtIso = new Date().toISOString();
+        const confirmedWa = { ...confirmed, whatsappSent: true, whatsappSentAt: sentAtIso };
+        setBookings(prev => {
+          const next = prev.map(b => (b.id === confirmed.id || b.bookingCode === confirmed.bookingCode) ? confirmedWa : b);
+          try { localStorage.setItem(STORAGE_KEYS.BOOKINGS, JSON.stringify(next)); } catch {}
+          return next;
+        });
+        saveBookingToFirestore(confirmedWa);
+      }
+    }).catch(() => {});
 
     return confirmed;
-  }, [bookings, courts, getAdminIdForCourt, isAdminAuthenticated, generateWhatsAppMessage]);
+  }, [bookings, courts, getAdminIdForCourt, getBusinessProfileForCourt, generateWhatsAppMessage]);
 
   // Admin Manual Booking
   const createManualAdminBooking = useCallback((input: BookingInput): Booking => {
@@ -1743,13 +1807,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch {}
     await saveBookingToFirestore(targetBooking);
 
-    // Record WhatsApp refund notification log and optionally open WhatsApp
-    if (paidAmount > 0 || options?.notifyWhatsApp) {
+    // Send cancellation/refund notice via WhatsApp Cloud API when applicable
+    if ((paidAmount > 0 || options?.notifyWhatsApp) && targetBooking.clientPhone) {
       const courtProfile = getBusinessProfileForCourt(court);
       const complexName = booking.establishment || courtProfile.complexName || 'DeportesPMY';
       const refundText = paidAmount > 0
         ? `Hola ${booking.clientName}, te informamos que tu turno #${booking.bookingCode} en *${complexName}* (${booking.courtName}, ${booking.date} ${booking.startTime} hs) fue *CANCELADO*. ${mpRefunded ? `Ya procesamos la devolución automática de *$${paidAmount.toLocaleString('es-AR')}* a tu cuenta de Mercado Pago (Ref: ${refundId}).` : `Corresponde la devolución de *$${paidAmount.toLocaleString('es-AR')}* abonados (Ref: ${refundId}).`}`
         : `Hola ${booking.clientName}, te informamos que tu reserva #${booking.bookingCode} en *${complexName}* (${booking.courtName}, ${booking.date} ${booking.startTime} hs) fue cancelada y el horario quedó liberado.`;
+
+      const waRes = await sendBookingConfirmationViaCloud({
+        booking: targetBooking,
+        customMessage: refundText,
+        profile: courtProfile,
+        eventType: 'cancelled',
+        mpRefunded,
+      });
 
       const log: WhatsAppNotificationLog = {
         id: `wa-ref-${Date.now()}`,
@@ -1758,22 +1830,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         recipientPhone: booking.clientPhone,
         messagePreview: refundText.slice(0, 160) + (refundText.length > 160 ? '...' : ''),
         sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
-        status: 'delivered',
+        status: waRes.ok ? 'sent' : 'failed',
         adminId: ownerAdminId,
-        courtId: booking.courtId
+        courtId: booking.courtId,
+        channel: 'cloud_api',
+        eventType: 'booking_cancelled',
+        messageId: waRes.messageId,
+        errorMessage: waRes.error,
       };
       setWhatsappLogs(prev => {
         const next = [log, ...prev];
         try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
         return next;
       });
-
-      if (options?.notifyWhatsApp && booking.clientPhone) {
-        const cleanPhone = booking.clientPhone.replace(/\D/g, '');
-        if (cleanPhone) {
-          window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(refundText)}`, '_blank');
-        }
-      }
     }
 
     sendBookingPushNotification({
@@ -1936,7 +2005,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cleanMissing = Math.max(1, Math.min(22, Math.floor(Number(missingCount) || 1)));
     const target = bookings.find((b) => b.id === bookingId || b.bookingCode.toUpperCase() === bookingId.toUpperCase());
     if (!target || target.status === 'cancelled') {
-      return { ok: false, pushResult: { ok: false, sentCount: 0, matchedCount: 0 } };
+      return {
+        ok: false,
+        pushResult: { ok: false, sentCount: 0, matchedCount: 0 },
+        waResult: { ok: false, configured: false, sentCount: 0, failedCount: 0, totalRecipients: 0, results: [] },
+      };
     }
 
     const myDevId = !isAdminAuthenticated ? getOrCreatePushDeviceId() : target.pushDeviceId;
@@ -1969,14 +2042,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     }
 
-    const pushResult = await sendMatchLookingForPlayersPush({
-      booking: updated,
-      missingPlayers: cleanMissing,
-      message: updated.lookingForPlayersMessage,
-    });
+    const [pushResult, waResult] = await Promise.all([
+      sendMatchLookingForPlayersPush({
+        booking: updated,
+        missingPlayers: cleanMissing,
+        message: updated.lookingForPlayersMessage,
+      }),
+      sendMissingPlayersWhatsAppViaCloud({
+        booking: updated,
+        missingPlayers: cleanMissing,
+        message: updated.lookingForPlayersMessage,
+        notifyAvailableToday: true,
+        eventType: 'missing_players',
+      }),
+    ]);
 
-    return { ok: true, booking: updated, pushResult };
-  }, [bookings, isAdminAuthenticated]);
+    if (waResult.totalRecipients > 0 || !waResult.configured) {
+      const court = courts.find((c) => c.id === updated.courtId);
+      const ownerAdminId = normalizeAdminKey(updated.adminId) || getAdminIdForCourt(court);
+      const log: WhatsAppNotificationLog = {
+        id: `wa-lfp-${Date.now()}`,
+        bookingCode: updated.bookingCode,
+        recipientName:
+          waResult.totalRecipients > 0
+            ? `${waResult.totalRecipients} jugador(es) disponible(s)`
+            : 'Jugadores disponibles',
+        recipientPhone: waResult.results.map((r) => r.phone).slice(0, 3).join(', ') || '-',
+        messagePreview: `Aviso de falta ${cleanMissing} jugador(es) para ${updated.courtName} (${updated.date} ${updated.startTime} hs).`,
+        sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
+        status: waResult.sentCount > 0 ? 'sent' : 'failed',
+        adminId: ownerAdminId,
+        courtId: updated.courtId,
+        channel: 'cloud_api',
+        eventType: 'missing_players',
+        errorMessage: waResult.error,
+      };
+      setWhatsappLogs((prev) => {
+        const next = [log, ...prev];
+        try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
+
+    return { ok: true, booking: updated, pushResult, waResult };
+  }, [bookings, courts, getAdminIdForCourt, isAdminAuthenticated]);
 
   const stopLookingForPlayers = useCallback(async (bookingId: string) => {
     const target = bookings.find((b) => b.id === bookingId || b.bookingCode.toUpperCase() === bookingId.toUpperCase());
@@ -2001,7 +2110,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) => {
     const target = bookings.find((b) => b.id === bookingId || b.bookingCode.toUpperCase() === bookingId.toUpperCase());
     if (!target || target.status === 'cancelled') {
-      return { ok: false, remainingPlayers: 0, pushSent: false, error: 'Este turno ya no está disponible.' };
+      return { ok: false, remainingPlayers: 0, pushSent: false, waSent: false, error: 'Este turno ya no está disponible.' };
     }
 
     const currentJoined = target.joinedPlayers || [];
@@ -2010,13 +2119,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       : 0;
 
     if (currentRemaining <= 0) {
-      return { ok: false, remainingPlayers: 0, pushSent: false, error: 'Ya se completaron todos los lugares para este partido.' };
+      return { ok: false, remainingPlayers: 0, pushSent: false, waSent: false, error: 'Ya se completaron todos los lugares para este partido.' };
     }
 
     const cleanName = player.name.trim();
     const cleanPhone = player.phone.trim();
     if (!cleanName || !cleanPhone) {
-      return { ok: false, remainingPlayers: currentRemaining, pushSent: false, error: 'Ingresá tu nombre y WhatsApp.' };
+      return { ok: false, remainingPlayers: currentRemaining, pushSent: false, waSent: false, error: 'Ingresá tu nombre y WhatsApp.' };
     }
 
     const newJoiner: JoinedPlayer = {
@@ -2052,20 +2161,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setUserEmail(player.email.trim());
     }
 
-    const pushRes = await sendPlayerJoinedMatchPush({
-      booking: updated,
-      playerName: cleanName,
-      playerPhone: cleanPhone,
-      remainingPlayers,
-    });
+    const [pushRes, waRes] = await Promise.all([
+      sendPlayerJoinedMatchPush({
+        booking: updated,
+        playerName: cleanName,
+        playerPhone: cleanPhone,
+        remainingPlayers,
+      }),
+      updated.clientPhone
+        ? sendMissingPlayersWhatsAppViaCloud({
+            booking: updated,
+            missingPlayers: Math.max(1, remainingPlayers),
+            eventType: 'player_joined',
+            playerName: cleanName,
+            playerPhone: cleanPhone,
+            remainingPlayers,
+            recipients: [{ name: updated.clientName, phone: updated.clientPhone }],
+          })
+        : Promise.resolve({
+            ok: false,
+            configured: false,
+            sentCount: 0,
+            failedCount: 0,
+            totalRecipients: 0,
+            results: [],
+          } as WhatsAppCloudBatchResult),
+    ]);
+
+    if (updated.clientPhone) {
+      const court = courts.find((c) => c.id === updated.courtId);
+      const ownerAdminId = normalizeAdminKey(updated.adminId) || getAdminIdForCourt(court);
+      const log: WhatsAppNotificationLog = {
+        id: `wa-join-${Date.now()}`,
+        bookingCode: updated.bookingCode,
+        recipientName: updated.clientName,
+        recipientPhone: updated.clientPhone,
+        messagePreview: `${cleanName} (${cleanPhone}) se sumó al partido #${updated.bookingCode}. ${remainingPlayers > 0 ? `Faltan ${remainingPlayers}.` : '¡Equipo completo!'}`,
+        sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
+        status: waRes.sentCount > 0 ? 'sent' : 'failed',
+        adminId: ownerAdminId,
+        courtId: updated.courtId,
+        channel: 'cloud_api',
+        eventType: 'player_joined',
+        messageId: waRes.results[0]?.messageId,
+        errorMessage: waRes.error,
+      };
+      setWhatsappLogs((prev) => {
+        const next = [log, ...prev];
+        try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
 
     return {
       ok: true,
       booking: updated,
       remainingPlayers,
       pushSent: pushRes.sentCount > 0,
+      waSent: waRes.sentCount > 0,
     };
-  }, [bookings]);
+  }, [bookings, courts, getAdminIdForCourt]);
 
   const removeJoinedPlayerFromBooking = useCallback(async (bookingId: string, joinedPlayerId: string) => {
     const target = bookings.find((b) => b.id === bookingId || b.bookingCode.toUpperCase() === bookingId.toUpperCase());
@@ -2134,16 +2289,113 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await deleteAvailablePlayerFromFirestore(playerId);
   }, [myAvailablePlayerIdState]);
 
-  const inviteAvailablePlayerToBooking = useCallback(async (player: AvailablePlayer, booking: Booking) => {
+  const inviteAvailablePlayerToBooking = useCallback(async (
+    player: AvailablePlayer,
+    booking: Booking,
+    options?: { channel?: 'both' | 'push' | 'whatsapp' }
+  ) => {
+    const channel = options?.channel || 'both';
     const missing = Math.max(1, (booking.neededPlayers || 1) - (booking.joinedPlayers?.length || 0));
-    const res = await sendPlayerInviteMatchPush({
+
+    const pushRes =
+      channel !== 'whatsapp'
+        ? await sendPlayerInviteMatchPush({
+            booking,
+            targetDeviceId: player.pushDeviceId,
+            targetPhone: player.phone,
+            missingPlayers: missing,
+          })
+        : { ok: false, sentCount: 0, matchedCount: 0 };
+
+    const waRes =
+      channel !== 'push'
+        ? await sendMissingPlayersWhatsAppViaCloud({
+            booking,
+            missingPlayers: missing,
+            message: booking.lookingForPlayersMessage,
+            eventType: 'player_invite',
+            recipients: [{ id: player.id, name: player.name, phone: player.phone }],
+          })
+        : ({
+            ok: false,
+            configured: false,
+            sentCount: 0,
+            failedCount: 0,
+            totalRecipients: 0,
+            results: [],
+          } as WhatsAppCloudBatchResult);
+
+    if (channel !== 'push') {
+      const court = courts.find((c) => c.id === booking.courtId);
+      const ownerAdminId = normalizeAdminKey(booking.adminId) || getAdminIdForCourt(court);
+      const log: WhatsAppNotificationLog = {
+        id: `wa-inv-${Date.now()}`,
+        bookingCode: booking.bookingCode,
+        recipientName: player.name,
+        recipientPhone: player.phone,
+        messagePreview: `Invitación a partido #${booking.bookingCode} en ${booking.courtName} (${booking.date} ${booking.startTime} hs).`,
+        sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
+        status: waRes.sentCount > 0 ? 'sent' : 'failed',
+        adminId: ownerAdminId,
+        courtId: booking.courtId,
+        channel: 'cloud_api',
+        eventType: 'missing_players',
+        messageId: waRes.results[0]?.messageId,
+        errorMessage: waRes.error,
+      };
+      setWhatsappLogs((prev) => {
+        const next = [log, ...prev];
+        try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
+
+    return {
+      ok: pushRes.sentCount > 0 || waRes.sentCount > 0,
+      sentCount: pushRes.sentCount,
+      waSent: waRes.sentCount > 0,
+      waError: waRes.error,
+    };
+  }, [courts, getAdminIdForCourt]);
+
+  const notifyJoinedPlayerViaWhatsApp = useCallback(async (
+    booking: Booking,
+    joinedPlayer: JoinedPlayer,
+    perPlayerCost: number
+  ): Promise<WhatsAppCloudBatchResult> => {
+    const waRes = await sendMissingPlayersWhatsAppViaCloud({
       booking,
-      targetDeviceId: player.pushDeviceId,
-      targetPhone: player.phone,
-      missingPlayers: missing,
+      missingPlayers: Math.max(1, (booking.neededPlayers || 1) - (booking.joinedPlayers?.length || 0)),
+      eventType: 'player_payment_share',
+      perPlayerAmount: perPlayerCost,
+      recipients: [{ id: joinedPlayer.id, name: joinedPlayer.name, phone: joinedPlayer.phone }],
     });
-    return { ok: res.ok, sentCount: res.sentCount };
-  }, []);
+
+    const court = courts.find((c) => c.id === booking.courtId);
+    const ownerAdminId = normalizeAdminKey(booking.adminId) || getAdminIdForCourt(court);
+    const log: WhatsAppNotificationLog = {
+      id: `wa-jp-${Date.now()}`,
+      bookingCode: booking.bookingCode,
+      recipientName: joinedPlayer.name,
+      recipientPhone: joinedPlayer.phone,
+      messagePreview: `Aviso de parte por jugador ($${perPlayerCost.toLocaleString('es-AR')}) para #${booking.bookingCode}.`,
+      sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
+      status: waRes.sentCount > 0 ? 'sent' : 'failed',
+      adminId: ownerAdminId,
+      courtId: booking.courtId,
+      channel: 'cloud_api',
+      eventType: 'missing_players',
+      messageId: waRes.results[0]?.messageId,
+      errorMessage: waRes.error,
+    };
+    setWhatsappLogs((prev) => {
+      const next = [log, ...prev];
+      try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
+      return next;
+    });
+
+    return waRes;
+  }, [courts, getAdminIdForCourt]);
 
   // Recurring weekly admin bookings (Turnos fijos / abonos)
   const createRecurringAdminBookings = useCallback(async (
@@ -2469,8 +2721,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem(STORAGE_KEYS.TOURNAMENTS, JSON.stringify(next));
     } catch {}
     await saveTournamentToFirestore(newTournament);
+
+    if (newTournament.status === 'open') {
+      const sportLabel = getSportLabel(newTournament.sport);
+      sendTournamentCreatedWhatsAppViaCloud({
+        tournament: {
+          id: newTournament.id,
+          title: newTournament.title,
+          sport: newTournament.sport,
+          sportLabel,
+          establishment: newTournament.establishment,
+          date: newTournament.date,
+          endDate: newTournament.endDate,
+          startTime: newTournament.startTime,
+          endTime: newTournament.endTime,
+          entryFee: newTournament.entryFee,
+        },
+        notifyAvailableToday: true,
+      }).then((waRes) => {
+        if (waRes.totalRecipients > 0 || !waRes.configured) {
+          const ownerAdminId = normalizeAdminKey(newTournament.adminId) || normalizeAdminKey(currentAdminUser?.username);
+          const log: WhatsAppNotificationLog = {
+            id: `wa-trn-${Date.now()}`,
+            bookingCode: newTournament.id.slice(-8).toUpperCase(),
+            recipientName:
+              waRes.totalRecipients > 0
+                ? `${waRes.totalRecipients} jugador(es) disponible(s)`
+                : 'Jugadores disponibles',
+            recipientPhone: waRes.results.map((r) => r.phone).slice(0, 3).join(', ') || '-',
+            messagePreview: `Nuevo torneo "${newTournament.title}" en ${newTournament.establishment || 'DeportesPMY'} (${newTournament.date} ${newTournament.startTime} hs).`,
+            sentAt: new Date().toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }),
+            status: waRes.sentCount > 0 ? 'sent' : 'failed',
+            adminId: ownerAdminId,
+            channel: 'cloud_api',
+            eventType: 'tournament_created',
+            errorMessage: waRes.error,
+          };
+          setWhatsappLogs((prev) => {
+            const next = [log, ...prev];
+            try { localStorage.setItem(STORAGE_KEYS.WHATSAPP, JSON.stringify(next)); } catch {}
+            return next;
+          });
+        }
+      }).catch(() => {});
+    }
+
     return newTournament;
-  }, [tournaments, currentAdminUser]);
+  }, [tournaments, currentAdminUser, getSportLabel]);
 
   const updateTournament = useCallback(async (tournament: Tournament) => {
     const next = tournaments.map(t => (t.id === tournament.id ? tournament : t));
@@ -3298,6 +3595,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     registerAvailablePlayer,
     unregisterAvailablePlayer,
     inviteAvailablePlayerToBooking,
+    notifyJoinedPlayerViaWhatsApp,
     createRecurringAdminBookings,
     cancelRecurringSeries,
     getHoursUntilBookingStart,
@@ -3402,6 +3700,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     registerAvailablePlayer,
     unregisterAvailablePlayer,
     inviteAvailablePlayerToBooking,
+    notifyJoinedPlayerViaWhatsApp,
     createRecurringAdminBookings,
     cancelRecurringSeries,
     getHoursUntilBookingStart,

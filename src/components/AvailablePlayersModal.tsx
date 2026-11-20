@@ -59,6 +59,7 @@ export const AvailablePlayersModal: React.FC<AvailablePlayersModalProps> = ({ is
   const [feedbackBanner, setFeedbackBanner] = useState<string | null>(null);
   const [selectedInviteBookingId, setSelectedInviteBookingId] = useState<string>('');
   const [invitingPlayerId, setInvitingPlayerId] = useState<string | null>(null);
+  const [invitingWaPlayerId, setInvitingWaPlayerId] = useState<string | null>(null);
 
   const todayStr = getLocalDayDateString();
 
@@ -135,16 +136,37 @@ export const AvailablePlayersModal: React.FC<AvailablePlayersModalProps> = ({ is
     if (!effectiveInviteBooking || invitingPlayerId) return;
     setInvitingPlayerId(player.id);
     try {
-      const res = await inviteAvailablePlayerToBooking(player, effectiveInviteBooking);
+      const res = await inviteAvailablePlayerToBooking(player, effectiveInviteBooking, { channel: 'push' });
       if (res.sentCount > 0) {
         setFeedbackBanner(`Invitación Push enviada a ${player.name} para tu turno #${effectiveInviteBooking.bookingCode}.`);
       } else {
         setFeedbackBanner(
-          `${player.name} no tiene notificaciones Push activas en este momento. Podés escribirle directo por WhatsApp.`
+          `${player.name} no tiene notificaciones Push activas en este momento. Podés invitarlo usando el botón WhatsApp Cloud.`
         );
       }
     } finally {
       setInvitingPlayerId(null);
+    }
+  };
+
+  const handleInvitePlayerViaWhatsApp = async (player: AvailablePlayer) => {
+    if (invitingWaPlayerId) return;
+    if (!effectiveInviteBooking) {
+      setFeedbackBanner('Primero reservá o seleccioná uno de tus turnos para enviar una invitación por WhatsApp Cloud.');
+      return;
+    }
+    setInvitingWaPlayerId(player.id);
+    try {
+      const res = await inviteAvailablePlayerToBooking(player, effectiveInviteBooking, { channel: 'whatsapp' });
+      if (res.waSent) {
+        setFeedbackBanner(`Invitación enviada por WhatsApp Cloud a ${player.name} (${player.phone}) para el turno #${effectiveInviteBooking.bookingCode}.`);
+      } else {
+        setFeedbackBanner(
+          res.waError || 'No se pudo enviar la invitación por WhatsApp Cloud API.'
+        );
+      }
+    } finally {
+      setInvitingWaPlayerId(null);
     }
   };
 
@@ -467,13 +489,6 @@ export const AvailablePlayersModal: React.FC<AvailablePlayersModalProps> = ({ is
             <div className="space-y-2.5">
               {filteredPlayers.map((player) => {
                 const isMe = player.id === myAvailablePlayerId;
-                const cleanPhone = (player.phone || '').replace(/\D/g, '');
-                const waText = effectiveInviteBooking
-                  ? `¡Hola ${player.name}! Vi que estás disponible hoy en DeportesPMY. Nos falta gente para ${effectiveInviteBooking.courtName} hoy ${effectiveInviteBooking.date} a las ${effectiveInviteBooking.startTime} hs (#${effectiveInviteBooking.bookingCode}). ¿Te sumás?`
-                  : `¡Hola ${player.name}! Vi tu perfil en la lista de jugadores disponibles de DeportesPMY. ¿Tenés ganas de jugar un partido hoy?`;
-                const waUrl = cleanPhone
-                  ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(waText)}`
-                  : `https://wa.me/?text=${encodeURIComponent(waText)}`;
 
                 return (
                   <div
@@ -542,15 +557,15 @@ export const AvailablePlayersModal: React.FC<AvailablePlayersModalProps> = ({ is
                       )}
 
                       {!isMe && (
-                        <a
-                          href={waUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] text-xs font-semibold inline-flex items-center gap-1.5"
+                        <button
+                          type="button"
+                          disabled={invitingWaPlayerId === player.id}
+                          onClick={() => handleInvitePlayerViaWhatsApp(player)}
+                          className="px-3 py-1.5 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 text-[var(--accent-ink)] text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                         >
                           <MessageCircle className="w-3.5 h-3.5" />
-                          <span>WhatsApp</span>
-                        </a>
+                          <span>{invitingWaPlayerId === player.id ? 'Enviando...' : 'WhatsApp Cloud'}</span>
+                        </button>
                       )}
                     </div>
                   </div>

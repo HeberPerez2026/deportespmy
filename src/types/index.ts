@@ -345,9 +345,13 @@ export interface WhatsAppNotificationLog {
   recipientPhone: string;
   messagePreview: string;
   sentAt: string;
-  status: 'sent' | 'delivered' | 'read';
+  status: 'sent' | 'delivered' | 'read' | 'failed';
   adminId?: string;
   courtId?: string;
+  channel?: 'cloud_api';
+  eventType?: 'booking_confirmed' | 'booking_approved' | 'booking_cancelled' | 'missing_players' | 'player_joined' | 'tournament_created' | 'manual_resend';
+  messageId?: string;
+  errorMessage?: string;
 }
 
 export type BookingPushEventType =
