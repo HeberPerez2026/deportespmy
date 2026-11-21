@@ -3,6 +3,12 @@ import { useApp } from '../../context/AppContext';
 import { AdminUser, SiteContent, FilterTag } from '../../types';
 import { DEFAULT_FILTER_TAGS } from '../../data/mockData';
 import { useBackHandler } from '../../hooks/useBackHandler';
+import { META_WHATSAPP_TEMPLATES } from '../../data/whatsappTemplates';
+import {
+  getWhatsAppCloudDiagnostics,
+  sendWhatsAppCloudTest,
+  WhatsAppCloudDiagnostics,
+} from '../../services/whatsappCloud';
 import {
   Crown,
   UserPlus,
@@ -19,6 +25,7 @@ import {
   PlayCircle,
   Type,
   MessageSquare,
+  MessageCircle,
   Star,
   RotateCcw,
   Search,
@@ -30,6 +37,10 @@ import {
   BellRing,
   Send,
   Loader2,
+  FileText,
+  Copy,
+  Check,
+  RefreshCw,
 } from 'lucide-react';
 
 interface TextFieldConfig {
@@ -186,7 +197,46 @@ export const SuperAdminPanel: React.FC = () => {
     currentAdminUser,
   } = useApp();
 
-  const [subSection, setSubSection] = useState<'admins' | 'push' | 'filters' | 'texts' | 'reviews' | 'footer' | 'players' | 'backups' | 'credentials'>('admins');
+  const [subSection, setSubSection] = useState<'admins' | 'whatsapp' | 'push' | 'filters' | 'texts' | 'reviews' | 'footer' | 'players' | 'backups' | 'credentials'>('admins');
+
+  // SuperAdmin WhatsApp Cloud diagnostics, templates & test state
+  const [waDiagnostics, setWaDiagnostics] = useState<WhatsAppCloudDiagnostics | null>(null);
+  const [waDiagLoading, setWaDiagLoading] = useState(false);
+  const [waCopiedId, setWaCopiedId] = useState<string | null>(null);
+  const [waTestTo, setWaTestTo] = useState('+54 9 280 ');
+  const [waTestMode, setWaTestMode] = useState<'hello_world' | 'booking_confirmed' | 'booking_approved' | 'booking_cancelled' | 'missing_players' | 'tournament_created'>('hello_world');
+  const [waTestLang, setWaTestLang] = useState('en_US');
+  const [waTestSending, setWaTestSending] = useState(false);
+  const [waTestResult, setWaTestResult] = useState<{
+    ok: boolean;
+    messageId?: string;
+    formattedTo?: string;
+    templateUsed?: string;
+    languageUsed?: string;
+    error?: string;
+  } | null>(null);
+
+  const loadWaDiagnostics = async () => {
+    setWaDiagLoading(true);
+    try {
+      const diag = await getWhatsAppCloudDiagnostics();
+      setWaDiagnostics(diag);
+    } finally {
+      setWaDiagLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (subSection === 'whatsapp' && isSuperAdmin) {
+      loadWaDiagnostics();
+    }
+  }, [subSection, isSuperAdmin]);
+
+  const handleWaCopy = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setWaCopiedId(id);
+    setTimeout(() => setWaCopiedId(null), 2000);
+  };
 
   // Additional SuperAdmin state
   const [arcaUrl, setArcaUrl] = useState(siteContent.arcaQrCodeUrl || '');
@@ -474,6 +524,19 @@ export const SuperAdminPanel: React.FC = () => {
         >
           <Users className="w-4 h-4" />
           <span>Administradores ({admins.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setSubSection('whatsapp')}
+          className={`px-4 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 whitespace-nowrap cursor-pointer border transition-colors ${
+            subSection === 'whatsapp'
+              ? 'bg-[var(--accent)] text-[var(--accent-ink)] border-[var(--accent)] shadow-sm'
+              : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
+          }`}
+        >
+          <MessageCircle className="w-4 h-4" />
+          <span>WhatsApp Cloud (Meta)</span>
         </button>
 
         <button
@@ -2352,6 +2415,356 @@ export const SuperAdminPanel: React.FC = () => {
                   <span>Borrar Datos del Establecimiento</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SECTION: WHATSAPP CLOUD API, WEBHOOK & META TEMPLATES (SUPERADMIN ONLY) */}
+      {subSection === 'whatsapp' && (
+        <div className="space-y-6">
+          {/* Header & Live Meta Number Check */}
+          <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] p-6 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[var(--border-hairline)] pb-4">
+              <div>
+                <p className="text-xs font-semibold text-[var(--accent-soft-text)] mb-0.5">
+                  Configuración Exclusiva SuperAdmin
+                </p>
+                <h3 className="text-lg font-bold text-[var(--text-primary)] font-heading">
+                  WhatsApp Cloud API, Webhook y Plantillas Meta
+                </h3>
+                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                  Verificá la salud de tu número en Meta Graph API, configurá el Webhook para detectar bloqueos silenciosos de entrega y administrá las 5 plantillas.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={waDiagLoading}
+                onClick={loadWaDiagnostics}
+                className="px-4 py-2 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] border border-[var(--border-hairline)] text-xs font-bold text-[var(--text-primary)] inline-flex items-center gap-1.5 cursor-pointer shrink-0 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${waDiagLoading ? 'animate-spin' : ''}`} />
+                <span>Actualizar Diagnóstico</span>
+              </button>
+            </div>
+
+            {waDiagnostics ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div className="p-4 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-[var(--text-primary)]">Estado en el Servidor Actual</span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        waDiagnostics.configured
+                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                      }`}
+                    >
+                      {waDiagnostics.configured ? `Conectado (${waDiagnostics.apiVersion})` : 'Faltan credenciales'}
+                    </span>
+                  </div>
+                  <div className="space-y-1 text-[11px] text-[var(--text-secondary)]">
+                    <p>Token (WHATSAPP_CLOUD_ACCESS_TOKEN): <strong>{waDiagnostics.hasAccessToken ? 'Cargado' : 'Falta'}</strong></p>
+                    <p>Phone ID (WHATSAPP_CLOUD_PHONE_NUMBER_ID): <strong>{waDiagnostics.hasPhoneNumberId ? 'Cargado' : 'Falta'}</strong></p>
+                    <p>Idioma plantillas (WHATSAPP_TEMPLATE_LANG): <strong className="font-mono">{waDiagnostics.templateLang}</strong></p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-2">
+                  <span className="font-bold text-[var(--text-primary)] block">Información Real del Número en Meta</span>
+                  {waDiagnostics.metaPhoneInfo ? (
+                    <div className="space-y-1 text-[11px] text-[var(--text-secondary)]">
+                      <p>Número emisor: <strong className="font-mono text-[var(--text-primary)]">{waDiagnostics.metaPhoneInfo.displayPhoneNumber || '-'}</strong></p>
+                      <p>Nombre verificado: <strong>{waDiagnostics.metaPhoneInfo.verifiedName || '-'}</strong> ({waDiagnostics.metaPhoneInfo.nameStatus || '-'})</p>
+                      <p>Modo de cuenta: <strong className="font-mono">{waDiagnostics.metaPhoneInfo.accountMode || '-'}</strong> · Calidad: <strong className="font-mono">{waDiagnostics.metaPhoneInfo.qualityRating || '-'}</strong></p>
+                      <p>Estado verificación: <strong className="font-mono">{waDiagnostics.metaPhoneInfo.codeVerificationStatus || waDiagnostics.metaPhoneInfo.status || '-'}</strong></p>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-rose-600 dark:text-rose-400">
+                      {waDiagnostics.metaPhoneError || 'No se pudo consultar Meta Graph API.'}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 text-xs text-[var(--text-muted)]">Cargando diagnóstico de Meta WhatsApp Cloud...</div>
+            )}
+
+            {/* Webhook Configuration & Events */}
+            <div className="p-4 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-3 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="font-bold text-[var(--text-primary)]">Webhook de Meta (para ver errores de entrega silenciosos)</h4>
+                  <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                    Configurá esta URL en <strong>Meta for Developers → WhatsApp → Configuración → Webhook</strong> y suscribite al campo <strong>messages</strong>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)] flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] block">URL de devolución de llamada</span>
+                    <code className="text-[11px] font-mono text-[var(--text-primary)] truncate block">
+                      {`${typeof window !== 'undefined' ? window.location.origin : 'https://deportespmy.com.ar'}/api/whatsapp/webhook`}
+                    </code>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleWaCopy(
+                        'webhook-url',
+                        `${typeof window !== 'undefined' ? window.location.origin : 'https://deportespmy.com.ar'}/api/whatsapp/webhook`
+                      )
+                    }
+                    className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer shrink-0"
+                  >
+                    {waCopiedId === 'webhook-url' ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                    <span>{waCopiedId === 'webhook-url' ? 'Copiada' : 'Copiar'}</span>
+                  </button>
+                </div>
+
+                <div className="p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)]">
+                  <span className="text-[10px] uppercase tracking-wider text-[var(--text-muted)] block">Token de verificación (WHATSAPP_WEBHOOK_VERIFY_TOKEN)</span>
+                  <p className="text-[11px] font-mono text-[var(--text-primary)] mt-0.5">
+                    {waDiagnostics?.webhookVerifyTokenCustom
+                      ? 'Personalizado en variable de entorno del servidor'
+                      : 'deportespmy_wa_verify (valor por defecto si no cargaste la variable)'}
+                  </p>
+                </div>
+              </div>
+
+              {waDiagnostics && waDiagnostics.webhookEvents.length > 0 ? (
+                <div className="space-y-1.5 pt-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] block">
+                    Últimos eventos de entrega reportados por Meta Webhook ({waDiagnostics.webhookEvents.length}):
+                  </span>
+                  <div className="max-h-48 overflow-y-auto divide-y divide-[var(--border-hairline)] border border-[var(--border-hairline)] rounded-lg bg-[var(--bg-surface)]">
+                    {waDiagnostics.webhookEvents.map((ev, idx) => (
+                      <div key={`${ev.messageId}-${idx}`} className="px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`px-1.5 py-0.5 rounded font-bold uppercase text-[10px] ${
+                              ev.status === 'failed'
+                                ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
+                                : ev.status === 'delivered' || ev.status === 'read'
+                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-[var(--bg-subtle)] text-[var(--text-secondary)]'
+                            }`}
+                          >
+                            {ev.status}
+                          </span>
+                          <span className="font-mono text-[var(--text-muted)]">{ev.recipientMasked}</span>
+                          {ev.errorCode && (
+                            <span className="text-rose-600 dark:text-rose-400 font-semibold">
+                              Meta #{ev.errorCode}: {ev.errorTitle || ''} {ev.errorDetails || ''}
+                            </span>
+                          )}
+                        </div>
+                        <span className="font-mono text-[10px] text-[var(--text-muted)]">
+                          {new Date(ev.receivedAt).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Aún no llegaron eventos de webhook. Cuando configures el Webhook en Meta, aquí aparecerán en tiempo real los estados (delivered / failed y el código exacto de error si Meta bloquea una entrega).
+                </p>
+              )}
+            </div>
+
+            {/* Test Send Tool */}
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setWaTestSending(true);
+                setWaTestResult(null);
+                try {
+                  const res = await sendWhatsAppCloudTest({
+                    to: waTestTo,
+                    mode: waTestMode,
+                    languageCode: waTestLang,
+                  });
+                  setWaTestResult(res);
+                } finally {
+                  setWaTestSending(false);
+                }
+              }}
+              className="p-4 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] space-y-3 text-xs"
+            >
+              <div>
+                <h4 className="font-bold text-[var(--text-primary)]">Prueba rápida de envío en Meta</h4>
+                <p className="text-[11px] text-[var(--text-secondary)]">
+                  Probá primero con <strong>hello_world (en_US)</strong> de Meta para verificar entrega real, y luego con tus plantillas personalizadas.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+                <input
+                  type="text"
+                  required
+                  value={waTestTo}
+                  onChange={(e) => setWaTestTo(e.target.value)}
+                  placeholder="+54 9 280 4..."
+                  className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--text-primary)]"
+                />
+                <select
+                  value={waTestMode}
+                  onChange={(e) => {
+                    const nextMode = e.target.value as typeof waTestMode;
+                    setWaTestMode(nextMode);
+                    setWaTestLang(nextMode === 'hello_world' ? 'en_US' : (waDiagnostics?.templateLang || 'es_AR'));
+                  }}
+                  className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg px-3 py-2 text-xs text-[var(--text-primary)]"
+                >
+                  <option value="hello_world">hello_world (plantilla base Meta)</option>
+                  <option value="booking_confirmed">Confirmación de Reserva</option>
+                  <option value="booking_approved">Aprobación de Turno</option>
+                  <option value="booking_cancelled">Cancelación de Turno</option>
+                  <option value="missing_players">Jugadores Faltantes</option>
+                  <option value="tournament_created">Nuevo Torneo</option>
+                </select>
+                <input
+                  type="text"
+                  value={waTestLang}
+                  onChange={(e) => setWaTestLang(e.target.value)}
+                  placeholder="Idioma (ej: en_US o es_AR)"
+                  className="bg-[var(--bg-surface)] border border-[var(--border-hairline)] rounded-lg px-3 py-2 text-xs font-mono text-[var(--text-primary)]"
+                />
+                <button
+                  type="submit"
+                  disabled={waTestSending}
+                  className="px-4 py-2 rounded-lg bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  {waTestSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                  <span>{waTestSending ? 'Enviando...' : 'Enviar Prueba'}</span>
+                </button>
+              </div>
+              {waTestResult && (
+                <div
+                  className={`p-3 rounded-lg border text-[11px] ${
+                    waTestResult.ok
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-200'
+                      : 'bg-rose-500/10 border-rose-500/30 text-rose-800 dark:text-rose-200'
+                  }`}
+                >
+                  {waTestResult.ok ? (
+                    <p>
+                      Aceptado por Meta hacia <strong className="font-mono">{waTestResult.formattedTo}</strong> · Plantilla{' '}
+                      <strong className="font-mono">{waTestResult.templateUsed}</strong> ({waTestResult.languageUsed}) · ID:{' '}
+                      <strong className="font-mono">{waTestResult.messageId || 'OK'}</strong>. Si no llega al celular, revisá el Webhook arriba (puede ser Sandbox / falta método de pago o idioma).
+                    </p>
+                  ) : (
+                    <p>Error de Meta ({waTestResult.formattedTo || waTestTo}): <strong>{waTestResult.error}</strong></p>
+                  )}
+                </div>
+              )}
+            </form>
+          </div>
+
+          {/* 5 Meta Templates (SuperAdmin Only) */}
+          <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] p-6 space-y-4">
+            <div className="flex items-center gap-2.5 border-b border-[var(--border-hairline)] pb-3">
+              <FileText className="w-4 h-4 text-[var(--accent-soft-text)] shrink-0" />
+              <div>
+                <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                  Plantillas listas para Meta WhatsApp Manager (5)
+                </h3>
+                <p className="text-[11px] text-[var(--text-secondary)]">
+                  Visible exclusivamente para SuperAdmin. Copiá el cuerpo exacto en Meta Business Suite y verificá su nombre en las variables de entorno.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {META_WHATSAPP_TEMPLATES.map((tpl) => {
+                const envMap = waDiagnostics?.templates;
+                const configuredName =
+                  tpl.id === 'booking_confirmed'
+                    ? envMap?.bookingConfirmed
+                    : tpl.id === 'booking_approved'
+                    ? envMap?.bookingApproved
+                    : tpl.id === 'booking_cancelled'
+                    ? envMap?.bookingCancelled
+                    : tpl.id === 'missing_players'
+                    ? envMap?.missingPlayers
+                    : envMap?.tournamentCreated;
+
+                return (
+                  <div
+                    key={tpl.id}
+                    className="p-4 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)] flex flex-col justify-between gap-3"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h4 className="text-xs font-bold text-[var(--text-primary)]">{tpl.title}</h4>
+                          <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">{tpl.description}</p>
+                        </div>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                            configuredName
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                              : 'bg-[var(--bg-subtle)] text-[var(--text-muted)]'
+                          }`}
+                        >
+                          {configuredName ? `Activa (${configuredName})` : 'Texto directo'}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono text-[var(--text-secondary)]">
+                        <span className="px-1.5 py-0.5 rounded bg-[var(--bg-subtle)]">Sugerido: {tpl.metaName}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-[var(--bg-subtle)]">{tpl.category}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-[var(--bg-subtle)]">{tpl.language}</span>
+                        <span className="px-1.5 py-0.5 rounded bg-[var(--accent-soft)] text-[var(--accent-soft-text)]">
+                          {tpl.envVar}
+                        </span>
+                      </div>
+
+                      <pre className="p-3 rounded-lg bg-[var(--bg-surface)] border border-[var(--border-hairline)] text-[11px] font-sans text-[var(--text-primary)] whitespace-pre-wrap leading-relaxed">
+                        {tpl.body}
+                      </pre>
+
+                      <div className="space-y-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] block">
+                          Variables ordenadas:
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {tpl.variables.map((v) => (
+                            <span
+                              key={v.index}
+                              className="text-[10px] px-2 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border-hairline)] text-[var(--text-secondary)]"
+                              title={`Ejemplo: ${v.example}`}
+                            >
+                              <strong className="font-mono text-[var(--accent-soft-text)]">{`{{${v.index}}}`}</strong> {v.label}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleWaCopy(`tpl-name-${tpl.id}`, tpl.metaName)}
+                        className="px-2.5 py-1.5 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        {waCopiedId === `tpl-name-${tpl.id}` ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                        <span>{waCopiedId === `tpl-name-${tpl.id}` ? 'Nombre copiado' : 'Copiar nombre'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleWaCopy(`tpl-body-${tpl.id}`, tpl.body)}
+                        className="px-3 py-1.5 rounded-lg bg-[var(--accent-soft)] text-[var(--accent-soft-text)] hover:opacity-85 text-[11px] font-semibold inline-flex items-center gap-1 cursor-pointer"
+                      >
+                        {waCopiedId === `tpl-body-${tpl.id}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                        <span>{waCopiedId === `tpl-body-${tpl.id}` ? 'Plantilla copiada' : 'Copiar plantilla'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

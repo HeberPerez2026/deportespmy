@@ -274,3 +274,89 @@ export async function sendTournamentCreatedWhatsAppViaCloud(params: {
     };
   }
 }
+
+export interface WhatsAppWebhookEventItem {
+  receivedAt: string;
+  messageId: string;
+  status: string;
+  recipientMasked: string;
+  errorCode?: number;
+  errorTitle?: string;
+  errorDetails?: string;
+}
+
+export interface WhatsAppCloudDiagnostics {
+  configured: boolean;
+  hasAccessToken: boolean;
+  hasPhoneNumberId: boolean;
+  apiVersion: string;
+  templateLang: string;
+  webhookVerifyTokenCustom: boolean;
+  templates: {
+    bookingConfirmed: string | null;
+    bookingApproved: string | null;
+    bookingCancelled: string | null;
+    missingPlayers: string | null;
+    tournamentCreated: string | null;
+  };
+  metaPhoneInfo: {
+    displayPhoneNumber: string | null;
+    verifiedName: string | null;
+    qualityRating: string | null;
+    codeVerificationStatus: string | null;
+    nameStatus: string | null;
+    status: string | null;
+    platformType: string | null;
+    accountMode: string | null;
+  } | null;
+  metaPhoneError: string | null;
+  webhookEvents: WhatsAppWebhookEventItem[];
+}
+
+export async function getWhatsAppCloudDiagnostics(): Promise<WhatsAppCloudDiagnostics | null> {
+  try {
+    const resp = await apiFetch('/api/whatsapp/diagnostics', {
+      headers: { Accept: 'application/json' },
+    });
+    if (!resp.ok) return null;
+    return await safeParseJsonResponse(resp);
+  } catch {
+    return null;
+  }
+}
+
+export async function sendWhatsAppCloudTest(params: {
+  to: string;
+  mode: string;
+  languageCode?: string;
+}): Promise<{
+  ok: boolean;
+  messageId?: string;
+  formattedTo?: string;
+  templateUsed?: string;
+  languageUsed?: string;
+  error?: string;
+}> {
+  try {
+    const resp = await apiFetch('/api/whatsapp/test-send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(params),
+    });
+    const data = await safeParseJsonResponse(resp);
+    return {
+      ok: Boolean(resp.ok && data?.ok),
+      messageId: data?.messageId ? String(data.messageId) : undefined,
+      formattedTo: data?.formattedTo ? String(data.formattedTo) : undefined,
+      templateUsed: data?.templateUsed ? String(data.templateUsed) : undefined,
+      languageUsed: data?.languageUsed ? String(data.languageUsed) : undefined,
+      error: data?.error ? String(data.error) : !resp.ok ? `Error HTTP ${resp.status}` : undefined,
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      error: err?.message || 'Error ejecutando prueba de envío WhatsApp Cloud.',
+    };
+  }
+}
+

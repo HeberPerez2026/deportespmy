@@ -814,6 +814,7 @@ interface WhatsAppCloudConfig {
   missingPlayersTemplate: string;
   tournamentCreatedTemplate: string;
   templateLang: string;
+  webhookVerifyToken: string;
 }
 
 function resolveWhatsAppCloudConfig(): WhatsAppCloudConfig {
@@ -839,6 +840,7 @@ function resolveWhatsAppCloudConfig(): WhatsAppCloudConfig {
     missingPlayersTemplate: cleanEnvValue(process.env.WHATSAPP_TEMPLATE_MISSING_PLAYERS) || '',
     tournamentCreatedTemplate: cleanEnvValue(process.env.WHATSAPP_TEMPLATE_TOURNAMENT_CREATED) || '',
     templateLang: cleanEnvValue(process.env.WHATSAPP_TEMPLATE_LANG) || 'es_AR',
+    webhookVerifyToken: cleanEnvValue(process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN) || 'deportespmy_wa_verify',
   };
 }
 
@@ -887,6 +889,10 @@ function formatPhoneForWhatsAppCloud(rawPhone?: string): string {
     }
   }
 
+  if (digits.length === 11 && digits.startsWith('9')) {
+    return `54${digits}`;
+  }
+
   if (digits.length === 10) {
     return `549${digits}`;
   }
@@ -907,6 +913,7 @@ async function sendWhatsAppCloudMessage(params: {
   textBody: string;
   templateName?: string;
   templateParams?: string[];
+  languageCode?: string;
   previewUrl?: boolean;
 }): Promise<{
   ok: boolean;
@@ -914,6 +921,7 @@ async function sendWhatsAppCloudMessage(params: {
   status: 'sent' | 'failed';
   messageId?: string;
   to?: string;
+  metaErrorCode?: number;
   error?: string;
 }> {
   const cfg = resolveWhatsAppCloudConfig();
@@ -937,6 +945,7 @@ async function sendWhatsAppCloudMessage(params: {
   }
 
   const endpoint = `https://graph.facebook.com/${encodeURIComponent(cfg.apiVersion)}/${encodeURIComponent(cfg.phoneNumberId)}/messages`;
+  const effectiveLang = (params.languageCode || cfg.templateLang || 'es_AR').trim();
 
   const payload: Record<string, any> =
     params.templateName && params.templateName.trim().length > 0
@@ -947,7 +956,7 @@ async function sendWhatsAppCloudMessage(params: {
           type: 'template',
           template: {
             name: params.templateName.trim(),
-            language: { code: cfg.templateLang },
+            language: { code: effectiveLang },
             ...(Array.isArray(params.templateParams) && params.templateParams.length > 0
               ? {
                   components: [
@@ -988,6 +997,7 @@ async function sendWhatsAppCloudMessage(params: {
 
     const data: any = await resp.json().catch(() => ({}));
     if (!resp.ok || data?.error) {
+      const errCode = typeof data?.error?.code === 'number' ? data.error.code : undefined;
       const apiErr =
         data?.error?.error_user_msg ||
         data?.error?.message ||
@@ -997,7 +1007,8 @@ async function sendWhatsAppCloudMessage(params: {
         configured: true,
         status: 'failed',
         to: formattedTo,
-        error: String(apiErr),
+        metaErrorCode: errCode,
+        error: errCode ? `[Meta #${errCode}] ${String(apiErr)}` : String(apiErr),
       };
     }
 
@@ -1017,6 +1028,71 @@ async function sendWhatsAppCloudMessage(params: {
       to: formattedTo,
       error: err?.message || 'Error de red comunicando con WhatsApp Cloud API.',
     };
+  }
+}
+
+interface WhatsAppWebhookEventRecord {
+  receivedAt: string;
+  messageId: string;
+  status: string;
+  recipientMasked: string;
+  errorCode?: number;
+  errorTitle?: string;
+  errorDetails?: string;
+}
+
+let cachedWhatsAppWebhookEvents: WhatsAppWebhookEventRecord[] = [];
+
+function maskPhoneTail(phone?: string): string {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length <= 4) return digits || '-';
+  return `***${digits.slice(-4)}`;
+}
+
+async function loadWhatsAppWebhookEvents(): Promise<WhatsAppWebhookEventRecord[]> {
+  const docUrl = getFirestoreDocUrl('settings', 'whatsappWebhookEvents');
+  if (docUrl) {
+    try {
+      const resp = await resilientFetch(docUrl, { timeoutMs: 5000 });
+      if (resp.ok) {
+        const json: any = await resp.json();
+        const rawJson = json?.fields?.eventsJson?.stringValue;
+        if (rawJson) {
+          const parsed = JSON.parse(rawJson);
+          if (Array.isArray(parsed)) {
+            cachedWhatsAppWebhookEvents = parsed.slice(0, 25);
+            return cachedWhatsAppWebhookEvents;
+          }
+        }
+      }
+    } catch {}
+  }
+  return cachedWhatsAppWebhookEvents;
+}
+
+async function appendWhatsAppWebhookEvents(newEvents: WhatsAppWebhookEventRecord[]): Promise<void> {
+  if (newEvents.length === 0) return;
+  const existing = await loadWhatsAppWebhookEvents();
+  const merged = [...newEvents, ...existing].slice(0, 25);
+  cachedWhatsAppWebhookEvents = merged;
+
+  const docUrl = getFirestoreDocUrl('settings', 'whatsappWebhookEvents');
+  if (docUrl) {
+    try {
+      await resilientFetch(docUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fields: {
+            eventsJson: { stringValue: JSON.stringify(merged) },
+            updatedAt: { stringValue: new Date().toISOString() },
+          },
+        }),
+        timeoutMs: 6000,
+      });
+    } catch (err) {
+      console.warn('[WhatsApp Webhook] No se pudieron guardar eventos en Firestore REST:', err);
+    }
   }
 }
 
@@ -2623,6 +2699,207 @@ export function createApiApp() {
         results: [],
         error: err?.message || 'Error enviando difusión de torneo por WhatsApp Cloud.',
       });
+    }
+  });
+
+  // Meta WhatsApp Webhook verification (GET)
+  app.get('/api/whatsapp/webhook', (req, res) => {
+    const cfg = resolveWhatsAppCloudConfig();
+    const mode = String(req.query['hub.mode'] || '');
+    const token = String(req.query['hub.verify_token'] || '');
+    const challenge = String(req.query['hub.challenge'] || '');
+
+    if (mode === 'subscribe' && token === cfg.webhookVerifyToken) {
+      return res.status(200).send(challenge);
+    }
+    return res.sendStatus(403);
+  });
+
+  // Meta WhatsApp Webhook receiver (POST) — captures async delivery statuses/errors (e.g. 131042, 131030, 131047, 132001)
+  app.post('/api/whatsapp/webhook', async (req, res) => {
+    try {
+      const payload = req.body || {};
+      const entries = Array.isArray(payload?.entry) ? payload.entry : [];
+      const captured: WhatsAppWebhookEventRecord[] = [];
+
+      for (const entry of entries) {
+        const changes = Array.isArray(entry?.changes) ? entry.changes : [];
+        for (const change of changes) {
+          const statuses = Array.isArray(change?.value?.statuses) ? change.value.statuses : [];
+          for (const st of statuses) {
+            const firstErr = Array.isArray(st?.errors) && st.errors.length > 0 ? st.errors[0] : undefined;
+            const rec: WhatsAppWebhookEventRecord = {
+              receivedAt: new Date().toISOString(),
+              messageId: String(st?.id || '').slice(0, 120),
+              status: String(st?.status || 'unknown').slice(0, 32),
+              recipientMasked: maskPhoneTail(st?.recipient_id),
+              ...(typeof firstErr?.code === 'number' ? { errorCode: firstErr.code } : {}),
+              ...(firstErr?.title ? { errorTitle: String(firstErr.title).slice(0, 180) } : {}),
+              ...(firstErr?.error_data?.details || firstErr?.message
+                ? { errorDetails: String(firstErr?.error_data?.details || firstErr?.message).slice(0, 300) }
+                : {}),
+            };
+            captured.push(rec);
+            if (rec.status === 'failed') {
+              console.warn(`[WhatsApp Webhook] Fallo entrega ${rec.messageId} (${rec.recipientMasked}): #${rec.errorCode || '-'} ${rec.errorTitle || ''} ${rec.errorDetails || ''}`);
+            }
+          }
+        }
+      }
+
+      if (captured.length > 0) {
+        await appendWhatsAppWebhookEvents(captured);
+      }
+    } catch (err) {
+      console.warn('[WhatsApp Webhook] Error procesando evento POST:', err);
+    }
+    return res.status(200).send('EVENT_RECEIVED');
+  });
+
+  // SuperAdmin Diagnostics: non-secret Graph API phone check + recent webhook events
+  app.get('/api/whatsapp/diagnostics', async (_req, res) => {
+    const cfg = resolveWhatsAppCloudConfig();
+    const webhookEvents = await loadWhatsAppWebhookEvents();
+    let metaPhoneInfo: Record<string, any> | null = null;
+    let metaPhoneError: string | null = null;
+
+    if (cfg.accessToken && cfg.phoneNumberId) {
+      try {
+        const url = `https://graph.facebook.com/${encodeURIComponent(cfg.apiVersion)}/${encodeURIComponent(cfg.phoneNumberId)}?fields=display_phone_number,verified_name,quality_rating,code_verification_status,name_status,status,platform_type,account_mode`;
+        const resp = await resilientFetch(url, {
+          headers: { Authorization: `Bearer ${cfg.accessToken}`, Accept: 'application/json' },
+          timeoutMs: 8000,
+        });
+        const data: any = await resp.json().catch(() => ({}));
+        if (!resp.ok || data?.error) {
+          metaPhoneError = data?.error?.message || `HTTP ${resp.status}`;
+        } else {
+          metaPhoneInfo = {
+            displayPhoneNumber: data?.display_phone_number || null,
+            verifiedName: data?.verified_name || null,
+            qualityRating: data?.quality_rating || null,
+            codeVerificationStatus: data?.code_verification_status || null,
+            nameStatus: data?.name_status || null,
+            status: data?.status || null,
+            platformType: data?.platform_type || null,
+            accountMode: data?.account_mode || null,
+          };
+        }
+      } catch (err: any) {
+        metaPhoneError = err?.message || 'No se pudo consultar el número en Meta Graph API.';
+      }
+    }
+
+    res.json({
+      configured: Boolean(cfg.accessToken && cfg.phoneNumberId),
+      hasAccessToken: Boolean(cfg.accessToken),
+      hasPhoneNumberId: Boolean(cfg.phoneNumberId),
+      apiVersion: cfg.apiVersion,
+      templateLang: cfg.templateLang,
+      webhookVerifyTokenCustom: Boolean(cleanEnvValue(process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN)),
+      templates: {
+        bookingConfirmed: cfg.bookingConfirmedTemplate || null,
+        bookingApproved: cfg.bookingApprovedTemplate || null,
+        bookingCancelled: cfg.bookingCancelledTemplate || null,
+        missingPlayers: cfg.missingPlayersTemplate || null,
+        tournamentCreated: cfg.tournamentCreatedTemplate || null,
+      },
+      metaPhoneInfo,
+      metaPhoneError,
+      webhookEvents,
+    });
+  });
+
+  // SuperAdmin Diagnostic Test Send (supports hello_world or configured templates)
+  app.post('/api/whatsapp/test-send', async (req, res) => {
+    try {
+      const cfg = resolveWhatsAppCloudConfig();
+      const to = String(req.body?.to || '').trim();
+      const mode = String(req.body?.mode || 'hello_world').trim();
+      const customLang = String(req.body?.languageCode || '').trim();
+
+      if (!to) {
+        return res.status(400).json({ ok: false, error: 'Ingresá un número de WhatsApp destino.' });
+      }
+      if (!cfg.accessToken || !cfg.phoneNumberId) {
+        return res.status(400).json({ ok: false, error: getMissingWhatsAppConfigError(cfg) });
+      }
+
+      let templateName: string | undefined;
+      let templateParams: string[] | undefined;
+      let languageCode = customLang || cfg.templateLang;
+      let textBody = 'Prueba de conexión desde DeportesPMY (WhatsApp Cloud API).';
+
+      if (mode === 'hello_world') {
+        templateName = 'hello_world';
+        languageCode = customLang || 'en_US';
+      } else if (mode === 'booking_confirmed' && cfg.bookingConfirmedTemplate) {
+        templateName = cfg.bookingConfirmedTemplate;
+        templateParams = [
+          'Jugador Prueba',
+          'DeportesPMY',
+          'Cancha 1',
+          '2026-11-21 20:00 hs',
+          '#TEST-001',
+          'Abonado $15.000 · Saldo en cancha $15.000',
+        ];
+      } else if (mode === 'booking_approved' && cfg.bookingApprovedTemplate) {
+        templateName = cfg.bookingApprovedTemplate;
+        templateParams = [
+          'Jugador Prueba',
+          'DeportesPMY',
+          'Cancha 1',
+          '2026-11-21 20:00 hs',
+          '#TEST-001',
+          'Aprobado $15.000 · Saldo $15.000',
+        ];
+      } else if (mode === 'booking_cancelled' && cfg.bookingCancelledTemplate) {
+        templateName = cfg.bookingCancelledTemplate;
+        templateParams = [
+          'Jugador Prueba',
+          '#TEST-001',
+          'DeportesPMY',
+          'Cancha 1 · 2026-11-21 20:00 hs',
+          'Sin importe pendiente',
+        ];
+      } else if (mode === 'missing_players' && cfg.missingPlayersTemplate) {
+        templateName = cfg.missingPlayersTemplate;
+        templateParams = [
+          'Jugador Prueba',
+          '2',
+          'DeportesPMY · Cancha 1',
+          '2026-11-21 20:00 hs',
+          'https://deportespmy.com.ar',
+        ];
+      } else if (mode === 'tournament_created' && cfg.tournamentCreatedTemplate) {
+        templateName = cfg.tournamentCreatedTemplate;
+        templateParams = [
+          'Jugador Prueba',
+          'DeportesPMY',
+          'Torneo Relámpago Prueba',
+          'Pádel',
+          '2026-11-28 · 16:00 hs',
+          '$40.000 por equipo',
+          'https://deportespmy.com.ar/?tab=torneos',
+        ];
+      }
+
+      const result = await sendWhatsAppCloudMessage({
+        to,
+        textBody,
+        templateName,
+        templateParams,
+        languageCode,
+      });
+
+      return res.json({
+        ...result,
+        formattedTo: result.to || formatPhoneForWhatsAppCloud(to),
+        templateUsed: templateName || '(texto directo 24h)',
+        languageUsed: templateName ? languageCode : '-',
+      });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, error: err?.message || 'Error en envío de prueba.' });
     }
   });
 

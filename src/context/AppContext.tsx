@@ -1032,19 +1032,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const adminKey = currentAdminUser ? currentAdminUser.username : 'heberperez1984';
     const newCourt: Court = normalizeCourtSchedule({
       ...courtData,
-      id: `cancha-${Date.now()}`,
+      id: `cancha-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       rating: 0,
       reviewCount: 0,
       adminId: adminKey,
       establishment: courtData.establishment || businessProfile.complexName || 'DeportesPMY'
     });
 
-    const nextCourts = [...courts, newCourt];
-    setCourts(nextCourts);
-    localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(nextCourts));
+    setCourts((prev) => {
+      const nextCourts = [...prev, newCourt];
+      try {
+        localStorage.setItem(STORAGE_KEYS.COURTS, JSON.stringify(nextCourts));
+      } catch {}
+      return nextCourts;
+    });
     await saveCourtToFirestore(newCourt);
     return newCourt;
-  }, [courts, businessProfile.complexName, currentAdminUser]);
+  }, [businessProfile.complexName, currentAdminUser]);
 
   // Delete Court Action (deletes in Firestore and propagates across all devices)
   const deleteCourt = useCallback(async (courtId: string) => {

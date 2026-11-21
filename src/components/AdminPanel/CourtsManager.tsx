@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Court, SportType } from '../../types';
 import { processImageUpload } from '../../utils/imageUpload';
@@ -44,10 +44,16 @@ export const CourtsManager: React.FC = () => {
   const [editingCourt, setEditingCourt] = useState<Court | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isCreatingCourt, setIsCreatingCourt] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [isDeletingCourt, setIsDeletingCourt] = useState(false);
+  const createLockRef = useRef(false);
+  const editLockRef = useRef(false);
+  const deleteLockRef = useRef(false);
 
-  useBackHandler(isAddModalOpen, () => setIsAddModalOpen(false), 'admin-add-court');
-  useBackHandler(Boolean(editingCourt), () => setEditingCourt(null), 'admin-edit-court');
-  useBackHandler(Boolean(deleteConfirmId), () => setDeleteConfirmId(null), 'admin-delete-court');
+  useBackHandler(isAddModalOpen, () => { if (!isCreatingCourt) setIsAddModalOpen(false); }, 'admin-add-court');
+  useBackHandler(Boolean(editingCourt), () => { if (!isSavingEdit) setEditingCourt(null); }, 'admin-edit-court');
+  useBackHandler(Boolean(deleteConfirmId), () => { if (!isDeletingCourt) setDeleteConfirmId(null); }, 'admin-delete-court');
 
   // New court form state
   const [name, setName] = useState('');
@@ -219,59 +225,81 @@ export const CourtsManager: React.FC = () => {
 
   const handleCreateCourt = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!name.trim() || createLockRef.current || isCreatingCourt) return;
 
-    const amenities = amenitiesInput.split(',').map(s => s.trim()).filter(Boolean);
-    const finalGallery = attachedImages.length > 0 ? attachedImages : [imageUrl.trim()].filter(Boolean);
-    const primaryImage = finalGallery[0] || sportOptions[0]?.defaultImg || SPORT_DEFAULT_IMAGES.futbol5;
+    createLockRef.current = true;
+    setIsCreatingCourt(true);
+    try {
+      const amenities = amenitiesInput.split(',').map(s => s.trim()).filter(Boolean);
+      const finalGallery = attachedImages.length > 0 ? attachedImages : [imageUrl.trim()].filter(Boolean);
+      const primaryImage = finalGallery[0] || sportOptions[0]?.defaultImg || SPORT_DEFAULT_IMAGES.futbol5;
 
-    const openNum = parseSlotHourOrder(horaInicio);
-    const closeNum = Math.max(openNum, parseSlotHourOrder(horaFin));
+      const openNum = parseSlotHourOrder(horaInicio);
+      const closeNum = Math.max(openNum, parseSlotHourOrder(horaFin));
 
-    await addCourt({
-      name: name.trim(),
-      establishment: establishment.trim(),
-      sport,
-      surface: surface.trim(),
-      isIndoor,
-      hasLighting,
-      hourlyRateDay: Number(hourlyRateDay),
-      hourlyRateNight: Number(hourlyRateNight),
-      hora_inicio: formatSlotHour(openNum),
-      hora_fin: formatSlotHour(closeNum),
-      openHour: openNum,
-      closeHour: closeNum,
-      nightStartHour,
-      depositRequired: Number(depositRequired),
-      imageUrl: primaryImage,
-      ...(attachedImages.length > 0 ? { images: attachedImages } : {}),
-      amenities,
-      description: description.trim(),
-      status: 'active'
-    });
+      await addCourt({
+        name: name.trim(),
+        establishment: establishment.trim(),
+        sport,
+        surface: surface.trim(),
+        isIndoor,
+        hasLighting,
+        hourlyRateDay: Number(hourlyRateDay),
+        hourlyRateNight: Number(hourlyRateNight),
+        hora_inicio: formatSlotHour(openNum),
+        hora_fin: formatSlotHour(closeNum),
+        openHour: openNum,
+        closeHour: closeNum,
+        nightStartHour,
+        depositRequired: Number(depositRequired),
+        imageUrl: primaryImage,
+        ...(attachedImages.length > 0 ? { images: attachedImages } : {}),
+        amenities,
+        description: description.trim(),
+        status: 'active'
+      });
 
-    setIsAddModalOpen(false);
-    setName('');
-    setHoraInicio(DEFAULT_HORA_INICIO);
-    setHoraFin(DEFAULT_HORA_FIN);
-    setNightStartHour(DEFAULT_NIGHT_START_HOUR);
-    setAttachedImages([]);
-    setNewImageUrlInput('');
-    setImageUploadError(null);
+      setIsAddModalOpen(false);
+      setName('');
+      setHoraInicio(DEFAULT_HORA_INICIO);
+      setHoraFin(DEFAULT_HORA_FIN);
+      setNightStartHour(DEFAULT_NIGHT_START_HOUR);
+      setAttachedImages([]);
+      setNewImageUrlInput('');
+      setImageUploadError(null);
+    } finally {
+      createLockRef.current = false;
+      setIsCreatingCourt(false);
+    }
   };
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingCourt) return;
-    await updateCourt(editingCourt);
-    setEditingCourt(null);
-    setEditImageUrlInput('');
-    setEditImageError(null);
+    if (!editingCourt || editLockRef.current || isSavingEdit) return;
+    editLockRef.current = true;
+    setIsSavingEdit(true);
+    try {
+      await updateCourt(editingCourt);
+      setEditingCourt(null);
+      setEditImageUrlInput('');
+      setEditImageError(null);
+    } finally {
+      editLockRef.current = false;
+      setIsSavingEdit(false);
+    }
   };
 
   const handleDeleteCourt = async (courtId: string) => {
-    await deleteCourt(courtId);
-    setDeleteConfirmId(null);
+    if (deleteLockRef.current || isDeletingCourt) return;
+    deleteLockRef.current = true;
+    setIsDeletingCourt(true);
+    try {
+      await deleteCourt(courtId);
+      setDeleteConfirmId(null);
+    } finally {
+      deleteLockRef.current = false;
+      setIsDeletingCourt(false);
+    }
   };
 
   const newOpenNum = parseSlotHourOrder(horaInicio);
@@ -451,16 +479,21 @@ export const CourtsManager: React.FC = () => {
             </p>
             <div className="flex justify-center gap-2 pt-2">
               <button
+                type="button"
+                disabled={isDeletingCourt}
                 onClick={() => setDeleteConfirmId(null)}
-                className="px-4 py-2 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-semibold text-xs cursor-pointer"
+                className="px-4 py-2 rounded-lg bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-semibold text-xs cursor-pointer disabled:opacity-50"
               >
                 Cancelar
               </button>
               <button
+                type="button"
+                disabled={isDeletingCourt}
                 onClick={() => handleDeleteCourt(deleteConfirmId)}
-                className="px-5 py-2 rounded-lg bg-rose-600 text-white font-bold text-xs hover:bg-rose-500 cursor-pointer"
+                className="px-5 py-2 rounded-lg bg-rose-600 text-white font-bold text-xs hover:bg-rose-500 cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
               >
-                Sí, Eliminar
+                {isDeletingCourt && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isDeletingCourt ? 'Eliminando...' : 'Sí, Eliminar'}</span>
               </button>
             </div>
           </div>
@@ -785,16 +818,19 @@ export const CourtsManager: React.FC = () => {
               <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border-hairline)]">
                 <button
                   type="button"
+                  disabled={isCreatingCourt}
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs cursor-pointer shadow-md"
+                  disabled={isCreatingCourt || uploadingImage}
+                  className="px-6 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs cursor-pointer shadow-md disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                 >
-                  Publicar Cancha
+                  {isCreatingCourt && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isCreatingCourt ? 'Publicando...' : 'Publicar Cancha'}</span>
                 </button>
               </div>
             </form>
@@ -1119,16 +1155,19 @@ export const CourtsManager: React.FC = () => {
               <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border-hairline)]">
                 <button
                   type="button"
+                  disabled={isSavingEdit}
                   onClick={() => setEditingCourt(null)}
-                  className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-[var(--bg-subtle)] hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] font-bold text-xs cursor-pointer disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs cursor-pointer shadow-md"
+                  disabled={isSavingEdit || editUploadingImage}
+                  className="px-5 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-ink)] font-bold text-xs cursor-pointer shadow-md disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5"
                 >
-                  Guardar Cambios
+                  {isSavingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>{isSavingEdit ? 'Guardando...' : 'Guardar Cambios'}</span>
                 </button>
               </div>
             </form>
