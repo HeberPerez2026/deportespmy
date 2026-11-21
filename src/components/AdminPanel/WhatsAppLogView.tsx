@@ -82,6 +82,46 @@ export const WhatsAppLogView: React.FC = () => {
         </div>
       </div>
 
+      {/* Live Server Environment Status (Read-Only) */}
+      {cloudStatus && (
+        <div
+          className={`px-4 py-3 rounded-xl border text-xs flex flex-wrap items-center justify-between gap-3 ${
+            cloudStatus.configured
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-800 dark:text-emerald-200'
+              : 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {cloudStatus.configured ? (
+              <CheckCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            )}
+            <div>
+              <span className="font-bold">
+                {cloudStatus.configured
+                  ? `WhatsApp Cloud API conectada (Graph API ${cloudStatus.apiVersion})`
+                  : 'WhatsApp Cloud API sin credenciales en este servidor'}
+              </span>
+              {!cloudStatus.configured && (
+                <p className="text-[11px] opacity-90 mt-0.5">
+                  El servidor actual ({typeof window !== 'undefined' ? window.location.host : 'actual'}) no tiene cargadas{' '}
+                  {!cloudStatus.hasAccessToken && !cloudStatus.hasPhoneNumberId
+                    ? 'WHATSAPP_CLOUD_ACCESS_TOKEN ni WHATSAPP_CLOUD_PHONE_NUMBER_ID'
+                    : !cloudStatus.hasAccessToken
+                    ? 'WHATSAPP_CLOUD_ACCESS_TOKEN'
+                    : 'WHATSAPP_CLOUD_PHONE_NUMBER_ID'}
+                  . Si entrás por dominio propio o Vercel, agregá esas variables en Project Settings → Environment Variables y hacé Redeploy.
+                </p>
+              )}
+            </div>
+          </div>
+          <span className="text-[11px] font-mono opacity-80">
+            Host: {typeof window !== 'undefined' ? window.location.host : '-'}
+          </span>
+        </div>
+      )}
+
       {/* Meta Templates Reference Card */}
       <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-hairline)] overflow-hidden">
         <button

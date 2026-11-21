@@ -29,6 +29,8 @@ export interface WhatsAppCloudBatchResult {
 
 export interface WhatsAppCloudStatus {
   configured: boolean;
+  hasAccessToken: boolean;
+  hasPhoneNumberId: boolean;
   hasBookingTemplate: boolean;
   hasBookingApprovedTemplate: boolean;
   hasBookingCancelledTemplate: boolean;
@@ -45,6 +47,8 @@ export async function getWhatsAppCloudStatus(): Promise<WhatsAppCloudStatus> {
     if (!resp.ok) {
       return {
         configured: false,
+        hasAccessToken: false,
+        hasPhoneNumberId: false,
         hasBookingTemplate: false,
         hasBookingApprovedTemplate: false,
         hasBookingCancelledTemplate: false,
@@ -56,6 +60,8 @@ export async function getWhatsAppCloudStatus(): Promise<WhatsAppCloudStatus> {
     const data = await safeParseJsonResponse(resp);
     return {
       configured: Boolean(data?.configured),
+      hasAccessToken: Boolean(data?.hasAccessToken),
+      hasPhoneNumberId: Boolean(data?.hasPhoneNumberId),
       hasBookingTemplate: Boolean(data?.hasBookingTemplate),
       hasBookingApprovedTemplate: Boolean(data?.hasBookingApprovedTemplate),
       hasBookingCancelledTemplate: Boolean(data?.hasBookingCancelledTemplate),
@@ -66,6 +72,8 @@ export async function getWhatsAppCloudStatus(): Promise<WhatsAppCloudStatus> {
   } catch {
     return {
       configured: false,
+      hasAccessToken: false,
+      hasPhoneNumberId: false,
       hasBookingTemplate: false,
       hasBookingApprovedTemplate: false,
       hasBookingCancelledTemplate: false,

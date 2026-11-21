@@ -821,10 +821,16 @@ function resolveWhatsAppCloudConfig(): WhatsAppCloudConfig {
     accessToken:
       cleanEnvValue(process.env.WHATSAPP_CLOUD_ACCESS_TOKEN) ||
       cleanEnvValue(process.env.WHATSAPP_ACCESS_TOKEN) ||
+      cleanEnvValue(process.env.WHATSAPP_TOKEN) ||
+      cleanEnvValue(process.env.META_WHATSAPP_ACCESS_TOKEN) ||
+      cleanEnvValue(process.env.META_ACCESS_TOKEN) ||
       '',
     phoneNumberId:
       cleanEnvValue(process.env.WHATSAPP_CLOUD_PHONE_NUMBER_ID) ||
       cleanEnvValue(process.env.WHATSAPP_PHONE_NUMBER_ID) ||
+      cleanEnvValue(process.env.WHATSAPP_PHONE_ID) ||
+      cleanEnvValue(process.env.META_WHATSAPP_PHONE_NUMBER_ID) ||
+      cleanEnvValue(process.env.META_PHONE_NUMBER_ID) ||
       '',
     apiVersion: cleanEnvValue(process.env.WHATSAPP_CLOUD_API_VERSION) || 'v21.0',
     bookingConfirmedTemplate: cleanEnvValue(process.env.WHATSAPP_TEMPLATE_BOOKING_CONFIRMED) || '',
@@ -834,6 +840,16 @@ function resolveWhatsAppCloudConfig(): WhatsAppCloudConfig {
     tournamentCreatedTemplate: cleanEnvValue(process.env.WHATSAPP_TEMPLATE_TOURNAMENT_CREATED) || '',
     templateLang: cleanEnvValue(process.env.WHATSAPP_TEMPLATE_LANG) || 'es_AR',
   };
+}
+
+function getMissingWhatsAppConfigError(cfg: WhatsAppCloudConfig): string {
+  const missing: string[] = [];
+  if (!cfg.accessToken) missing.push('WHATSAPP_CLOUD_ACCESS_TOKEN');
+  if (!cfg.phoneNumberId) missing.push('WHATSAPP_CLOUD_PHONE_NUMBER_ID');
+  if (missing.length === 0) return '';
+  return `WhatsApp Cloud API no configurada en el servidor (${
+    missing.length === 2 ? `faltan ${missing[0]} y ${missing[1]}` : `falta ${missing[0]}`
+  }).`;
 }
 
 function formatPhoneForWhatsAppCloud(rawPhone?: string): string {
@@ -906,8 +922,7 @@ async function sendWhatsAppCloudMessage(params: {
       ok: false,
       configured: false,
       status: 'failed',
-      error:
-        'WhatsApp Cloud API no configurada en el servidor (faltan WHATSAPP_CLOUD_ACCESS_TOKEN y WHATSAPP_CLOUD_PHONE_NUMBER_ID).',
+      error: getMissingWhatsAppConfigError(cfg),
     };
   }
 
@@ -2134,12 +2149,15 @@ export function createApiApp() {
     const cfg = resolveWhatsAppCloudConfig();
     res.json({
       configured: Boolean(cfg.accessToken && cfg.phoneNumberId),
+      hasAccessToken: Boolean(cfg.accessToken),
+      hasPhoneNumberId: Boolean(cfg.phoneNumberId),
       hasBookingTemplate: Boolean(cfg.bookingConfirmedTemplate),
       hasBookingApprovedTemplate: Boolean(cfg.bookingApprovedTemplate),
       hasBookingCancelledTemplate: Boolean(cfg.bookingCancelledTemplate),
       hasMissingPlayersTemplate: Boolean(cfg.missingPlayersTemplate),
       hasTournamentCreatedTemplate: Boolean(cfg.tournamentCreatedTemplate),
       apiVersion: cfg.apiVersion,
+      templateLang: cfg.templateLang,
     });
   });
 
@@ -2352,6 +2370,7 @@ export function createApiApp() {
       }
 
       if (!configured) {
+        const missingMsg = getMissingWhatsAppConfigError(cfg);
         return res.json({
           ok: false,
           configured: false,
@@ -2362,10 +2381,9 @@ export function createApiApp() {
             name: r.name,
             phone: r.phone,
             ok: false,
-            error: 'WhatsApp Cloud API no configurada en el servidor.',
+            error: missingMsg,
           })),
-          error:
-            'WhatsApp Cloud API no configurada en el servidor (faltan WHATSAPP_CLOUD_ACCESS_TOKEN y WHATSAPP_CLOUD_PHONE_NUMBER_ID).',
+          error: missingMsg,
         });
       }
 
@@ -2528,6 +2546,7 @@ export function createApiApp() {
       }
 
       if (!configured) {
+        const missingMsg = getMissingWhatsAppConfigError(cfg);
         return res.json({
           ok: false,
           configured: false,
@@ -2538,10 +2557,9 @@ export function createApiApp() {
             name: r.name,
             phone: r.phone,
             ok: false,
-            error: 'WhatsApp Cloud API no configurada en el servidor.',
+            error: missingMsg,
           })),
-          error:
-            'WhatsApp Cloud API no configurada en el servidor (faltan WHATSAPP_CLOUD_ACCESS_TOKEN y WHATSAPP_CLOUD_PHONE_NUMBER_ID).',
+          error: missingMsg,
         });
       }
 
